@@ -34,6 +34,12 @@ func _ready() -> void:
 	randomize()
 	_add_background()
 
+	# Câmera centralizada na arena (640x360) que permite screen shake nos impactos.
+	var cam := GameCamera.new()
+	cam.position = Vector2(320, 180)
+	add_child(cam)
+	cam.make_current()
+
 	_layer = CanvasLayer.new()
 	add_child(_layer)
 	_hud = Hud.new()
@@ -80,7 +86,8 @@ func _ready() -> void:
 func _add_background() -> void:
 	var bg := ColorRect.new()
 	bg.color = Color(0.1, 0.1, 0.13)
-	bg.size = Vector2(640, 360)
+	bg.position = Vector2(-40, -40)       # folga para o screen shake não revelar as bordas
+	bg.size = Vector2(720, 440)
 	bg.z_index = -10
 	add_child(bg)
 

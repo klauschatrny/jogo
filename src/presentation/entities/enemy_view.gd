@@ -14,8 +14,12 @@ var target: Node2D                  # quem perseguir (o PlayerView)
 var box_size := 18.0                # subclasses ajustam antes de entrar na árvore
 var body_color := Color(0.9, 0.3, 0.3)
 
+const KNOCKBACK_FORCE := 130.0
+
 var _attack_cd := 0.0
 var _hp_bar: ColorRect
+var _body: ColorRect
+var _knockback := Vector2.ZERO
 
 func setup(enemy: Enemy, target_node: Node2D) -> void:
 	data = enemy
@@ -31,11 +35,11 @@ func _ready() -> void:
 	_build()
 
 func _build() -> void:
-	var body := ColorRect.new()
-	body.color = body_color
-	body.size = Vector2(box_size, box_size)
-	body.position = -0.5 * Vector2(box_size, box_size)
-	add_child(body)
+	_body = ColorRect.new()
+	_body.color = body_color
+	_body.size = Vector2(box_size, box_size)
+	_body.position = -0.5 * Vector2(box_size, box_size)
+	add_child(_body)
 
 	var col := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
@@ -69,13 +73,20 @@ func _physics_process(delta: float) -> void:
 			_attack_cd = ATTACK_INTERVAL
 			if target.has_method("apply_enemy_hit"):
 				target.apply_enemy_hit(data.stats)
+	velocity += _knockback
+	_knockback = _knockback.lerp(Vector2.ZERO, 0.2)   # recuo decai rápido
 	move_and_slide()
 
 func apply_damage(amount: int) -> void:
 	data.stats.current_hp -= amount
 	_refresh_hp_bar()
+	Juice.flash(_body, body_color)
+	Juice.burst(get_parent(), global_position, Color(1, 0.95, 0.5), 6)
+	if is_instance_valid(target):
+		_knockback = (global_position - target.global_position).normalized() * KNOCKBACK_FORCE
 	_on_after_damage()
 	if data.stats.current_hp <= 0:
+		Juice.burst(get_parent(), global_position, body_color, 16, 140.0)
 		died.emit()
 		queue_free()
 
