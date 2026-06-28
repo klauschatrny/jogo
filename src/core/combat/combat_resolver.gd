@@ -53,3 +53,9 @@ static func player_hit(player: Player, target: StatBlock) -> float:
 ## Dano de um golpe de um inimigo (StatBlock atacante) contra o jogador.
 static func enemy_hit(attacker: StatBlock, player: Player) -> float:
 	return hit_damage(float(attacker.attack), 0.0, 0.0, total_reduction(player.stats))
+
+## Cura por roubo de vida (§1.3): fração do dano causado convertida em HP, arredondada.
+static func lifesteal_heal(lifesteal: float, damage_dealt: int) -> int:
+	if lifesteal <= 0.0 or damage_dealt <= 0:
+		return 0
+	return int(round(float(damage_dealt) * lifesteal))

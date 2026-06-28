@@ -73,10 +73,16 @@ func _physics_process(delta: float) -> void:
 func _attack() -> void:
 	var spd := data.weapon.attack_speed if data.weapon else 1.0
 	_attack_cd = 1.0 / maxf(spd, 0.1)
+	var total_dmg := 0
 	for b in _hitbox.get_overlapping_bodies():
 		if b is EnemyView and b.data != null:
-			var dmg := CombatResolver.player_hit(data, b.data.stats)
-			b.apply_damage(int(round(dmg)))
+			var dmg := int(round(CombatResolver.player_hit(data, b.data.stats)))
+			b.apply_damage(dmg)
+			total_dmg += dmg
+	# Roubo de vida: cura uma fração do dano total causado neste golpe.
+	var heal := CombatResolver.lifesteal_heal(data.stats.lifesteal, total_dmg)
+	if heal > 0:
+		data.heal(heal)
 	_flash_swing()
 
 ## Chamado pelo EnemyView quando o inimigo acerta o jogador.

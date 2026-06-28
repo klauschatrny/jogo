@@ -21,6 +21,7 @@ const SUITES := {
 	"Boss": "res://tests/test_boss.gd",
 	"RunState": "res://tests/test_run_state.gd",
 	"FloorManager": "res://tests/test_floor_manager.gd",
+	"TowerManager": "res://tests/test_tower.gd",
 	"NemesisRules": "res://tests/test_nemesis_rules.gd",
 	"GhostFactory": "res://tests/test_ghost_factory.gd",
 	"GhostRepository": "res://tests/test_ghost_repository.gd",

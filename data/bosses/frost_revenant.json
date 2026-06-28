@@ -1,0 +1,17 @@
+{
+  "id": "gbs_frost_revenant",
+  "name": "Espectro Gélido",
+  "archetype": "CONTROLLER",
+  "rank": "GREAT_BOSS",
+  "base_stats": { "max_hp": 50, "attack": 23, "defense": 6, "move_speed": 68 },
+  "ai_profile": "boss_phased",
+  "abilities": ["abil_frost_nova", "abil_ice_spikes", "abil_chill_aura"],
+  "phases": [
+    { "hp_threshold": 0.5, "on_enter": ["enrage", "abil_chill_aura"], "atk_mult": 1.3 },
+    { "hp_threshold": 0.2, "on_enter": ["abil_frost_nova"], "atk_mult": 1.6 }
+  ],
+  "can_summon_ghost": true,
+  "ghost_summon_threshold": 0.6,
+  "intro_dialogue": "O frio chega antes do fim.",
+  "loot": { "gold_min": 220, "gold_max": 340, "xp": 1100, "guaranteed_drop_tier": "ARTIFACT" }
+}

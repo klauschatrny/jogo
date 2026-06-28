@@ -1,0 +1,17 @@
+{
+  "id": "gbs_bone_colossus",
+  "name": "Colosso de Ossos",
+  "archetype": "TANK",
+  "rank": "GREAT_BOSS",
+  "base_stats": { "max_hp": 55, "attack": 16, "defense": 7, "move_speed": 48 },
+  "ai_profile": "boss_phased",
+  "abilities": ["abil_bone_quake", "abil_marrow_shield"],
+  "phases": [
+    { "hp_threshold": 0.5, "on_enter": ["enrage", "abil_marrow_shield"], "atk_mult": 1.3 },
+    { "hp_threshold": 0.2, "on_enter": ["abil_bone_quake"], "atk_mult": 1.6 }
+  ],
+  "can_summon_ghost": true,
+  "ghost_summon_threshold": 0.6,
+  "intro_dialogue": "Ossos não cansam. Ossos não cedem.",
+  "loot": { "gold_min": 80, "gold_max": 140, "xp": 320, "guaranteed_drop_tier": "RELIC" }
+}

@@ -1,0 +1,18 @@
+{
+  "id": "king_tyrant",
+  "name": "O Rei da Torre",
+  "archetype": "KING",
+  "rank": "KING",
+  "base_stats": { "max_hp": 60, "attack": 28, "defense": 8, "move_speed": 70 },
+  "ai_profile": "boss_phased",
+  "abilities": ["abil_royal_decree", "abil_summon_guard", "abil_crown_nova", "abil_judgment"],
+  "phases": [
+    { "hp_threshold": 0.75, "on_enter": ["abil_summon_guard"], "atk_mult": 1.2 },
+    { "hp_threshold": 0.5, "on_enter": ["enrage", "abil_crown_nova"], "atk_mult": 1.4 },
+    { "hp_threshold": 0.25, "on_enter": ["enrage", "abil_judgment"], "atk_mult": 1.7 }
+  ],
+  "can_summon_ghost": true,
+  "ghost_summon_threshold": 0.6,
+  "intro_dialogue": "Você subiu cinquenta andares para morrer no meu trono.",
+  "loot": { "gold_min": 999, "gold_max": 1999, "xp": 5000, "guaranteed_drop_tier": "ARTIFACT" }
+}

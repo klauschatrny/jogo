@@ -1,0 +1,17 @@
+{
+  "id": "gbs_plague_warden",
+  "name": "Guardião da Peste",
+  "archetype": "BRUISER",
+  "rank": "GREAT_BOSS",
+  "base_stats": { "max_hp": 48, "attack": 20, "defense": 5, "move_speed": 64 },
+  "ai_profile": "boss_phased",
+  "abilities": ["abil_toxic_cloud", "abil_summon_spores"],
+  "phases": [
+    { "hp_threshold": 0.5, "on_enter": ["enrage", "abil_toxic_cloud"], "atk_mult": 1.3 },
+    { "hp_threshold": 0.2, "on_enter": ["abil_summon_spores"], "atk_mult": 1.6 }
+  ],
+  "can_summon_ghost": true,
+  "ghost_summon_threshold": 0.6,
+  "intro_dialogue": "Respire fundo. Será o seu último ar puro.",
+  "loot": { "gold_min": 120, "gold_max": 200, "xp": 520, "guaranteed_drop_tier": "RELIC" }
+}

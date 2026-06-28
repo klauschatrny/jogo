@@ -1,0 +1,14 @@
+{
+  "id": "tower_main",
+  "total_floors": 50,
+  "king_floor": 51,
+  "default_boss": "bss_guardian",
+  "boss_schedule": {
+    "10": "gbs_bone_colossus",
+    "20": "gbs_plague_warden",
+    "30": "gbs_flame_tyrant",
+    "40": "gbs_frost_revenant",
+    "50": "gbs_shadow_executioner",
+    "51": "king_tyrant"
+  }
+}

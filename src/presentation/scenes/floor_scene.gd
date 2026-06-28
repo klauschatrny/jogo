@@ -6,13 +6,15 @@ extends Node2D
 
 var _run: RunState
 var _floor_mgr: FloorManager
+var _tower: TowerManager
 var _player_view: PlayerView
 var _enemies: Array = []
 var _hud: Hud
 var _msg: Label
 var _layer: CanvasLayer
-var _phase := "waves"          # waves | boss | reward | dead
+var _phase := "waves"          # waves | boss | reward | dead | victory
 var _floor_config: Dictionary = {}
+var _current_boss_id := ""
 
 # repositórios carregados uma vez
 var _enemy_repo: EnemyRepository
@@ -46,6 +48,9 @@ func _ready() -> void:
 	var cfg = JsonLoader.load_file("res://data/floors/floor_default.json")
 	_floor_config = cfg if typeof(cfg) == TYPE_DICTIONARY else {}
 
+	var tcfg = JsonLoader.load_file("res://data/floors/tower.json")
+	_tower = TowerManager.from_config(tcfg if typeof(tcfg) == TYPE_DICTIONARY else {})
+
 	_run = RunState.start_new("Kael", weapon, aug_repo.all_augments(), randi())
 	_player_view = PlayerView.new()
 	_player_view.setup(_run.player)
@@ -64,9 +69,20 @@ func _add_background() -> void:
 	add_child(bg)
 
 func _start_floor() -> void:
+	var floor := _run.current_floor
+	_current_boss_id = _tower.boss_for_floor(floor)
+
+	# Arena do Rei (andar final): sem waves de trash, direto para o boss.
+	if _tower.is_boss_only_floor(floor):
+		_phase = "boss"
+		_spawn_boss()
+		return
+
 	_phase = "waves"
-	_floor_mgr = FloorManager.build(_run.current_floor, _floor_config)
-	_msg.text = "Andar %d" % _run.current_floor
+	var cfg := _floor_config.duplicate()
+	cfg["boss_id"] = _current_boss_id
+	_floor_mgr = FloorManager.build(floor, cfg)
+	_msg.text = "Andar %d / %d" % [floor, _tower.total_floors]
 	_spawn_next_wave()
 
 func _spawn_next_wave() -> void:
@@ -82,12 +98,19 @@ func _spawn_next_wave() -> void:
 
 func _spawn_boss() -> void:
 	_phase = "boss"
-	_msg.text = "Andar %d — CHEFE!" % _run.current_floor
-	var base := _boss_repo.get_by_id(_floor_mgr.boss_id)
+	var floor := _run.current_floor
+	var base := _boss_repo.get_by_id(_current_boss_id)
 	if base.is_empty():
+		push_warning("[floor_scene] boss '%s' não encontrado no andar %d" % [_current_boss_id, floor])
 		_on_floor_cleared()
 		return
-	var boss := EnemyFactory.build_boss(base, _run.current_floor)
+	var boss := EnemyFactory.build_boss(base, floor)
+	if _tower.is_king_floor(floor):
+		_msg.text = "Andar %d — O REI DA TORRE!" % floor
+	elif _tower.is_great_boss_floor(floor):
+		_msg.text = "Andar %d — GRANDE CHEFE: %s" % [floor, boss.name]
+	else:
+		_msg.text = "Andar %d — CHEFE!" % floor
 	_add_view(BossView.new(), boss, Vector2(320, 70))
 
 func _add_view(view: EnemyView, enemy: Enemy, pos: Vector2) -> void:
@@ -108,6 +131,10 @@ func _on_enemy_died(view: EnemyView, enemy: Enemy) -> void:
 		_on_floor_cleared()
 
 func _on_floor_cleared() -> void:
+	# Derrotar o boss do andar final (Rei) conclui a torre.
+	if _tower.is_victory_floor(_run.current_floor):
+		_on_victory()
+		return
 	_phase = "reward"
 	var cards := _run.offer_augments()
 	if cards.is_empty():
@@ -131,6 +158,11 @@ func _on_player_died(_p: Player) -> void:
 	_phase = "dead"
 	_msg.text = "VOCÊ MORREU no andar %d — Enter p/ menu" % _run.current_floor
 
+## Provisório (Leva 2): a tela de Vitória de verdade entra na Leva 3.
+func _on_victory() -> void:
+	_phase = "victory"
+	_msg.text = "VITÓRIA! Você conquistou a Torre — Enter p/ menu"
+
 func _random_spawn_pos() -> Vector2:
 	# borda aleatória, longe do centro onde o jogador começa
 	var margin := 40.0
@@ -142,5 +174,5 @@ func _random_spawn_pos() -> Vector2:
 		_: return Vector2(600, randf_range(margin, 320))
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _phase == "dead" and event.is_action_pressed("ui_accept"):
+	if (_phase == "dead" or _phase == "victory") and event.is_action_pressed("ui_accept"):
 		get_tree().change_scene_to_file("res://src/presentation/scenes/main_menu.tscn")

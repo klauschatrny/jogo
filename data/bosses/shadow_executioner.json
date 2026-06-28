@@ -1,0 +1,17 @@
+{
+  "id": "gbs_shadow_executioner",
+  "name": "Carrasco das Sombras",
+  "archetype": "ASSASSIN",
+  "rank": "GREAT_BOSS",
+  "base_stats": { "max_hp": 40, "attack": 30, "defense": 3, "move_speed": 92 },
+  "ai_profile": "boss_phased",
+  "abilities": ["abil_shadow_step", "abil_execute", "abil_blade_flurry"],
+  "phases": [
+    { "hp_threshold": 0.5, "on_enter": ["enrage", "abil_shadow_step"], "atk_mult": 1.4 },
+    { "hp_threshold": 0.2, "on_enter": ["abil_blade_flurry", "abil_execute"], "atk_mult": 1.7 }
+  ],
+  "can_summon_ghost": true,
+  "ghost_summon_threshold": 0.6,
+  "intro_dialogue": "A última coisa que você verá é a sua própria sombra.",
+  "loot": { "gold_min": 300, "gold_max": 460, "xp": 1600, "guaranteed_drop_tier": "ARTIFACT" }
+}

@@ -53,3 +53,17 @@ func test_enemy_hit_usa_reducao_do_player() -> void:
 	var p := Player.create_new("X", w)  # defesa 0, dr 0
 	var inimigo := StatBlock.from_dict({"attack": 8})
 	assert_almost(CombatResolver.enemy_hit(inimigo, p), 8.0)
+
+# --- Roubo de vida (lifesteal) ---
+
+func test_lifesteal_cura_fracao_do_dano() -> void:
+	assert_eq(CombatResolver.lifesteal_heal(0.15, 100), 15)
+	assert_eq(CombatResolver.lifesteal_heal(0.03, 100), 3)
+
+func test_lifesteal_zero_nao_cura() -> void:
+	assert_eq(CombatResolver.lifesteal_heal(0.0, 100), 0)
+	assert_eq(CombatResolver.lifesteal_heal(0.1, 0), 0)
+
+func test_lifesteal_arredonda() -> void:
+	# 30 * 0.03 = 0.9 -> 1
+	assert_eq(CombatResolver.lifesteal_heal(0.03, 30), 1)

@@ -1,0 +1,17 @@
+{
+  "id": "gbs_flame_tyrant",
+  "name": "Tirano das Chamas",
+  "archetype": "CASTER",
+  "rank": "GREAT_BOSS",
+  "base_stats": { "max_hp": 44, "attack": 26, "defense": 4, "move_speed": 72 },
+  "ai_profile": "boss_phased",
+  "abilities": ["abil_fireball", "abil_meteor", "abil_flame_dash"],
+  "phases": [
+    { "hp_threshold": 0.5, "on_enter": ["enrage", "abil_flame_dash"], "atk_mult": 1.35 },
+    { "hp_threshold": 0.2, "on_enter": ["abil_meteor"], "atk_mult": 1.65 }
+  ],
+  "can_summon_ghost": true,
+  "ghost_summon_threshold": 0.6,
+  "intro_dialogue": "Cinzas. Tudo vira cinzas.",
+  "loot": { "gold_min": 160, "gold_max": 260, "xp": 760, "guaranteed_drop_tier": "RELIC" }
+}
