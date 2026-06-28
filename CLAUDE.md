@@ -121,9 +121,13 @@ godot --headless --script res://tests/test_runner.gd
   `test_*()` methods; register new suites in the `SUITES` dict of `tests/test_runner.gd`. There is no
   single-test flag yet — comment out other entries in `SUITES`, or temporarily rename methods, to
   isolate one.
-- `tests/sim_balance.gd` (Phase 5, not yet created) will be a balance simulator, not a unit test: it
-  computes TTK per floor for a "median" player and flags values outside the target bands in §1.2.4.
-  Re-run it after changing any constant in `balance.json`.
+- `tests/sim_balance.gd` is a balance simulator, NOT a unit test: for each sampled floor it builds a
+  "median" player and computes the §1.2.4 TTKs (kill / die), flagging values outside the target bands
+  (`ttk_targets` in `balance.json`). Re-run after changing any tuning constant. The median-player
+  assumptions (weapon upgrades & augments per floor) are constants at the top of `tests/balance_sim.gd`
+  — the actual logic lives there and is `load()`-ed at runtime by the thin `sim_balance.gd` runner
+  (same autoload-availability workaround as `test_runner.gd`). Run it with:
+  `godot --headless --script res://tests/sim_balance.gd` (always exits 0 — it's a report).
 
 ## Conventions established in Phase 1
 
