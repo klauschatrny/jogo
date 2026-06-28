@@ -1,0 +1,16 @@
+{
+  "id": "bss_guardian",
+  "name": "Guardião da Torre",
+  "archetype": "TANK",
+  "rank": "BOSS",
+  "base_stats": { "max_hp": 40, "attack": 8, "defense": 4, "move_speed": 60 },
+  "ai_profile": "boss_phased",
+  "abilities": ["abil_ground_slam"],
+  "phases": [
+    { "hp_threshold": 0.5, "on_enter": ["enrage"], "atk_mult": 1.3 }
+  ],
+  "can_summon_ghost": true,
+  "ghost_summon_threshold": 0.6,
+  "intro_dialogue": "A torre não será conquistada.",
+  "loot": { "gold_min": 50, "gold_max": 90, "xp": 150, "guaranteed_drop_tier": "RELIC" }
+}

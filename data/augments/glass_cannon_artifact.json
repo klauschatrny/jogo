@@ -1,0 +1,14 @@
+{
+  "id": "aug_glass_cannon_artifact",
+  "name": "Canhão de Vidro",
+  "tier": "ARTIFACT",
+  "category": "OFFENSE",
+  "description": "Dobra seu dano, mas reduz seu HP máximo pela metade.",
+  "weight": 6,
+  "stackable": false,
+  "max_stacks": 1,
+  "effects": [
+    { "stat": "damage_mult", "operation": "MULT", "value": 2.0 },
+    { "stat": "max_hp", "operation": "MULT", "value": 0.5 }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "aug_crit_relic",
+  "name": "Olho do Predador",
+  "tier": "RELIC",
+  "category": "OFFENSE",
+  "description": "+10% de chance de crítico.",
+  "weight": 30,
+  "stackable": true,
+  "max_stacks": 5,
+  "effects": [
+    { "stat": "crit_chance", "operation": "ADD", "value": 0.10 }
+  ]
+}

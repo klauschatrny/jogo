@@ -59,6 +59,8 @@ func recalculate_stats() -> void:
 
 func add_augment(aug: Augment) -> void:
 	augments.append(aug)
+	if aug.category == "WEAPON" and weapon != null:   # §3.7: augment de arma sobe o nível
+		weapon.upgrade()
 	recalculate_stats()
 	EventBus.augment_chosen.emit(aug)
 

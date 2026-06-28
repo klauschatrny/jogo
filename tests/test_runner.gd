@@ -17,6 +17,9 @@ const SUITES := {
 	"Leveling": "res://tests/test_leveling.gd",
 	"StatResolver": "res://tests/test_stat_resolver.gd",
 	"EnemyFactory": "res://tests/test_enemy_factory.gd",
+	"AugmentPool": "res://tests/test_augment_pool.gd",
+	"Boss": "res://tests/test_boss.gd",
+	"RunState": "res://tests/test_run_state.gd",
 }
 
 func _initialize() -> void:

@@ -1,0 +1,11 @@
+{
+  "id": "aug_weapon_master_relic",
+  "name": "Mestre de Armas",
+  "tier": "RELIC",
+  "category": "WEAPON",
+  "description": "+1 nível na sua arma.",
+  "weight": 30,
+  "stackable": true,
+  "max_stacks": 99,
+  "effects": []
+}
