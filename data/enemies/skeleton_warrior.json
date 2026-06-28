@@ -1,0 +1,12 @@
+{
+  "id": "enm_skeleton",
+  "name": "Esqueleto Guerreiro",
+  "archetype": "MELEE",
+  "rank": "NORMAL",
+  "base_stats": { "max_hp": 40, "attack": 8, "defense": 2, "move_speed": 80 },
+  "ai_profile": "aggressive",
+  "abilities": ["abil_basic_slash"],
+  "loot": { "gold_min": 4, "gold_max": 10, "xp": 12 },
+  "spawn_floors": [1, 15],
+  "sprite": "skeleton_warrior"
+}
