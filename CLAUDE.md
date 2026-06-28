@@ -2,16 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project status: pre-implementation
+## Project status: Phase 1 implemented
 
-There is **no source code yet**. The repository currently contains only planning artifacts. The
-canonical spec is **`TDV_Arquitetura.md`** — a full GDD + software architecture for *A Torre da
-Vingança* (Tower of Vengeance), a 2D retro roguelike. Read it before writing any code; each section
-is self-contained and meant to be pasted as prompt context when implementing the corresponding phase.
+The canonical spec is **`TDV_Arquitetura.md`** — a full GDD + software architecture for *A Torre da
+Vingança* (Tower of Vengeance), a 2D retro roguelike. Read it before writing code; each section is
+self-contained and meant to be pasted as prompt context when implementing the corresponding phase.
 
-Note: `README.md` and `.gitignore` are leftover Node/Next.js template files and **contradict** the
-actual decision in the GDD. The chosen stack is **Godot 4 + GDScript** (§0.1). Treat the GDD as the
-source of truth, not the README. When scaffolding, replace these template files accordingly.
+**Phase 1 (Fundação & Esqueleto) is done**: `project.godot` with autoloads, `data/balance.json` +
+`BalanceConfig`, `EventBus`, seeded `RNGService`, stack-based `StateMachine`/`GameState`/`MainMenuState`,
+`JsonLoader` + repositories, a `main_menu.tscn` scene, and a headless test suite under `tests/`.
+Next up is **Phase 2 (Combate & Movimento Mínimo)** — see roadmap below.
+
+Stack: **Godot 4 + GDScript** (§0.1). The `core/` entity folders are still empty placeholders
+(`.gitkeep`); they get populated starting in Phase 2.
 
 ## Architecture (planned — from `TDV_Arquitetura.md`)
 
@@ -76,11 +79,33 @@ previous one. Do not skip ahead:
 
 ## Commands
 
-No build/test tooling exists yet (no `project.godot`, no test runner configured). Once the Godot 4
-project is scaffolded:
-- Tests are GDScript files under `tests/` (e.g. `test_combat_resolver.gd`) and run headless without a
-  window — wire up a runner (e.g. GUT or `godot --headless`) during Phase 1 and document the exact
-  command here.
-- `tests/sim_balance.gd` (Phase 5) is a balance simulator, not a unit test: it computes TTK per floor
-  for a "median" player and flags values outside the target bands in §1.2.4. Re-run it after changing
-  any constant in `balance.json`.
+Requires Godot 4 (the `godot` binary on PATH). The project has no external addons — the test runner
+is hand-rolled, not GUT.
+
+```bash
+# Run the game (editor)
+godot project.godot
+
+# Run the game headless (no window)
+godot --headless
+
+# Run the full test suite (exits 0 on pass, 1 on failure — CI-friendly)
+godot --headless --script res://tests/test_runner.gd
+```
+
+- Tests live under `tests/`. Each suite extends `TestCase` (`tests/test_case.gd`) and defines
+  `test_*()` methods; register new suites in the `SUITES` dict of `tests/test_runner.gd`. There is no
+  single-test flag yet — comment out other entries in `SUITES`, or temporarily rename methods, to
+  isolate one.
+- `tests/sim_balance.gd` (Phase 5, not yet created) will be a balance simulator, not a unit test: it
+  computes TTK per floor for a "median" player and flags values outside the target bands in §1.2.4.
+  Re-run it after changing any constant in `balance.json`.
+
+## Conventions established in Phase 1
+
+- **Autoloads** (configured in `project.godot`, order matters): `BalanceConfig`, `EventBus`,
+  `RNGService` load first; `GameManager` (bootstrap) loads last and depends on them.
+- `GameState` uses `state_name` (not `name`, which collides with `Node`/`Object` members).
+- All randomness goes through `RNGService` (seeded). `balance.json` is plain JSON — **no comments**
+  (Godot's JSON parser rejects them), despite the JSONC examples in the GDD appendix.
+- Data repositories extend `BaseRepository` and index JSON entries by their `"id"` field.

@@ -1,0 +1,49 @@
+{
+  "enemy_scaling": {
+    "BASE_HP": 40,
+    "BASE_ATK": 8,
+    "BASE_DEF": 2,
+    "GROWTH_HP": 1.09,
+    "GROWTH_ATK": 1.07,
+    "GROWTH_DEF": 1.05
+  },
+  "rank_multipliers": {
+    "MINION":     { "hp": 0.5,  "atk": 0.7 },
+    "NORMAL":     { "hp": 1.0,  "atk": 1.0 },
+    "ELITE":      { "hp": 2.5,  "atk": 1.4 },
+    "BOSS":       { "hp": 6.0,  "atk": 1.6 },
+    "GREAT_BOSS": { "hp": 12.0, "atk": 2.0 },
+    "KING":       { "hp": 30.0, "atk": 3.0 }
+  },
+  "player_scaling": {
+    "BASE_PHP": 120,
+    "HP_PER_LEVEL": 14,
+    "BASE_PATK": 5,
+    "ATK_PER_LEVEL": 2,
+    "BASE_WDMG": 15,
+    "WEAPON_GROWTH": 1.12,
+    "XP_BASE": 100,
+    "XP_GROWTH": 1.15
+  },
+  "augments": {
+    "tier_weights": { "FRAGMENT": 100, "RELIC": 30, "ARTIFACT": 6 },
+    "LUCK_RARITY_FACTOR": { "FRAGMENT": 0.0, "RELIC": 0.02, "ARTIFACT": 0.05 },
+    "cards_per_reward": 3
+  },
+  "nemesis": {
+    "NEMESIS_COEFF": 0.65,
+    "GHOST_HP_CAP": 2.0,
+    "GHOST_SUMMON_THRESHOLD": 0.60,
+    "MAX_INHERITED_AUGMENTS": 5,
+    "AUGMENTS_PER_DEATH_FLOOR_DIVISOR": 3,
+    "VENGEANCE_HEAL_PCT": 0.25,
+    "VENGEANCE_DAMAGE_BUFF": 0.20,
+    "HARDCORE_GRAVEYARD_SIZE": 3
+  },
+  "ttk_targets": {
+    "NORMAL":     { "enemy": [1.5, 3.5], "player": [18, 30] },
+    "ELITE":      { "enemy": [4, 8],     "player": [12, 20] },
+    "BOSS":       { "enemy": [20, 45],   "player": [10, 18] },
+    "GREAT_BOSS": { "enemy": [45, 90],   "player": [8, 14] }
+  }
+}

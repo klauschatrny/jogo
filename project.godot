@@ -1,0 +1,32 @@
+; Engine configuration file.
+; A Torre da Vingança — Godot 4
+; A ordem dos autoloads importa: serviços primeiro, GameManager por último.
+
+config_version=5
+
+[application]
+
+config/name="A Torre da Vingança"
+config/description="Roguelike de ação 2D retrô com sistema Nemesis (Fantasma)."
+run/main_scene="res://src/presentation/scenes/main_menu.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+
+[autoload]
+
+BalanceConfig="*res://src/services/balance_config.gd"
+EventBus="*res://src/services/event_bus.gd"
+RNGService="*res://src/services/rng_service.gd"
+GameManager="*res://src/autoload/game_manager.gd"
+
+[display]
+
+window/size/viewport_width=640
+window/size/viewport_height=360
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=0
