@@ -13,6 +13,7 @@ var move_speed: float = 100.0
 var damage_reduction: float = 0.0
 var lifesteal: float = 0.0
 var luck: int = 0
+var damage_mult: float = 1.0       # multiplicador de dano global: (1 + Σ%dano) e ×MULT de artefatos (§1.2.3)
 
 ## Cria um StatBlock a partir de um dicionário (ex.: base_stats de um inimigo,
 ## ou o bloco "stats" do save do jogador). Campos ausentes usam os defaults.
@@ -29,6 +30,7 @@ static func from_dict(d: Dictionary) -> StatBlock:
 	s.damage_reduction = float(d.get("damage_reduction", 0.0))
 	s.lifesteal = float(d.get("lifesteal", 0.0))
 	s.luck = int(d.get("luck", 0))
+	s.damage_mult = float(d.get("damage_mult", 1.0))
 	return s
 
 func to_dict() -> Dictionary:
@@ -38,7 +40,7 @@ func to_dict() -> Dictionary:
 		"crit_chance": crit_chance, "crit_damage": crit_damage,
 		"attack_speed": attack_speed, "move_speed": move_speed,
 		"damage_reduction": damage_reduction, "lifesteal": lifesteal,
-		"luck": luck,
+		"luck": luck, "damage_mult": damage_mult,
 	}
 
 func clone() -> StatBlock:

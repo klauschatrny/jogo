@@ -42,11 +42,12 @@ static func total_reduction(target: StatBlock) -> float:
 # Conveniência de alto nível — operam sobre as entidades do Core.
 # ---------------------------------------------------------------------------
 
-## Dano de um golpe do jogador contra um alvo. Já inclui a mitigação do alvo.
+## Dano de um golpe do jogador contra um alvo. Já inclui a mitigação do alvo e o
+## multiplicador de dano do jogador (damage_mult = (1 + Σ%dano) e ×MULT de artefatos).
 static func player_hit(player: Player, target: StatBlock) -> float:
 	var atk := float(player.stats.attack)
 	var wdmg := player.weapon.current_damage() if player.weapon else 0.0
-	var pct := 0.0  # Σ augment %dano entra na Fase 3
+	var pct := player.stats.damage_mult - 1.0
 	return hit_damage(atk, wdmg, pct, total_reduction(target))
 
 ## Dano de um golpe de um inimigo (StatBlock atacante) contra o jogador.

@@ -13,6 +13,10 @@ const SUITES := {
 	"Player": "res://tests/test_player.gd",
 	"Enemy": "res://tests/test_enemy.gd",
 	"CombatResolver": "res://tests/test_combat_resolver.gd",
+	"Scaling": "res://tests/test_scaling.gd",
+	"Leveling": "res://tests/test_leveling.gd",
+	"StatResolver": "res://tests/test_stat_resolver.gd",
+	"EnemyFactory": "res://tests/test_enemy_factory.gd",
 }
 
 func _initialize() -> void:

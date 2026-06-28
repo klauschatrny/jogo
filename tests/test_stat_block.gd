@@ -5,6 +5,7 @@ func test_defaults() -> void:
 	assert_eq(s.max_hp, 0)
 	assert_almost(s.crit_damage, 1.5)
 	assert_almost(s.attack_speed, 1.0)
+	assert_almost(s.damage_mult, 1.0)
 
 func test_from_dict() -> void:
 	var s := StatBlock.from_dict({"max_hp": 40, "attack": 8, "defense": 2})

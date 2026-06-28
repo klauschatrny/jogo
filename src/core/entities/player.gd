@@ -1,6 +1,10 @@
 ## Jogador em runtime (§2.2.1). Core puro: emite eventos via EventBus, nunca toca em render.
-## Nota de design: take_damage() recebe um valor JÁ MITIGADO pelo CombatResolver — a
-## redução de dano é centralizada lá (§1.2.3), então aqui apenas subtraímos do HP.
+##
+## Modelo de stats: `stats` é EFETIVO e derivado — recalculado de um bloco BASE (que escala
+## com o nível via Scaling) mais os augments (via StatResolver, ordem ADD<PCT_ADD<MULT).
+## Chame recalculate_stats() após mudar nível ou augments. current_hp é estado preservado.
+##
+## take_damage() recebe um valor JÁ MITIGADO pelo CombatResolver (mitigação centralizada lá).
 class_name Player
 extends RefCounted
 
@@ -11,28 +15,52 @@ var experience: int = 0
 var xp_to_next: int = 100
 var stats: StatBlock
 var weapon: Weapon
-var augments: Array = []            # Array[Augment] na Fase 3
+var augments: Array = []            # Array[Augment]
 var gold: int = 0
 var current_floor: int = 1
 var run_id: String = ""
 
-## Cria um jogador de nível 1 a partir das constantes de player_scaling (balance.json).
 static func create_new(player_name: String, chosen_weapon: Weapon) -> Player:
 	var p := Player.new()
 	p.id = _gen_id()
 	p.run_id = _gen_id()
 	p.name = player_name
 	p.weapon = chosen_weapon
-
-	var ps: Dictionary = BalanceConfig.player_scaling
-	var s := StatBlock.new()
-	s.max_hp = int(ps.get("BASE_PHP", 120))
-	s.current_hp = s.max_hp
-	s.attack = int(ps.get("BASE_PATK", 5))
-	s.defense = 0
-	p.stats = s
-	p.xp_to_next = int(ps.get("XP_BASE", 100))
+	p.level = 1
+	p.recalculate_stats()
+	p.xp_to_next = int(Leveling.xp_to_next(1))
 	return p
+
+## Stats BASE no nível atual, antes dos augments. max_hp/attack escalam linearmente (§1.2.2);
+## os demais são os defaults do jogador (do GDD §2.2.1).
+func base_block() -> StatBlock:
+	var b := StatBlock.new()
+	b.max_hp = int(Scaling.player_max_hp(level))
+	b.attack = int(Scaling.player_atk(level))
+	b.defense = 0
+	b.crit_chance = 0.05
+	b.crit_damage = 1.5
+	b.attack_speed = 1.0
+	b.move_speed = 110.0
+	b.damage_reduction = 0.0
+	b.lifesteal = 0.0
+	b.luck = 0
+	b.damage_mult = 1.0
+	return b
+
+## Recalcula os stats efetivos (base + augments), preservando o HP atual (clampado ao novo máximo).
+func recalculate_stats() -> void:
+	var keep := stats.current_hp if stats != null else -1
+	stats = StatResolver.resolve(base_block(), augments)
+	if keep < 0:
+		stats.current_hp = stats.max_hp
+	else:
+		stats.current_hp = min(keep, stats.max_hp)
+
+func add_augment(aug: Augment) -> void:
+	augments.append(aug)
+	recalculate_stats()
+	EventBus.augment_chosen.emit(aug)
 
 ## Aplica dano já final (mitigação feita no CombatResolver). Retorna o dano efetivo.
 func take_damage(amount: int) -> int:
@@ -56,7 +84,7 @@ func snapshot() -> Dictionary:
 		"level": level,
 		"stats": stats.to_dict(),
 		"weapon": weapon.to_dict() if weapon else {},
-		"augments": augments.duplicate(),
+		"augments": augments.map(func(a: Augment) -> String: return a.id),
 	}
 
 static func _gen_id() -> String:
