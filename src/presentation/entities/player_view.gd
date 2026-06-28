@@ -7,6 +7,7 @@ extends CharacterBody2D
 const SIZE := 20.0
 
 var data: Player                    # entidade Core
+var god_mode := false               # debug: ignora dano recebido
 var _facing := Vector2.DOWN
 var _attack_cd := 0.0
 var _hitbox: Area2D
@@ -87,6 +88,8 @@ func _attack() -> void:
 
 ## Chamado pelo EnemyView quando o inimigo acerta o jogador.
 func apply_enemy_hit(attacker_stats: StatBlock) -> void:
+	if god_mode:
+		return
 	var dmg := CombatResolver.enemy_hit(attacker_stats, data)
 	data.take_damage(int(round(dmg)))
 

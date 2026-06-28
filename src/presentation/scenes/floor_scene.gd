@@ -4,6 +4,11 @@
 ## Provisório quanto à FSM: a integração com a StateMachine vem na Fase 4.
 extends Node2D
 
+# --- DEBUG (desligue pondo DEBUG = false antes de buildar de verdade) ---
+const DEBUG := true
+const DEBUG_START_FLOOR := 0   # 0 = normal; ex.: 10 começa no 1º great boss
+const DEBUG_START_LEVEL := 0   # 0 = normal; nível inicial do jogador
+
 var _run: RunState
 var _floor_mgr: FloorManager
 var _tower: TowerManager
@@ -65,6 +70,11 @@ func _ready() -> void:
 	_hud.set_player(_run.player)
 
 	EventBus.player_died.connect(_on_player_died)
+
+	if DEBUG:
+		_apply_debug_start()
+		_show_debug_legend()
+
 	_start_floor()
 
 func _add_background() -> void:
@@ -240,5 +250,91 @@ func _random_spawn_pos() -> Vector2:
 		_: return Vector2(600, randf_range(margin, 320))
 
 func _unhandled_input(event: InputEvent) -> void:
+	if DEBUG:
+		_debug_input(event)
 	if (_phase == "dead" or _phase == "victory") and event.is_action_pressed("ui_accept"):
 		get_tree().change_scene_to_file("res://src/presentation/scenes/main_menu.tscn")
+
+# ---------------------------------------------------------------------------
+# DEBUG — atalhos para testar partes específicas sem jogar a run inteira.
+# Teclas escolhidas para não colidir com o jogo (ataque = Espaço/J, mover = WASD/setas).
+# ---------------------------------------------------------------------------
+
+func _apply_debug_start() -> void:
+	if DEBUG_START_LEVEL > 1:
+		_run.player.level = DEBUG_START_LEVEL
+		_run.player.xp_to_next = int(Leveling.xp_to_next(DEBUG_START_LEVEL))
+		_run.player.recalculate_stats()
+		_run.player.stats.current_hp = _run.player.stats.max_hp
+	if DEBUG_START_FLOOR > 1:
+		_run.current_floor = DEBUG_START_FLOOR
+		_run.player.current_floor = DEBUG_START_FLOOR
+
+func _show_debug_legend() -> void:
+	var l := Label.new()
+	l.text = "[DEBUG]  K matar  |  M +1 andar  |  B +10  |  L +nivel  |  P 2x dano arma  |  H curar  |  G invocar eco  |  I god mode"
+	l.position = Vector2(8, 342)
+	l.add_theme_font_size_override("font_size", 10)
+	l.add_theme_color_override("font_color", Color(1, 1, 0.4))
+	_layer.add_child(l)
+
+func _debug_input(event: InputEvent) -> void:
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+	match (event as InputEventKey).physical_keycode:
+		KEY_K: _debug_kill_enemies()
+		KEY_M: _debug_skip_floors(1)
+		KEY_B: _debug_skip_floors(10)
+		KEY_L: _debug_level_up()
+		KEY_H: _run.player.heal(_run.player.stats.max_hp)
+		KEY_G: _debug_spawn_ghost()
+		KEY_I: _debug_toggle_god()
+		KEY_P: _debug_double_weapon_damage()
+
+func _debug_kill_enemies() -> void:
+	for v in _enemies.duplicate():
+		if is_instance_valid(v) and v.data != null:
+			v.apply_damage(v.data.stats.current_hp)   # dispara o fluxo normal de morte
+
+func _debug_clear_all() -> void:
+	for v in _enemies.duplicate():
+		if is_instance_valid(v):
+			v.queue_free()
+	_enemies.clear()
+	for c in _layer.get_children():
+		if c is CardSelect:
+			c.queue_free()
+
+func _debug_skip_floors(n: int) -> void:
+	if _phase == "dead" or _phase == "victory":
+		return
+	_debug_clear_all()
+	if n > 1:
+		_run.current_floor += (n - 1)
+		_run.player.current_floor = _run.current_floor
+	_next_floor()
+
+func _debug_level_up() -> void:
+	_run.player.level += 1
+	_run.player.xp_to_next = int(Leveling.xp_to_next(_run.player.level))
+	_run.player.recalculate_stats()
+	_run.player.heal(_run.player.stats.max_hp)
+	_msg.text = "[DEBUG] Nível %d" % _run.player.level
+
+func _debug_spawn_ghost() -> void:
+	# Grava um eco do estado ATUAL ancorado neste andar e o invoca na hora (não precisa morrer).
+	var coeff := float(BalanceConfig.nemesis.get("NEMESIS_COEFF", 0.65))
+	_ghost_repo.record_death(_run.player.snapshot(), _run.current_floor, _run.player.run_id, coeff)
+	_ghost_summoned = false
+	_ghost_to_summon = _ghost_repo.load_active()
+	_on_summon_ghost()
+
+func _debug_toggle_god() -> void:
+	_player_view.god_mode = not _player_view.god_mode
+	_msg.text = "[DEBUG] God mode: %s" % ("ON" if _player_view.god_mode else "OFF")
+
+func _debug_double_weapon_damage() -> void:
+	if _run.player.weapon == null:
+		return
+	_run.player.weapon.base_damage *= 2.0   # dobra o dano efetivo (acumulável)
+	_msg.text = "[DEBUG] Dano da arma dobrado (golpe atual: %.0f)" % _run.player.weapon.current_damage()
