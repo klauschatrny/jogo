@@ -11,10 +11,16 @@ self-contained and meant to be pasted as prompt context when implementing the co
 **Phase 1 (Fundação & Esqueleto) is done**: `project.godot` with autoloads, `data/balance.json` +
 `BalanceConfig`, `EventBus`, seeded `RNGService`, stack-based `StateMachine`/`GameState`/`MainMenuState`,
 `JsonLoader` + repositories, a `main_menu.tscn` scene, and a headless test suite under `tests/`.
-Next up is **Phase 2 (Combate & Movimento Mínimo)** — see roadmap below.
 
-Stack: **Godot 4 + GDScript** (§0.1). The `core/` entity folders are still empty placeholders
-(`.gitkeep`); they get populated starting in Phase 2.
+**Phase 2 (Combate & Movimento Mínimo) is done** (validated in-editor): Core entities
+`StatBlock`/`Weapon`/`Player`/`Enemy` (JSON-hydrated), `CombatResolver` (§1.2.3 formulas, centralized
+mitigation via `defense_curve`), keyboard-only `PlayerView` (move + melee), `EnemyView` (aggressive AI
++ HP bar), `Hud`, and `combat_test.tscn` (menu → Enter starts it). 50 tests pass.
+Next up is **Phase 3 (Progressão, Augments & Bosses Normais)** — see roadmap below.
+
+Stack: **Godot 4 + GDScript** (§0.1). Input actions (`move_*`, `attack`) are registered in code by
+`GameManager._setup_input_actions()`, not in `project.godot`. Navigation between menu and combat is a
+provisional `change_scene_to_file` (the FSM↔scene integration proper lands in Phase 3+).
 
 ## Architecture (planned — from `TDV_Arquitetura.md`)
 
