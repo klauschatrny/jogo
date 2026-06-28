@@ -11,6 +11,7 @@ const SUITES := {
 }
 
 func _initialize() -> void:
+	_setup()
 	var total := 0
 	var failed := 0
 	print("\n===== Rodando testes =====")
@@ -36,3 +37,11 @@ func _initialize() -> void:
 	print("\n%d teste(s), %d falha(s)" % [total, failed])
 	print("==========================\n")
 	quit(1 if failed > 0 else 0)
+
+## No modo --script, os _ready() dos autoloads ainda não rodaram quando _initialize()
+## executa. Além disso, este script (o main loop) é compilado antes dos autoloads serem
+## registrados como nomes globais, então acessamos BalanceConfig pelo nó (via string).
+func _setup() -> void:
+	var bc := root.get_node_or_null("BalanceConfig")
+	if bc:
+		bc.load_balance()

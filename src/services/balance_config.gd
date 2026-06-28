@@ -18,7 +18,7 @@ func _ready() -> void:
 
 ## Recarrega o balance.json. Útil também para hot-reload em ferramentas de tuning.
 func load_balance(path := BALANCE_PATH) -> bool:
-	var data := JsonLoader.load_file(path)
+	var data: Variant = JsonLoader.load_file(path)
 	if typeof(data) != TYPE_DICTIONARY:
 		push_error("[BalanceConfig] balance.json inválido ou ausente: %s" % path)
 		return false
