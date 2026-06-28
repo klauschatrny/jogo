@@ -16,6 +16,15 @@ func test_ghost_hp_com_teto_anti_impossivel() -> void:
 	var hp := NemesisRules.ghost_hp(100000, 0.65, 300, 2.0)
 	assert_eq(hp, 600)  # min(65000, 300*2) = 600 — sempre derrotável
 
+func test_ghost_hp_com_piso_anti_irrelevante() -> void:
+	# snapshot fraco (65) mas piso 300 → não pode ser trivial; teto ainda manda quando aperta.
+	assert_eq(NemesisRules.ghost_hp(100, 0.65, 1000, 2.0, 300.0), 300)  # piso vence o nerf
+	assert_eq(NemesisRules.ghost_hp(100, 0.65, 100, 2.0, 300.0), 200)   # teto (100*2) vence o piso
+
+func test_ghost_attack_com_piso() -> void:
+	assert_eq(NemesisRules.ghost_attack(100.0, 0.65), 65)        # sem piso → nerf puro
+	assert_eq(NemesisRules.ghost_attack(10.0, 0.65, 30.0), 30)   # piso evita dano insignificante
+
 func test_inherited_count_faz_clamp() -> void:
 	assert_eq(NemesisRules.inherited_count(0, 3, 5), 1)    # piso 1
 	assert_eq(NemesisRules.inherited_count(3, 3, 5), 1)
@@ -44,3 +53,15 @@ func test_select_respeita_n_minimo() -> void:
 	var sel := NemesisRules.select_inherited_augments(_augs(), 1, 3, 5)
 	assert_eq(sel.size(), 1)
 	assert_eq(sel[0]["tier"], "ARTIFACT")  # o mais forte
+
+func _ghost(floor: int, defeated := false) -> GhostData:
+	var g := GhostData.new()
+	g.death_floor = floor
+	g.defeated = defeated
+	return g
+
+func test_should_summon() -> void:
+	assert_true(NemesisRules.should_summon(_ghost(7), 7), "eco do andar atual deve ser invocado")
+	assert_false(NemesisRules.should_summon(_ghost(7), 8), "andar diferente não invoca")
+	assert_false(NemesisRules.should_summon(_ghost(7, true), 7), "já derrotado não reaparece")
+	assert_false(NemesisRules.should_summon(null, 7), "sem fantasma → não invoca")

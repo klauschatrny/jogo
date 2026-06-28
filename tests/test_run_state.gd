@@ -55,6 +55,26 @@ func test_weapon_augment_sobe_nivel_da_arma() -> void:
 	rs.choose_augment(w_aug)
 	assert_eq(rs.player.weapon.level, lvl + 1)
 
+func test_vinganca_aumenta_dano() -> void:
+	var rs := _run()
+	var base := rs.player.stats.damage_mult
+	rs.apply_vengeance()
+	assert_true(rs.has_vengeance())
+	assert_true(rs.player.stats.damage_mult > base, "Vingança deve aumentar o dano")
+
+func test_vinganca_nao_empilha() -> void:
+	var rs := _run()
+	rs.apply_vengeance()
+	var dm := rs.player.stats.damage_mult
+	rs.apply_vengeance()
+	assert_almost(rs.player.stats.damage_mult, dm)
+
+func test_vinganca_acaba_no_proximo_andar() -> void:
+	var rs := _run()
+	rs.apply_vengeance()
+	rs.advance_floor()
+	assert_false(rs.has_vengeance(), "o buff dura só até o fim do andar")
+
 func test_offer_exclui_nao_stackable_possuido() -> void:
 	var rs := _run()
 	# adiciona a2 (não-stackable) e confirma que não reaparece

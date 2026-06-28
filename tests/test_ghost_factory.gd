@@ -49,6 +49,26 @@ func test_anti_impossivel_teto_de_hp() -> void:
 	assert_true(e.stats.max_hp <= cap, "HP do eco não pode passar do teto anti-impossível")
 	assert_eq(e.stats.max_hp, 600)  # 300 * 2.0
 
+func test_eco_fraco_recebe_piso_de_elite() -> void:
+	# Morte cedo (snapshot fraco) mas confronto num andar alto: o eco não pode ser trivial
+	# (HP/dano com piso de ELITE) nem mais rápido que o jogador.
+	var snap := {
+		"name": "Fraco",
+		"stats": {"max_hp": 50, "attack": 5, "defense": 2, "move_speed": 220.0},
+		"weapon": {}, "augments": [],
+	}
+	var g := GhostData.from_snapshot(snap, 10, "r", 0.65)
+	var p := _player()
+	p.current_floor = 10
+	var e := GhostFactory.build(g, p)
+
+	var elite_hp := int(Scaling.enemy_hp(10) * Scaling.rank_mult("ELITE", "hp"))
+	var elite_atk := int(Scaling.enemy_atk(10) * Scaling.rank_mult("ELITE", "atk"))
+	assert_true(e.stats.max_hp >= elite_hp - 1, "HP do eco não pode ser trivial")
+	assert_true(e.stats.attack >= elite_atk - 1, "dano do eco não pode ser insignificante")
+	assert_true(e.stats.move_speed <= p.stats.move_speed * 0.9 + 0.01,
+		"o eco não pode ser mais rápido que o jogador")
+
 func test_herda_subconjunto_de_augments() -> void:
 	# death_floor 15, divisor 3 → n = min(5, 5) = 5, mas só há 4 augments → herda 4.
 	var e := GhostFactory.build(_ghost(1000, 15), _player())

@@ -15,10 +15,14 @@ var _layer: CanvasLayer
 var _phase := "waves"          # waves | boss | reward | dead | victory
 var _floor_config: Dictionary = {}
 var _current_boss_id := ""
+var _boss_view: EnemyView
+var _ghost_to_summon: GhostData
+var _ghost_summoned := false
 
 # repositórios carregados uma vez
 var _enemy_repo: EnemyRepository
 var _boss_repo: BossRepository
+var _ghost_repo: GhostRepository
 
 func _ready() -> void:
 	randomize()
@@ -44,6 +48,7 @@ func _ready() -> void:
 	_enemy_repo.load_all()
 	_boss_repo = BossRepository.new()
 	_boss_repo.load_all()
+	_ghost_repo = GhostRepository.new()
 
 	var cfg = JsonLoader.load_file("res://data/floors/floor_default.json")
 	_floor_config = cfg if typeof(cfg) == TYPE_DICTIONARY else {}
@@ -105,13 +110,31 @@ func _spawn_boss() -> void:
 		_on_floor_cleared()
 		return
 	var boss := EnemyFactory.build_boss(base, floor)
+
+	# Nemesis: este boss invocará o eco se há um fantasma ancorado neste andar (Regra 5).
+	_ghost_summoned = false
+	var g := _ghost_repo.load_active()
+	_ghost_to_summon = g if NemesisRules.should_summon(g, floor) else null
+
 	if _tower.is_king_floor(floor):
 		_msg.text = "Andar %d — O REI DA TORRE!" % floor
 	elif _tower.is_great_boss_floor(floor):
 		_msg.text = "Andar %d — GRANDE CHEFE: %s" % [floor, boss.name]
 	else:
 		_msg.text = "Andar %d — CHEFE!" % floor
-	_add_view(BossView.new(), boss, Vector2(320, 70))
+
+	var bv := BossView.new()
+	bv.summon_ghost.connect(_on_summon_ghost)
+	_boss_view = bv
+	_add_view(bv, boss, Vector2(320, 70))
+
+func _on_summon_ghost() -> void:
+	if _ghost_to_summon == null or _ghost_summoned:
+		return
+	_ghost_summoned = true
+	var ghost := GhostFactory.build(_ghost_to_summon, _run.player)
+	_add_view(GhostView.new(), ghost, Vector2(360, 120))
+	_msg.text = "%s foi invocado para te enfrentar!" % ghost.name
 
 func _add_view(view: EnemyView, enemy: Enemy, pos: Vector2) -> void:
 	view.setup(enemy, _player_view)
@@ -123,12 +146,36 @@ func _add_view(view: EnemyView, enemy: Enemy, pos: Vector2) -> void:
 func _on_enemy_died(view: EnemyView, enemy: Enemy) -> void:
 	_enemies.erase(view)
 	Leveling.add_xp(_run.player, int(enemy.loot.get("xp", 0)))
-	if not _enemies.is_empty():
-		return
-	if _phase == "waves":
-		_spawn_next_wave()
-	elif _phase == "boss":
-		_on_floor_cleared()
+
+	if view is GhostView:
+		_on_ghost_defeated()   # catarse — não encerra o andar (o boss segue)
+
+	match _phase:
+		"waves":
+			if _enemies.is_empty():
+				_spawn_next_wave()
+		"boss":
+			# Derrotar o eco NÃO é obrigatório (§1.4.2): o andar termina quando o boss cai,
+			# mesmo que o fantasma ainda esteja vivo.
+			if view == _boss_view:
+				_clear_remaining_ghost()
+				_on_floor_cleared()
+
+## Catarse / Vingança (§1.4.3): cura imediata + buff de dano até o fim do andar.
+func _on_ghost_defeated() -> void:
+	_ghost_repo.mark_defeated()
+	var pct := float(BalanceConfig.nemesis.get("VENGEANCE_HEAL_PCT", 0.25))
+	_run.player.heal(int(_run.player.stats.max_hp * pct))
+	_run.apply_vengeance()
+	EventBus.ghost_defeated.emit(_ghost_to_summon)
+	_msg.text = "Você superou seu Eco! Vingança ativada."
+
+## Boss caiu com o eco ainda vivo: encerra a luta removendo o fantasma restante.
+func _clear_remaining_ghost() -> void:
+	for v in _enemies.duplicate():
+		if v is GhostView:
+			_enemies.erase(v)
+			v.queue_free()
 
 func _on_floor_cleared() -> void:
 	# Derrotar o boss do andar final (Rei) conclui a torre.
@@ -156,7 +203,10 @@ func _next_floor() -> void:
 
 func _on_player_died(_p: Player) -> void:
 	_phase = "dead"
-	_msg.text = "VOCÊ MORREU no andar %d — Enter p/ menu" % _run.current_floor
+	# Cria/sobrescreve o fantasma: você sempre enfrenta seu fracasso mais recente (§1.4.4).
+	var coeff := float(BalanceConfig.nemesis.get("NEMESIS_COEFF", 0.65))
+	_ghost_repo.record_death(_run.player.snapshot(), _run.current_floor, _run.player.run_id, coeff)
+	_msg.text = "VOCÊ MORREU no andar %d — um Eco ficou para trás. Enter p/ menu" % _run.current_floor
 
 ## Provisório (Leva 2): a tela de Vitória de verdade entra na Leva 3.
 func _on_victory() -> void:

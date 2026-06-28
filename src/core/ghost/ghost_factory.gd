@@ -22,15 +22,24 @@ static func build(data: GhostData, current_player: Player) -> Enemy:
 	ghost.rank = "ELITE"
 	ghost.ai_profile = "echo"
 
+	# Pisos de ELITE no andar atual: garantem que o eco seja um adversário relevante mesmo
+	# vindo de um snapshot fraco (morte cedo). O andar do confronto é o andar atual do jogador
+	# (== death_floor no momento da invocação, por should_summon).
+	var floor := maxi(current_player.current_floor, 1)
+	var elite_hp := Scaling.enemy_hp(floor) * Scaling.rank_mult("ELITE", "hp")
+	var elite_atk := Scaling.enemy_atk(floor) * Scaling.rank_mult("ELITE", "atk")
+
 	var s := StatBlock.new()
-	# Regra 1 (nerf) + Regra 2 (teto relativo ao jogador atual).
+	# Regra 1 (nerf) + Regra 2 (teto anti-impossível) + piso anti-irrelevante.
 	s.max_hp = NemesisRules.ghost_hp(int(snap_stats.get("max_hp", 1)), coeff,
-		current_player.stats.max_hp, hp_cap)
+		current_player.stats.max_hp, hp_cap, elite_hp)
 	s.current_hp = s.max_hp
-	s.attack = NemesisRules.nerf(float(snap_stats.get("attack", 0)), coeff)
+	s.attack = NemesisRules.ghost_attack(float(snap_stats.get("attack", 0)), coeff, elite_atk)
 	s.defense = NemesisRules.nerf(float(snap_stats.get("defense", 0)), coeff)
-	# O eco se move como o jogador se movia (mobilidade não é nerfada — é um "eco" do estilo).
-	s.move_speed = float(snap_stats.get("move_speed", 100.0))
+	# Mobilidade: nunca mais rápido que o jogador (era a causa do "rápido demais"). Fica
+	# um pouco abaixo da velocidade atual do jogador para ser kiteável.
+	var snap_ms := float(snap_stats.get("move_speed", 100.0))
+	s.move_speed = minf(snap_ms, current_player.stats.move_speed * 0.9)
 	ghost.stats = s
 
 	# Regra 3 — herança parcial de augments (kit focado, priorizando tier).
