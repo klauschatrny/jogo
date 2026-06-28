@@ -20,7 +20,9 @@ func _ready() -> void:
 
 	var title := Label.new()
 	title.text = "ESCOLHA UMA CARTA  (1 / 2 / 3)"
-	title.position = Vector2(170, 50)
+	title.position = Vector2(0, 48)
+	title.size = Vector2(640, 24)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(title)
 
 	var card_w := 172
@@ -40,38 +42,42 @@ func _make_card(aug: Augment, index: int, x: int, w: int, h: int) -> Control:
 	panel.clip_contents = true        # nada vaza para fora do card
 
 	var bg := ColorRect.new()
-	bg.size = Vector2(w, h)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	bg.color = _tier_color(aug.tier)
 	panel.add_child(bg)
 
-	var name_label := Label.new()
-	name_label.text = "%d. %s" % [index + 1, aug.name]
-	name_label.position = Vector2(PAD, PAD)
-	name_label.size = Vector2(w - 2 * PAD, 44)
-	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	name_label.add_theme_font_size_override("font_size", 15)
-	panel.add_child(name_label)
+	# Layout por container: adapta-se às métricas da fonte (nome no topo, descrição
+	# expandindo no meio com wrap, tier embaixo) — sem posições fixas que desencaixam.
+	var margin := MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, PAD)
+	panel.add_child(margin)
 
-	var desc_top := PAD + 50
-	var desc_label := Label.new()
-	desc_label.text = aug.description
-	desc_label.position = Vector2(PAD, desc_top)
-	desc_label.size = Vector2(w - 2 * PAD, h - desc_top - 26)
-	desc_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	desc_label.add_theme_font_size_override("font_size", 12)
-	panel.add_child(desc_label)
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	margin.add_child(vbox)
 
-	var tier_label := Label.new()
-	tier_label.text = aug.tier
-	tier_label.position = Vector2(PAD, h - 22)
-	tier_label.size = Vector2(w - 2 * PAD, 18)
-	tier_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	tier_label.add_theme_font_size_override("font_size", 11)
-	panel.add_child(tier_label)
+	vbox.add_child(_label("%d. %s" % [index + 1, aug.name], 16, false))
 
+	var desc := _label(aug.description, 12, true)
+	desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	desc.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	vbox.add_child(desc)
+
+	vbox.add_child(_label(aug.tier, 10, false))
 	return panel
+
+## Label centralizado com wrap, para uso dentro do VBox do card.
+func _label(text: String, font_size: int, expand: bool) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.add_theme_font_size_override("font_size", font_size)
+	if expand:
+		l.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	return l
 
 func _tier_color(tier: String) -> Color:
 	match tier:
