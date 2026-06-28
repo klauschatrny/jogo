@@ -10,7 +10,12 @@ func test_arquivo_inexistente_retorna_null() -> void:
 	assert_null(data, "arquivo inexistente deve retornar null")
 
 func test_load_dir_vazio_retorna_array() -> void:
-	# data/weapons está vazio na Fase 1; deve retornar Array (não quebrar).
-	var arr := JsonLoader.load_dir("res://data/weapons")
+	# data/floors só tem .gitkeep (não-JSON); load_dir deve ignorar e retornar [].
+	var arr := JsonLoader.load_dir("res://data/floors")
 	assert_true(typeof(arr) == TYPE_ARRAY, "load_dir deve retornar Array")
 	assert_eq(arr.size(), 0, "pasta sem JSON retorna lista vazia")
+
+func test_load_dir_carrega_jsons() -> void:
+	# data/weapons agora tem a espada inicial.
+	var arr := JsonLoader.load_dir("res://data/weapons")
+	assert_true(arr.size() >= 1, "deve carregar ao menos 1 arma")

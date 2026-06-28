@@ -8,6 +8,10 @@ const SUITES := {
 	"BalanceConfig": "res://tests/test_balance_config.gd",
 	"StateMachine": "res://tests/test_state_machine.gd",
 	"JsonLoader": "res://tests/test_json_loader.gd",
+	"StatBlock": "res://tests/test_stat_block.gd",
+	"Weapon": "res://tests/test_weapon.gd",
+	"Player": "res://tests/test_player.gd",
+	"CombatResolver": "res://tests/test_combat_resolver.gd",
 }
 
 func _initialize() -> void:

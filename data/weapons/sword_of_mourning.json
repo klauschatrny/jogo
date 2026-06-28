@@ -1,0 +1,18 @@
+{
+  "id": "wpn_sword_mourning",
+  "name": "Lâmina do Luto",
+  "type": "MELEE_SWORD",
+  "level": 1,
+  "base_damage": 15,
+  "weapon_growth": 1.12,
+  "attack_range": 55,
+  "attack_speed": 1.2,
+  "crit_bonus": 0.0,
+  "modifiers": [],
+  "special_ability": {
+    "id": "abil_whirlwind",
+    "name": "Redemoinho",
+    "cooldown": 8.0,
+    "effect": { "type": "AOE_DAMAGE", "radius": 90, "mult": 2.0 }
+  }
+}

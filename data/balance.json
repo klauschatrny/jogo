@@ -25,6 +25,9 @@
     "XP_BASE": 100,
     "XP_GROWTH": 1.15
   },
+  "defense_curve": {
+    "DEFENSE_K": 100
+  },
   "augments": {
     "tier_weights": { "FRAGMENT": 100, "RELIC": 30, "ARTIFACT": 6 },
     "LUCK_RARITY_FACTOR": { "FRAGMENT": 0.0, "RELIC": 0.02, "ARTIFACT": 0.05 },

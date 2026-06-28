@@ -89,6 +89,12 @@ godot project.godot
 # Run the game headless (no window)
 godot --headless
 
+# Re-scan & regenerate the global class_name cache (REQUIRED after creating new
+# class_name scripts outside the editor — otherwise tests fail with "Identifier
+# <Class> not declared in the current scope"). The editor does this automatically
+# when focused; headless runs do not.
+godot --headless --import
+
 # Run the full test suite (exits 0 on pass, 1 on failure — CI-friendly)
 godot --headless --script res://tests/test_runner.gd
 ```
