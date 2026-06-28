@@ -5,8 +5,8 @@ extends Control
 func _ready() -> void:
 	print("[MainMenu] Cena de apresentação pronta")
 
-## Provisório (Fase 2): Enter/Espaço inicia a arena de combate de teste.
-## A navegação definitiva via FSM (CharacterCreation → WeaponSelection) chega na Fase 3.
+## Provisório: Enter/Espaço inicia a run (loop de andares). A navegação definitiva via FSM
+## (CharacterCreation → WeaponSelection) chega na Fase 4.
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_accept"):
-		get_tree().change_scene_to_file("res://src/presentation/scenes/combat_test.tscn")
+		get_tree().change_scene_to_file("res://src/presentation/scenes/floor_scene.tscn")

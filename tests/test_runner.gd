@@ -20,6 +20,7 @@ const SUITES := {
 	"AugmentPool": "res://tests/test_augment_pool.gd",
 	"Boss": "res://tests/test_boss.gd",
 	"RunState": "res://tests/test_run_state.gd",
+	"FloorManager": "res://tests/test_floor_manager.gd",
 }
 
 func _initialize() -> void:

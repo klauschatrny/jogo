@@ -10,8 +10,8 @@ func test_arquivo_inexistente_retorna_null() -> void:
 	assert_null(data, "arquivo inexistente deve retornar null")
 
 func test_load_dir_vazio_retorna_array() -> void:
-	# data/floors só tem .gitkeep (não-JSON); load_dir deve ignorar e retornar [].
-	var arr := JsonLoader.load_dir("res://data/floors")
+	# fixture dedicada sem JSON (só .gitkeep); load_dir deve ignorar e retornar [].
+	var arr := JsonLoader.load_dir("res://tests/fixtures/empty_dir")
 	assert_true(typeof(arr) == TYPE_ARRAY, "load_dir deve retornar Array")
 	assert_eq(arr.size(), 0, "pasta sem JSON retorna lista vazia")
 
