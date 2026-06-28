@@ -1,8 +1,8 @@
 # Godot 4
 
-# Godot-generated import cache and editor metadata
+# Godot 4 import cache & editor metadata (os arquivos *.import ao lado dos assets
+# SÃO versionados no Godot 4 — só o cache em .godot/ é ignorado).
 .godot/
-.import/
 export.cfg
 export_presets.cfg
 
@@ -10,7 +10,6 @@ export_presets.cfg
 /build/
 /export/
 /dist/
-*.import
 
 # Mono / C# (caso usado futuramente)
 .mono/

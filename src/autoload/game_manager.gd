@@ -6,6 +6,11 @@ var state_machine: StateMachine
 
 func _ready() -> void:
 	_setup_input_actions()
+	# Tema retrô global (fonte bitmap) na janela raiz: vale para toda a UI e persiste
+	# entre trocas de cena. Em modo --script/--headless não há janela, então protege.
+	var root := get_tree().root
+	if root != null:
+		root.theme = RetroTheme.build()
 	print("[GameManager] Bootstrap iniciado")
 	print("[GameManager] Seed do RNG: %d" % RNGService.get_seed())
 	print("[GameManager] balance.json carregado (BASE_HP=%s, NEMESIS_COEFF=%s)" % [
