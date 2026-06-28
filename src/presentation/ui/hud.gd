@@ -29,15 +29,14 @@ func _ready() -> void:
 	_label.position = Vector2(16, 12)
 	add_child(_label)
 
-	EventBus.player_damaged.connect(_on_player_damaged)
 	_refresh()
 
 func set_player(p: Player) -> void:
 	_player = p
 	_refresh()
 
-func _on_player_damaged(p: Player, _amount: int) -> void:
-	_player = p
+## Atualiza todo frame: reflete dano, cura (lifesteal) e level-up sem depender de eventos.
+func _process(_delta: float) -> void:
 	_refresh()
 
 func _refresh() -> void:
@@ -45,4 +44,4 @@ func _refresh() -> void:
 		return
 	var ratio := clampf(float(_player.stats.current_hp) / float(maxi(_player.stats.max_hp, 1)), 0.0, 1.0)
 	_bar.size.x = BAR_WIDTH * ratio
-	_label.text = "HP %d/%d" % [_player.stats.current_hp, _player.stats.max_hp]
+	_label.text = "HP %d/%d    Nv %d" % [_player.stats.current_hp, _player.stats.max_hp, _player.level]

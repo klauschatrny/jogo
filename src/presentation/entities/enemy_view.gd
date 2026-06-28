@@ -23,7 +23,11 @@ func setup(enemy: Enemy, target_node: Node2D) -> void:
 
 func _ready() -> void:
 	collision_layer = 2
-	collision_mask = 1 | 2
+	# Só colide com outros inimigos (camada 2) para manter separação entre eles.
+	# NÃO colide com o jogador (camada 1): dois CharacterBody2D se bloqueando ao
+	# encostar fazia o inimigo "prender"/encavalar. A IA já para em ATTACK_RANGE,
+	# então não há sobreposição visual mesmo sem colisão física com o jogador.
+	collision_mask = 2
 	_build()
 
 func _build() -> void:

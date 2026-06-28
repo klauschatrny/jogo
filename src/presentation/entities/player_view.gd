@@ -17,7 +17,10 @@ func setup(player: Player) -> void:
 
 func _ready() -> void:
 	collision_layer = 1
-	collision_mask = 1 | 2           # colide com cenário (1) e inimigos (2)
+	# Inimigos são obstáculos sólidos para o jogador (camada 2), mas os inimigos
+	# não colidem de volta (ver EnemyView): assim o jogador não atravessa hordas,
+	# sem o inimigo encavalar nele. Cenário com colisão entra numa camada futura.
+	collision_mask = 2
 	_build()
 
 func _build() -> void:

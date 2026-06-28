@@ -23,9 +23,9 @@ func _ready() -> void:
 	title.position = Vector2(170, 50)
 	add_child(title)
 
-	var card_w := 150
-	var card_h := 190
-	var gap := 20
+	var card_w := 172
+	var card_h := 200
+	var gap := 24
 	var total := _cards.size() * card_w + (_cards.size() - 1) * gap
 	var start_x := (640 - total) / 2
 
@@ -33,9 +33,11 @@ func _ready() -> void:
 		add_child(_make_card(_cards[i], i, start_x + i * (card_w + gap), card_w, card_h))
 
 func _make_card(aug: Augment, index: int, x: int, w: int, h: int) -> Control:
+	const PAD := 10
 	var panel := Control.new()
 	panel.position = Vector2(x, 100)
 	panel.size = Vector2(w, h)
+	panel.clip_contents = true        # nada vaza para fora do card
 
 	var bg := ColorRect.new()
 	bg.size = Vector2(w, h)
@@ -44,21 +46,29 @@ func _make_card(aug: Augment, index: int, x: int, w: int, h: int) -> Control:
 
 	var name_label := Label.new()
 	name_label.text = "%d. %s" % [index + 1, aug.name]
-	name_label.position = Vector2(8, 8)
-	name_label.size = Vector2(w - 16, 44)
+	name_label.position = Vector2(PAD, PAD)
+	name_label.size = Vector2(w - 2 * PAD, 44)
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	name_label.add_theme_font_size_override("font_size", 15)
 	panel.add_child(name_label)
 
+	var desc_top := PAD + 50
 	var desc_label := Label.new()
 	desc_label.text = aug.description
-	desc_label.position = Vector2(8, 58)
-	desc_label.size = Vector2(w - 16, h - 86)
+	desc_label.position = Vector2(PAD, desc_top)
+	desc_label.size = Vector2(w - 2 * PAD, h - desc_top - 26)
+	desc_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc_label.add_theme_font_size_override("font_size", 12)
 	panel.add_child(desc_label)
 
 	var tier_label := Label.new()
 	tier_label.text = aug.tier
-	tier_label.position = Vector2(8, h - 24)
+	tier_label.position = Vector2(PAD, h - 22)
+	tier_label.size = Vector2(w - 2 * PAD, 18)
+	tier_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tier_label.add_theme_font_size_override("font_size", 11)
 	panel.add_child(tier_label)
 
 	return panel
