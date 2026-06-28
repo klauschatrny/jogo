@@ -38,6 +38,25 @@ func draw(n: int, luck: int = 0, exclude: Array = []) -> Array:
 		pool.remove_at(idx)
 	return result
 
+const _TIER_RANK := {"FRAGMENT": 0, "RELIC": 1, "ARTIFACT": 2}
+
+## Sorteia UM augment de tier >= min_tier (ex.: garantia de Relíquia+ da catarse, §1.4.3),
+## ponderado por weight/luck. Retorna null se não houver candidato. Respeita `exclude`.
+func draw_min_tier(min_tier: String, luck: int = 0, exclude: Array = []) -> Augment:
+	var min_rank := int(_TIER_RANK.get(min_tier, 0))
+	var pool: Array = []
+	for a in _augments:
+		if (a.id in exclude) or int(_TIER_RANK.get(a.tier, 0)) < min_rank:
+			continue
+		pool.append(a)
+	if pool.is_empty():
+		return null
+	var weights: Array = []
+	for a in pool:
+		weights.append(effective_weight(a, luck))
+	var idx := RNGService.weighted_index(weights)
+	return pool[idx] if idx >= 0 else null
+
 ## Peso efetivo de um augment dado o luck: weight * (1 + luck * fator_do_tier).
 func effective_weight(a: Augment, luck: int) -> float:
 	var factors: Dictionary = BalanceConfig.augments.get("LUCK_RARITY_FACTOR", {})

@@ -18,6 +18,7 @@ var _current_boss_id := ""
 var _boss_view: EnemyView
 var _ghost_to_summon: GhostData
 var _ghost_summoned := false
+var _ghost_beaten_this_floor := false
 
 # repositórios carregados uma vez
 var _enemy_repo: EnemyRepository
@@ -76,6 +77,7 @@ func _add_background() -> void:
 func _start_floor() -> void:
 	var floor := _run.current_floor
 	_current_boss_id = _tower.boss_for_floor(floor)
+	_ghost_beaten_this_floor = false
 
 	# Arena do Rei (andar final): sem waves de trash, direto para o boss.
 	if _tower.is_boss_only_floor(floor):
@@ -164,11 +166,12 @@ func _on_enemy_died(view: EnemyView, enemy: Enemy) -> void:
 ## Catarse / Vingança (§1.4.3): cura imediata + buff de dano até o fim do andar.
 func _on_ghost_defeated() -> void:
 	_ghost_repo.mark_defeated()
+	_ghost_beaten_this_floor = true
 	var pct := float(BalanceConfig.nemesis.get("VENGEANCE_HEAL_PCT", 0.25))
 	_run.player.heal(int(_run.player.stats.max_hp * pct))
 	_run.apply_vengeance()
 	EventBus.ghost_defeated.emit(_ghost_to_summon)
-	_msg.text = "Você superou seu Eco! Vingança ativada."
+	_msg.text = "Você superou seu Eco! Vingança ativada (+Relíquia garantida)."
 
 ## Boss caiu com o eco ainda vivo: encerra a luta removendo o fantasma restante.
 func _clear_remaining_ghost() -> void:
@@ -183,7 +186,8 @@ func _on_floor_cleared() -> void:
 		_on_victory()
 		return
 	_phase = "reward"
-	var cards := _run.offer_augments()
+	# Catarse (§1.4.3): vencer o próprio Eco garante uma Relíquia+ na recompensa do andar.
+	var cards := _run.offer_augments_catharsis() if _ghost_beaten_this_floor else _run.offer_augments()
 	if cards.is_empty():
 		_next_floor()
 		return
@@ -206,12 +210,24 @@ func _on_player_died(_p: Player) -> void:
 	# Cria/sobrescreve o fantasma: você sempre enfrenta seu fracasso mais recente (§1.4.4).
 	var coeff := float(BalanceConfig.nemesis.get("NEMESIS_COEFF", 0.65))
 	_ghost_repo.record_death(_run.player.snapshot(), _run.current_floor, _run.player.run_id, coeff)
-	_msg.text = "VOCÊ MORREU no andar %d — um Eco ficou para trás. Enter p/ menu" % _run.current_floor
+	_show_end_screen("VOCÊ MORREU", [
+		"Tombou no andar %d de %d" % [_run.current_floor, _tower.total_floors],
+		"Nível %d" % _run.player.level,
+		"Um Eco seu ficou para trás...",
+	], Color(0.85, 0.25, 0.25))
 
-## Provisório (Leva 2): a tela de Vitória de verdade entra na Leva 3.
 func _on_victory() -> void:
 	_phase = "victory"
-	_msg.text = "VITÓRIA! Você conquistou a Torre — Enter p/ menu"
+	_show_end_screen("VITÓRIA!", [
+		"Você conquistou a Torre da Vingança",
+		"Nível %d" % _run.player.level,
+		"O Rei caiu. A vingança está completa.",
+	], Color(0.95, 0.8, 0.25))
+
+func _show_end_screen(title: String, lines: Array, accent: Color) -> void:
+	var es := EndScreen.new()
+	es.setup(title, lines, accent)
+	_layer.add_child(es)
 
 func _random_spawn_pos() -> Vector2:
 	# borda aleatória, longe do centro onde o jogador começa

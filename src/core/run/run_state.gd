@@ -60,11 +60,27 @@ func has_vengeance() -> bool:
 ## Sorteia os cards de recompensa, excluindo augments não-stackable já possuídos.
 func offer_augments(n: int = -1) -> Array:
 	var count := n if n > 0 else int(BalanceConfig.augments.get("cards_per_reward", 3))
+	return augment_pool.draw(count, player.stats.luck, _excluded_ids())
+
+## Recompensa de catarse (§1.4.3): como offer_augments, mas garante ao menos 1 card de
+## Relíquia+ (quando o pool tiver). Usada quando o jogador derrota seu próprio Eco.
+func offer_augments_catharsis(n: int = -1) -> Array:
+	var count := n if n > 0 else int(BalanceConfig.augments.get("cards_per_reward", 3))
+	var exclude := _excluded_ids()
+	var guaranteed := augment_pool.draw_min_tier("RELIC", player.stats.luck, exclude)
+	if guaranteed == null:
+		return augment_pool.draw(count, player.stats.luck, exclude)
+	exclude.append(guaranteed.id)
+	var rest := augment_pool.draw(count - 1, player.stats.luck, exclude)
+	return [guaranteed] + rest
+
+## Ids de augments não-stackable já possuídos (excluídos dos sorteios).
+func _excluded_ids() -> Array:
 	var exclude: Array = []
 	for a in player.augments:
 		if not a.stackable:
 			exclude.append(a.id)
-	return augment_pool.draw(count, player.stats.luck, exclude)
+	return exclude
 
 func choose_augment(aug: Augment) -> void:
 	player.add_augment(aug)

@@ -55,6 +55,18 @@ func test_weapon_augment_sobe_nivel_da_arma() -> void:
 	rs.choose_augment(w_aug)
 	assert_eq(rs.player.weapon.level, lvl + 1)
 
+func test_catarse_garante_reliquia_ou_superior() -> void:
+	var rs := _run()  # o pool tem RELICs (a3, w1)
+	for _i in 10:
+		RNGService.set_seed(_i)
+		var cards := rs.offer_augments_catharsis()
+		assert_eq(cards.size(), 3, "deve oferecer a quantidade padrão")
+		var tem_alto := false
+		for c in cards:
+			if c.tier == "RELIC" or c.tier == "ARTIFACT":
+				tem_alto = true
+		assert_true(tem_alto, "catarse deve garantir ao menos 1 Relíquia+")
+
 func test_vinganca_aumenta_dano() -> void:
 	var rs := _run()
 	var base := rs.player.stats.damage_mult

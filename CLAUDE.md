@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project status: Phase 1 implemented
+## Project status: Phase 4 implemented (Phases 1–4 done)
 
 The canonical spec is **`TDV_Arquitetura.md`** — a full GDD + software architecture for *A Torre da
 Vingança* (Tower of Vengeance), a 2D retro roguelike. Read it before writing code; each section is
@@ -15,12 +15,24 @@ self-contained and meant to be pasted as prompt context when implementing the co
 **Phase 2 (Combate & Movimento Mínimo) is done** (validated in-editor): Core entities
 `StatBlock`/`Weapon`/`Player`/`Enemy` (JSON-hydrated), `CombatResolver` (§1.2.3 formulas, centralized
 mitigation via `defense_curve`), keyboard-only `PlayerView` (move + melee), `EnemyView` (aggressive AI
-+ HP bar), `Hud`, and `combat_test.tscn` (menu → Enter starts it). 50 tests pass.
-Next up is **Phase 3 (Progressão, Augments & Bosses Normais)** — see roadmap below.
++ HP bar), `Hud`, and `combat_test.tscn`.
+
+**Phase 3 (Progressão, Augments & Bosses Normais) is done**: `Scaling`/`Leveling`, `EnemyFactory`
+(geometric per-floor scaling + rank multipliers), `Augment`/`AugmentEffect`/`StatResolver`
+(ADD<PCT_ADD<MULT), weighted `AugmentPool`, `Boss`/`BossPhase` (phased), `RunState`/`FloorManager`,
+and the playable `floor_scene` (waves → boss → card reward → next floor) with `CardSelect`.
+
+**Phase 4 (A Torre Completa & Nemesis System) is done**: `TowerManager` + `data/floors/tower.json`
+(50 floors, great bosses at 10/20/30/40/50, King at 51), 5 `GREAT_BOSS` + 1 `KING` boss JSONs,
+the Nemesis system — `GhostData`/`GhostRepository` (persists to `user://saves/ghosts.json`),
+`GhostFactory`/`NemesisRules` (5 rules: nerf, anti-impossible HP cap, anti-irrelevant ELITE floor,
+augment inheritance by tier, summon eligibility) — boss summons the echo at 60% HP, catharsis
+(heal + Vengeance buff + guaranteed Relic+ reward), `GhostView`, and death/victory `EndScreen`s.
+131 tests pass. **Next up is Phase 5 (Balanceamento, Juice & Polimento)** — see roadmap below.
 
 Stack: **Godot 4 + GDScript** (§0.1). Input actions (`move_*`, `attack`) are registered in code by
-`GameManager._setup_input_actions()`, not in `project.godot`. Navigation between menu and combat is a
-provisional `change_scene_to_file` (the FSM↔scene integration proper lands in Phase 3+).
+`GameManager._setup_input_actions()`, not in `project.godot`. Navigation menu↔run is still a
+provisional `change_scene_to_file` (the proper FSM↔scene integration is deferred).
 
 ## Architecture (planned — from `TDV_Arquitetura.md`)
 
