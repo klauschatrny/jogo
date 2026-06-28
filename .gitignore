@@ -14,7 +14,10 @@ export_presets.cfg
 
 # Mono / C# (caso usado futuramente)
 .mono/
-data_*/
+# Ancorado na raiz: pastas data_* de export do Mono ficam no topo do projeto.
+# Sem a barra inicial, este padrão também pegava src/data_layer/ (bug: a camada
+# inteira ficou fora do git da Fase 1 até a 4).
+/data_*/
 
 # Editor / OS
 .DS_Store

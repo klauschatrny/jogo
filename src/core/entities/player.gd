@@ -86,7 +86,8 @@ func snapshot() -> Dictionary:
 		"level": level,
 		"stats": stats.to_dict(),
 		"weapon": weapon.to_dict() if weapon else {},
-		"augments": augments.map(func(a: Augment) -> String: return a.id),
+		"augments": augments.map(func(a: Augment) -> Dictionary:
+			return {"id": a.id, "tier": a.tier, "name": a.name}),
 	}
 
 static func _gen_id() -> String:
