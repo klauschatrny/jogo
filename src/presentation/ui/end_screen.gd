@@ -19,10 +19,10 @@ func setup(title: String, lines: Array, accent: Color) -> void:
 
 	var y := 180
 	for line in lines:
-		add_child(_centered(String(line), y, 18, Color(0.9, 0.9, 0.9)))
+		add_child(_centered(String(line), y, 18, Palette.TEXT))
 		y += 28
 
-	add_child(_centered("Enter para voltar ao menu", 320, 16, Color(0.7, 0.7, 0.75)))
+	add_child(_centered("Enter para voltar ao menu", 320, 16, Palette.TEXT))
 
 func _centered(text: String, y: int, font_size: int, color: Color) -> Label:
 	var l := Label.new()

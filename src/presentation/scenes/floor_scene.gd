@@ -29,6 +29,7 @@ var _ghost_beaten_this_floor := false
 var _enemy_repo: EnemyRepository
 var _boss_repo: BossRepository
 var _ghost_repo: GhostRepository
+var _crt: CrtOverlay
 
 func _ready() -> void:
 	randomize()
@@ -39,6 +40,13 @@ func _ready() -> void:
 	cam.position = Vector2(320, 180)
 	add_child(cam)
 	cam.make_current()
+
+	# Overlay CRT/scanline acima de tudo (inclusive HUD). Alterna com F9.
+	var crt_layer := CanvasLayer.new()
+	crt_layer.layer = 100
+	add_child(crt_layer)
+	_crt = CrtOverlay.new()
+	crt_layer.add_child(_crt)
 
 	_layer = CanvasLayer.new()
 	add_child(_layer)
@@ -85,7 +93,7 @@ func _ready() -> void:
 
 func _add_background() -> void:
 	var bg := ColorRect.new()
-	bg.color = Color(0.1, 0.1, 0.13)
+	bg.color = Palette.BG
 	bg.position = Vector2(-40, -40)       # folga para o screen shake não revelar as bordas
 	bg.size = Vector2(720, 440)
 	bg.z_index = -10
@@ -231,7 +239,7 @@ func _on_player_died(_p: Player) -> void:
 		"Tombou no andar %d de %d" % [_run.current_floor, _tower.total_floors],
 		"Nível %d" % _run.player.level,
 		"Um Eco seu ficou para trás...",
-	], Color(0.85, 0.25, 0.25))
+	], Palette.ENEMY)
 
 func _on_victory() -> void:
 	_phase = "victory"
@@ -239,7 +247,7 @@ func _on_victory() -> void:
 		"Você conquistou a Torre da Vingança",
 		"Nível %d" % _run.player.level,
 		"O Rei caiu. A vingança está completa.",
-	], Color(0.95, 0.8, 0.25))
+	], Palette.ACCENT)
 
 func _show_end_screen(title: String, lines: Array, accent: Color) -> void:
 	var es := EndScreen.new()
@@ -257,6 +265,10 @@ func _random_spawn_pos() -> Vector2:
 		_: return Vector2(600, randf_range(margin, 320))
 
 func _unhandled_input(event: InputEvent) -> void:
+	# F9 alterna o overlay CRT (disponível sempre, não só em debug).
+	if event is InputEventKey and event.pressed and not event.echo \
+			and (event as InputEventKey).physical_keycode == KEY_F9:
+		_crt.visible = not _crt.visible
 	if DEBUG:
 		_debug_input(event)
 	if (_phase == "dead" or _phase == "victory") and event.is_action_pressed("ui_accept"):

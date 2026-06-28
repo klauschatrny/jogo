@@ -14,13 +14,13 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	var bg := ColorRect.new()
-	bg.color = Color(0, 0, 0, 0.6)
+	bg.color = Palette.HP_BACK
 	bg.position = Vector2(12, 12)
 	bg.size = Vector2(BAR_WIDTH, 18)
 	add_child(bg)
 
 	_bar = ColorRect.new()
-	_bar.color = Color(0.9, 0.2, 0.2)
+	_bar.color = Palette.PLAYER_HP
 	_bar.position = Vector2(12, 12)
 	_bar.size = Vector2(BAR_WIDTH, 18)
 	add_child(_bar)

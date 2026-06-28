@@ -12,7 +12,7 @@ const ATTACK_INTERVAL := 1.0
 var data: Enemy                     # entidade Core
 var target: Node2D                  # quem perseguir (o PlayerView)
 var box_size := 18.0                # subclasses ajustam antes de entrar na árvore
-var body_color := Color(0.9, 0.3, 0.3)
+var body_color := Palette.ENEMY
 
 const KNOCKBACK_FORCE := 130.0
 
@@ -49,13 +49,13 @@ func _build() -> void:
 
 	var bar_pos := Vector2(-box_size * 0.5, -box_size * 0.5 - 6.0)
 	var bg := ColorRect.new()
-	bg.color = Color(0, 0, 0, 0.6)
+	bg.color = Palette.HP_BACK
 	bg.size = Vector2(box_size, 3)
 	bg.position = bar_pos
 	add_child(bg)
 
 	_hp_bar = ColorRect.new()
-	_hp_bar.color = Color(0.3, 0.9, 0.3)
+	_hp_bar.color = Palette.HP_FILL
 	_hp_bar.size = Vector2(box_size, 3)
 	_hp_bar.position = bar_pos
 	add_child(_hp_bar)
@@ -81,7 +81,7 @@ func apply_damage(amount: int) -> void:
 	data.stats.current_hp -= amount
 	_refresh_hp_bar()
 	Juice.flash(_body, body_color)
-	Juice.burst(get_parent(), global_position, Color(1, 0.95, 0.5), 6)
+	Juice.burst(get_parent(), global_position, Palette.HIT_SPARK, 6)
 	if is_instance_valid(target):
 		_knockback = (global_position - target.global_position).normalized() * KNOCKBACK_FORCE
 	_on_after_damage()

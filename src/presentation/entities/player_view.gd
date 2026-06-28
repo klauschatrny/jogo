@@ -5,7 +5,7 @@ class_name PlayerView
 extends CharacterBody2D
 
 const SIZE := 20.0
-const BASE_COLOR := Color(0.3, 0.6, 1.0)
+const BASE_COLOR := Palette.PLAYER
 
 var data: Player                    # entidade Core
 var god_mode := false               # debug: ignora dano recebido
@@ -116,7 +116,7 @@ func _spawn_slash() -> void:
 
 	var slash := Line2D.new()
 	slash.width = 5.0
-	slash.default_color = Color(1.0, 1.0, 0.7, 0.95)
+	slash.default_color = Palette.SLASH
 	slash.begin_cap_mode = Line2D.LINE_CAP_ROUND
 	slash.end_cap_mode = Line2D.LINE_CAP_ROUND
 	slash.joint_mode = Line2D.LINE_JOINT_ROUND

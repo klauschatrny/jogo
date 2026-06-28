@@ -7,4 +7,4 @@ extends EnemyView
 func setup(enemy: Enemy, target_node: Node2D) -> void:
 	super.setup(enemy, target_node)
 	box_size = 22.0
-	body_color = Color(0.55, 0.8, 1.0, 0.7)   # eco: azul translúcido
+	body_color = Color(Palette.GHOST, 0.7)   # eco: ciano translúcido
