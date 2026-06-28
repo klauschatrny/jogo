@@ -1,0 +1,25 @@
+# Normaliza finais de linha: LF no repositório, independente do SO
+* text=auto eol=lf
+
+# Arquivos de texto do projeto (Godot 4 + GDScript)
+*.gd   text eol=lf
+*.tscn text eol=lf
+*.tres text eol=lf
+*.cfg  text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.txt  text eol=lf
+
+# Binários (não normalizar)
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ogg  binary
+*.wav  binary
+*.mp3  binary
+*.ttf  binary
+*.otf  binary
+*.res  binary
+*.ico  binary
