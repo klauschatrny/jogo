@@ -26,6 +26,13 @@ func test_advance_floor() -> void:
 	assert_eq(rs.current_floor, 2)
 	assert_eq(rs.player.current_floor, 2)
 
+func test_advance_floor_cura_hp_cheio() -> void:
+	var rs := _run()
+	rs.player.take_damage(80)
+	assert_true(rs.player.stats.current_hp < rs.player.stats.max_hp)
+	rs.advance_floor()
+	assert_eq(rs.player.stats.current_hp, rs.player.stats.max_hp)
+
 func test_offer_augments_quantidade_padrao() -> void:
 	var rs := _run()
 	assert_eq(rs.offer_augments().size(), 3)  # cards_per_reward

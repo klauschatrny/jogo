@@ -3,7 +3,7 @@
   "name": "Guardião da Torre",
   "archetype": "TANK",
   "rank": "BOSS",
-  "base_stats": { "max_hp": 40, "attack": 8, "defense": 4, "move_speed": 60 },
+  "base_stats": { "max_hp": 40, "attack": 19, "defense": 4, "move_speed": 60 },
   "ai_profile": "boss_phased",
   "abilities": ["abil_ground_slam"],
   "phases": [

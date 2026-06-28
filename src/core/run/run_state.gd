@@ -25,6 +25,7 @@ static func start_new(player_name: String, weapon: Weapon,
 func advance_floor() -> void:
 	current_floor += 1
 	player.current_floor = current_floor
+	player.heal(player.stats.max_hp)   # cada novo andar começa com HP cheio
 	EventBus.floor_changed.emit(current_floor)
 
 ## Sorteia os cards de recompensa, excluindo augments não-stackable já possuídos.
