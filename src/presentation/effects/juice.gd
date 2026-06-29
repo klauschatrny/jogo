@@ -43,7 +43,7 @@ static func afterimage(parent: Node, pos: Vector2, size: Vector2, color: Color, 
 	tw.tween_callback(g.queue_free)
 
 ## Explosão curta de partículas no ponto do impacto/morte. Auto-libera após a vida útil.
-static func burst(parent: Node, pos: Vector2, color: Color, amount := 8, speed := 90.0) -> void:
+static func burst(parent: Node, pos: Vector2, color: Color, amount := 8, speed := 270.0) -> void:
 	if parent == null:
 		return
 	var p := CPUParticles2D.new()
@@ -57,8 +57,8 @@ static func burst(parent: Node, pos: Vector2, color: Color, amount := 8, speed :
 	p.initial_velocity_min = speed * 0.4
 	p.initial_velocity_max = speed
 	p.gravity = Vector2.ZERO
-	p.scale_amount_min = 1.5
-	p.scale_amount_max = 3.0
+	p.scale_amount_min = 4.5
+	p.scale_amount_max = 9.0
 	p.color = color
 	p.z_index = 50
 	p.finished.connect(p.queue_free)   # auto-libera quando o one_shot termina

@@ -70,6 +70,22 @@ Objetivo: combate lateral funcionando, ainda como "arena", para validar o feel.
 - Polimento de esquiva (i-frames, cooldown), combo de ataque, knockback lateral, hit-stop.
   Reaproveita o `Juice`.
 
-### Leva 4 — Arte & ambientação
-- Spritesheets via `AnimatedSprite2D` por `id`, com fallback `ColorRect`.
-- Parallax de fundo + chão em tile por **bioma** (as 5 zonas do bestiário).
+### Leva 4 — Arte & ambientação — EM ANDAMENTO
+
+**Resolução interna hi-fi (decidido):** o viewport subiu de 640×360 para **1920×1080**
+(`stretch=canvas_items`, `aspect=keep`). Motivo: personagens detalhados/reconhecíveis
+(few-pixel ficava ilegível). É 1:1 em monitores 1080p. Toda a apresentação foi reescalada
+×3 via uma constante central `ViewScale.WORLD = 3.0`:
+- Constantes de apresentação (física, layout, fontes, HUD) já estão nos valores ×3.
+- Valores que vêm dos **dados do Core** (`move_speed`, `attack_range`) são multiplicados por
+  `ViewScale.WORLD` em runtime — o Core e o balanceamento ficam intactos no espaço lógico.
+- A arte deve ser autorada **nesse espaço** (ex.: personagem comum ~144px, base do bestiário ×3).
+
+**Spritesheets** (`SpriteLoader` + manifesto, com fallback `ColorRect`):
+- Arte: `res://assets/sprites/<subdir>/<id>.png` — grade de células quadradas, **1 linha por
+  animação** (colunas = frames).
+- Manifesto: `res://data/sprites/<id>.json` com `cell` e `animations`
+  (`{ "row", "frames", "fps", "loop" }`). Sem PNG/manifesto → mantém o placeholder.
+- Falta: integrar o `SpriteLoader` nas views (player/inimigos/boss) trocando o `ColorRect`.
+
+**Ambientação (a fazer):** parallax de fundo + chão em tile por **bioma** (as 5 zonas do bestiário).

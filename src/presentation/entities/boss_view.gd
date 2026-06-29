@@ -10,7 +10,7 @@ signal summon_ghost
 
 func setup(enemy: Enemy, target_node: Node2D) -> void:
 	super.setup(enemy, target_node)
-	box_size = 34.0
+	box_size = 102.0   # (= 34 × 3, viewport 1920×1080)
 	body_color = Palette.BOSS
 
 func _on_after_damage() -> void:

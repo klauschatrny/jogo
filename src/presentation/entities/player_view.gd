@@ -5,17 +5,17 @@
 class_name PlayerView
 extends CharacterBody2D
 
-const SIZE := 20.0
+const SIZE := 60.0               # (= 20 × 3, viewport 1920×1080)
 const BASE_COLOR := Palette.PLAYER
 
-# Feel de movimento (constantes de apresentação, como ATTACK_RANGE no EnemyView).
-const GRAVITY := 1400.0
-const JUMP_VELOCITY := -460.0
-const DODGE_SPEED := 430.0
-const DODGE_TIME := 0.20          # duração do dash (com i-frames)
+# Feel de movimento (constantes de apresentação já no espaço 1920×1080 = base × 3).
+const GRAVITY := 4200.0
+const JUMP_VELOCITY := -1380.0
+const DODGE_SPEED := 1290.0
+const DODGE_TIME := 0.20          # duração do dash (com i-frames) — tempo, não escala
 const DODGE_COOLDOWN := 0.5
 const AFTERIMAGE_STEP := 0.035   # intervalo entre ecos do rastro do dash
-const POGO_BOUNCE := -380.0      # impulso pra cima ao acertar um golpe pra baixo no ar
+const POGO_BOUNCE := -1140.0     # impulso pra cima ao acertar um golpe pra baixo no ar
 const COMBO_GRACE := 0.28        # folga sobre o cooldown do golpe para encadear o combo
 const COMBO_MAX := 3             # combo de 3 golpes (0, 1, 2=finisher)
 const FINISHER_KNOCKBACK := 2.4  # o 3º golpe empurra bem mais
@@ -86,7 +86,7 @@ func _physics_process(delta: float) -> void:
 	var ix := Input.get_axis("move_left", "move_right")
 	if ix != 0.0:
 		_facing = Vector2.RIGHT if ix > 0.0 else Vector2.LEFT
-	velocity.x = ix * float(data.stats.move_speed)
+	velocity.x = ix * float(data.stats.move_speed) * ViewScale.WORLD
 
 	if Input.is_action_just_pressed("jump") and is_on_floor():
 		velocity.y = JUMP_VELOCITY
@@ -166,7 +166,8 @@ func _shake(amount: float) -> void:
 		(cam as GameCamera).add_trauma(amount)
 
 func _reach() -> float:
-	return data.weapon.attack_range if (data and data.weapon and data.weapon.attack_range > 0.0) else 40.0
+	var base := data.weapon.attack_range if (data and data.weapon and data.weapon.attack_range > 0.0) else 40.0
+	return base * ViewScale.WORLD
 
 ## Inimigos no alcance AGORA, na direção atual do golpe — consulta síncrona à física (sem o
 ## atraso de 1 frame do Area2D, que fazia o hit e a animação divergirem ao trocar de direção
@@ -199,7 +200,7 @@ func _spawn_slash(step: int) -> void:
 	var forward := (step % 2 == 0)           # alterna o sentido da lâmina a cada golpe
 
 	var slash := Line2D.new()
-	slash.width = 7.0 if is_finisher else 5.0
+	slash.width = 21.0 if is_finisher else 15.0    # (= 7/5 × 3)
 	slash.default_color = Palette.HIT_SPARK if is_finisher else Palette.SLASH
 	slash.begin_cap_mode = Line2D.LINE_CAP_ROUND
 	slash.end_cap_mode = Line2D.LINE_CAP_ROUND
@@ -217,5 +218,5 @@ func _spawn_slash(step: int) -> void:
 	tw.set_parallel(true)
 	tw.tween_property(slash, "rotation", to_rot, 0.12)
 	tw.tween_property(slash, "modulate:a", 0.0, 0.14)
-	tw.tween_property(slash, "width", 1.5, 0.14)
+	tw.tween_property(slash, "width", 4.5, 0.14)    # (= 1.5 × 3)
 	tw.chain().tween_callback(slash.queue_free)

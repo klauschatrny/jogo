@@ -31,17 +31,17 @@ var _boss_repo: BossRepository
 var _ghost_repo: GhostRepository
 var _crt: CrtOverlay
 var _camera: GameCamera
-var _corridor_length := 1920.0
-var _arena_width := 1920.0      # largura do ambiente atual (corredor ou sala do boss)
+var _corridor_length := 5760.0  # (= 1920 × 3, viewport 1920×1080)
+var _arena_width := 5760.0      # largura do ambiente atual (corredor ou sala do boss)
 var _env: Node2D               # container do cenário atual (reconstruído por andar/sala)
 var _fade: ColorRect           # overlay de fade das transições
 var _door: Node2D              # porta ativa (nula quando não há)
 var _door_x := 0.0
 
 ## Linha de topo do chão (eixo Y). Player e inimigos pousam aqui pela gravidade.
-const GROUND_Y := 300.0
-const BOSS_ROOM_W := 640.0     # sala do boss = uma tela fechada (arena)
-const DOOR_REACH := 30.0       # distância para "entrar" na porta
+const GROUND_Y := 900.0         # (= 300 × 3, viewport 1920×1080)
+const BOSS_ROOM_W := 1920.0    # sala do boss = uma tela fechada (= 640 × 3)
+const DOOR_REACH := 90.0       # distância para "entrar" na porta (= 30 × 3)
 const FADE_TIME := 0.35
 
 func _ready() -> void:
@@ -55,7 +55,7 @@ func _ready() -> void:
 	# Câmera que segue o player no eixo X, presa às bordas do nível; permite screen shake.
 	# O cenário (corredor/sala) é construído por _start_floor, que ajusta os limites dela.
 	_camera = GameCamera.new()
-	_camera.position = Vector2(320, 180)
+	_camera.position = Vector2(960, 540)
 	add_child(_camera)
 	_camera.make_current()
 
@@ -73,7 +73,8 @@ func _ready() -> void:
 	_hud = Hud.new()
 	_layer.add_child(_hud)
 	_msg = Label.new()
-	_msg.position = Vector2(16, 36)
+	_msg.position = Vector2(48, 108)
+	_msg.add_theme_font_size_override("font_size", 24)   # mensagem de seção (andar/avisos)
 	_layer.add_child(_msg)
 
 	var weapons := WeaponRepository.new()
@@ -96,7 +97,7 @@ func _ready() -> void:
 	_run = RunState.start_new("Kael", weapon, aug_repo.all_augments(), randi())
 	_player_view = PlayerView.new()
 	_player_view.setup(_run.player)
-	_player_view.position = Vector2(80, GROUND_Y - 40)   # início à esquerda do corredor
+	_player_view.position = Vector2(240, GROUND_Y - 120)   # início à esquerda do corredor
 	add_child(_player_view)
 	_camera.follow_target = _player_view                 # câmera passa a seguir o player
 	_hud.set_player(_run.player)
@@ -122,8 +123,8 @@ func _build_environment(width: float, is_boss_room: bool) -> void:
 
 	var bg := ColorRect.new()
 	bg.color = Palette.BG.darkened(0.18) if is_boss_room else Palette.BG
-	bg.position = Vector2(-40, -40)         # folga para o screen shake não revelar as bordas
-	bg.size = Vector2(width + 80, 440)
+	bg.position = Vector2(-120, -120)       # folga para o screen shake não revelar as bordas
+	bg.size = Vector2(width + 240, 1320)
 	bg.z_index = -10
 	_env.add_child(bg)
 
@@ -132,30 +133,30 @@ func _build_environment(width: float, is_boss_room: bool) -> void:
 	body.collision_mask = 0
 	var floor_col := CollisionShape2D.new()
 	var floor_rect := RectangleShape2D.new()
-	floor_rect.size = Vector2(width + 200, 200)
+	floor_rect.size = Vector2(width + 600, 600)
 	floor_col.shape = floor_rect
-	floor_col.position = Vector2(width * 0.5, GROUND_Y + 100)   # topo do retângulo em GROUND_Y
+	floor_col.position = Vector2(width * 0.5, GROUND_Y + 300)   # topo do retângulo em GROUND_Y
 	body.add_child(floor_col)
 	for wall_x in [0.0, width]:             # paredes contêm player e inimigos no nível
 		var wcol := CollisionShape2D.new()
 		var wrect := RectangleShape2D.new()
-		wrect.size = Vector2(40, 800)
+		wrect.size = Vector2(120, 2400)
 		wcol.shape = wrect
-		wcol.position = Vector2(wall_x + (-20.0 if wall_x == 0.0 else 20.0), 0.0)
+		wcol.position = Vector2(wall_x + (-60.0 if wall_x == 0.0 else 60.0), 0.0)
 		body.add_child(wcol)
 	_env.add_child(body)
 
 	var fill := ColorRect.new()
 	fill.color = Palette.GROUND
-	fill.position = Vector2(-40, GROUND_Y)
-	fill.size = Vector2(width + 80, 440 - (GROUND_Y + 40))
+	fill.position = Vector2(-120, GROUND_Y)
+	fill.size = Vector2(width + 240, 1320 - (GROUND_Y + 120))
 	fill.z_index = -5
 	_env.add_child(fill)
 
 	var edge := ColorRect.new()
 	edge.color = Palette.GROUND_EDGE
-	edge.position = Vector2(-40, GROUND_Y)
-	edge.size = Vector2(width + 80, 3)
+	edge.position = Vector2(-120, GROUND_Y)
+	edge.size = Vector2(width + 240, 9)
 	edge.z_index = -5
 	_env.add_child(edge)
 
@@ -169,7 +170,7 @@ func _add_fade_overlay() -> void:
 	_fade = ColorRect.new()
 	_fade.color = Color(0, 0, 0, 1)
 	_fade.modulate.a = 0.0
-	_fade.size = Vector2(640, 360)
+	_fade.set_anchors_preset(Control.PRESET_FULL_RECT)   # cobre o viewport (qualquer resolução)
 	_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	fl.add_child(_fade)
 
@@ -180,13 +181,13 @@ func _spawn_door(x: float, accent: Color) -> void:
 	d.z_index = -4                           # à frente do chão, atrás das entidades
 	var frame := ColorRect.new()
 	frame.color = accent
-	frame.size = Vector2(36, 84)
-	frame.position = Vector2(-18, -84)
+	frame.size = Vector2(108, 252)          # (= 36×84 × 3)
+	frame.position = Vector2(-54, -252)
 	d.add_child(frame)
 	var inner := ColorRect.new()
 	inner.color = Palette.BG.darkened(0.45)
-	inner.size = Vector2(26, 74)
-	inner.position = Vector2(-13, -78)
+	inner.size = Vector2(78, 222)
+	inner.position = Vector2(-39, -234)
 	d.add_child(inner)
 	_env.add_child(d)
 	_door = d
@@ -196,7 +197,7 @@ func _spawn_door(x: float, accent: Color) -> void:
 func _reset_player_to_start() -> void:
 	if not is_instance_valid(_player_view):
 		return
-	_player_view.global_position = Vector2(80, GROUND_Y - 40)
+	_player_view.global_position = Vector2(240, GROUND_Y - 120)
 	_player_view.velocity = Vector2.ZERO
 	_camera.global_position.x = _player_view.global_position.x
 
@@ -310,7 +311,7 @@ func _on_summon_ghost() -> void:
 		return
 	_ghost_summoned = true
 	var ghost := GhostFactory.build(_ghost_to_summon, _run.player)
-	_add_view(GhostView.new(), ghost, _boss_spawn_pos() + Vector2(-80, 0))
+	_add_view(GhostView.new(), ghost, _boss_spawn_pos() + Vector2(-240, 0))
 	_msg.text = "%s foi invocado para te enfrentar!" % ghost.name
 
 func _add_view(view: EnemyView, enemy: Enemy, pos: Vector2) -> void:
@@ -408,12 +409,12 @@ func _random_spawn_pos() -> Vector2:
 	# Side-scroller: inimigos entram pela direita, logo fora da vista atual (à frente do
 	# player), no nível do chão. Presos ao corredor para não nascerem após a parede.
 	var px := _player_view.global_position.x if is_instance_valid(_player_view) else 0.0
-	var x := minf(px + randf_range(380.0, 520.0), _arena_width - 40.0)
-	return Vector2(x, GROUND_Y - 40.0)
+	var x := minf(px + randf_range(1140.0, 1560.0), _arena_width - 120.0)
+	return Vector2(x, GROUND_Y - 120.0)
 
 ## Boss aparece no lado direito da sala do boss (arena fechada).
 func _boss_spawn_pos() -> Vector2:
-	return Vector2(_arena_width - 120.0, GROUND_Y - 60.0)
+	return Vector2(_arena_width - 360.0, GROUND_Y - 180.0)
 
 func _unhandled_input(event: InputEvent) -> void:
 	# F9 alterna o overlay CRT (disponível sempre, não só em debug).
@@ -443,8 +444,8 @@ func _apply_debug_start() -> void:
 func _show_debug_legend() -> void:
 	var l := Label.new()
 	l.text = "[DEBUG]  K matar  |  M +1 andar  |  B +10  |  L +nivel  |  P 2x dano arma  |  H curar  |  G invocar eco  |  I god mode"
-	l.position = Vector2(8, 342)
-	l.add_theme_font_size_override("font_size", 10)
+	l.position = Vector2(24, 1026)
+	l.add_theme_font_size_override("font_size", 30)
 	l.add_theme_color_override("font_color", Color(1, 1, 0.4))
 	_layer.add_child(l)
 
