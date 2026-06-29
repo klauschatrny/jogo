@@ -27,6 +27,16 @@ static func flash(rect: ColorRect, base: Color, dur := 0.08) -> void:
 	var tw := rect.create_tween()
 	tw.tween_property(rect, "color", base, dur)
 
+## Flash de impacto para nós com textura (AnimatedSprite2D): estoura o modulate para branco
+## e volta. Usa o modulate do PRÓPRIO sprite (multiplica com o do nó-pai), então não conflita
+## com o enrage do boss, que mexe no modulate do nó. Use este para sprites; flash() é p/ ColorRect.
+static func flash_modulate(item: CanvasItem, dur := 0.08) -> void:
+	if item == null:
+		return
+	item.modulate = Color(3, 3, 3)
+	var tw := item.create_tween()
+	tw.tween_property(item, "modulate", Color.WHITE, dur)
+
 ## Rastro/eco visual: uma cópia estática translúcida que some no lugar. Usado no dash da
 ## esquiva para dar sensação de velocidade. Auto-libera ao fim do fade.
 static func afterimage(parent: Node, pos: Vector2, size: Vector2, color: Color, dur := 0.22) -> void:

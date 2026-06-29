@@ -7,6 +7,7 @@ extends CharacterBody2D
 
 const SIZE := 60.0               # (= 20 × 3, viewport 1920×1080)
 const BASE_COLOR := Palette.PLAYER
+const SPRITE_ID := "player"      # arte: assets/sprites/player/player.png + data/sprites/player.json
 
 # Feel de movimento (constantes de apresentação já no espaço 1920×1080 = base × 3).
 const GRAVITY := 4200.0
@@ -32,6 +33,8 @@ var _afterimage_acc := 0.0
 var _combo := 0                    # passo atual do combo (0..COMBO_MAX-1)
 var _combo_timer := 0.0            # tempo restante para encadear o próximo golpe
 var _body: ColorRect
+var _sprite: AnimatedSprite2D      # arte (null = usa o placeholder _body)
+var _anim_lock := 0.0              # trava a anim de locomoção enquanto toca ataque
 
 func setup(player: Player) -> void:
 	data = player
@@ -61,11 +64,18 @@ func _build() -> void:
 	col.shape = rect
 	add_child(col)
 
+	# Arte: se houver spritesheet+manifesto, usa-o e esconde o placeholder ColorRect.
+	_sprite = SpriteLoader.build(SPRITE_ID, "player")
+	if _sprite != null:
+		add_child(_sprite)
+		_body.visible = false
+
 func _physics_process(delta: float) -> void:
 	if data == null:
 		return
 	_attack_cd = maxf(0.0, _attack_cd - delta)
 	_dodge_cd = maxf(0.0, _dodge_cd - delta)
+	_anim_lock = maxf(0.0, _anim_lock - delta)
 	_combo_timer = maxf(0.0, _combo_timer - delta)
 	if _combo_timer <= 0.0:
 		_combo = 0                    # combo expira fora da janela
@@ -80,6 +90,8 @@ func _physics_process(delta: float) -> void:
 		_dodge_time -= delta
 		velocity.x = _dodge_dir.x * DODGE_SPEED
 		_emit_afterimages(delta)
+		_flip(_dodge_dir)
+		_play_anim("dodge")
 		move_and_slide()
 		return
 
@@ -95,6 +107,9 @@ func _physics_process(delta: float) -> void:
 		_start_dodge(ix)
 
 	move_and_slide()
+
+	_flip(_facing)
+	_update_locomotion(ix)
 
 	if Input.is_action_pressed("attack") and _attack_cd <= 0.0:
 		_attack()
@@ -113,11 +128,36 @@ func _emit_afterimages(delta: float) -> void:
 		_afterimage_acc -= AFTERIMAGE_STEP
 		Juice.afterimage(get_parent(), global_position, Vector2(SIZE, SIZE), BASE_COLOR)
 
+## Vira o sprite conforme a direção (no-op sem sprite).
+func _flip(dir: Vector2) -> void:
+	if _sprite != null and dir.x != 0.0:
+		_sprite.flip_h = dir.x < 0.0
+
+func _play_anim(anim: String) -> void:
+	SpriteLoader.play_safe(_sprite, anim)
+
+## Escolhe a animação de locomoção (pulo/corrida/parado), salvo durante o ataque (_anim_lock).
+func _update_locomotion(ix: float) -> void:
+	if _sprite == null or _anim_lock > 0.0:
+		return
+	if not is_on_floor():
+		_play_anim("jump")
+	elif ix != 0.0:
+		_play_anim("run")
+	else:
+		_play_anim("idle")
+
 func _attack() -> void:
 	var spd := data.weapon.attack_speed if data.weapon else 1.0
 	var cd := 1.0 / maxf(spd, 0.1)
 	_attack_cd = cd
 	_attack_dir = _current_attack_dir()
+
+	# Anim de ataque (reinicia do frame 0) e trava a locomoção enquanto ela toca.
+	if _sprite != null and _sprite.sprite_frames != null and _sprite.sprite_frames.has_animation("attack"):
+		_sprite.play("attack")
+		_sprite.frame = 0
+		_anim_lock = cd * 0.6
 
 	# Combo de 3 golpes: cada ataque dentro da janela avança o passo; o 3º é o finisher.
 	# A janela = cooldown do golpe + folga, então atacar no ritmo do cooldown mantém o combo.
@@ -156,7 +196,10 @@ func apply_enemy_hit(attacker_stats: StatBlock) -> void:
 		return
 	var dmg := CombatResolver.enemy_hit(attacker_stats, data)
 	data.take_damage(int(round(dmg)))
-	Juice.flash(_body, BASE_COLOR)
+	if _sprite != null:
+		Juice.flash_modulate(_sprite)
+	else:
+		Juice.flash(_body, BASE_COLOR)
 	_shake(0.15)
 
 ## Tremor de tela via a câmera ativa (GameCamera). Sem câmera, é no-op.

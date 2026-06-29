@@ -12,6 +12,7 @@ func setup(enemy: Enemy, target_node: Node2D) -> void:
 	super.setup(enemy, target_node)
 	box_size = 102.0   # (= 34 × 3, viewport 1920×1080)
 	body_color = Palette.BOSS
+	sprite_subdir = "bosses"   # arte de boss vem de assets/sprites/bosses/<id>.png
 
 func _on_after_damage() -> void:
 	if data is Boss:

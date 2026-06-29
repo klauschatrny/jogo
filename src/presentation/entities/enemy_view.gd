@@ -15,12 +15,15 @@ var data: Enemy                     # entidade Core
 var target: Node2D                  # quem perseguir (o PlayerView)
 var box_size := 54.0                # (= 18 × 3) — subclasses ajustam antes de entrar na árvore
 var body_color := Palette.ENEMY
+var sprite_subdir := "enemies"      # subpasta da arte (BossView usa "bosses")
 
 const KNOCKBACK_FORCE := 390.0     # (= 130 × 3)
 
 var _attack_cd := 0.0
 var _hp_bar: ColorRect
 var _body: ColorRect
+var _sprite: AnimatedSprite2D       # arte (null = usa o placeholder _body)
+var _anim_lock := 0.0
 var _knockback := Vector2.ZERO
 
 func setup(enemy: Enemy, target_node: Node2D) -> void:
@@ -52,6 +55,14 @@ func _build() -> void:
 	col.shape = rect
 	add_child(col)
 
+	# Arte: se houver spritesheet+manifesto para este id, usa-o e esconde o placeholder.
+	# Adicionado antes da barra de HP para a barra ficar por cima do sprite.
+	if data != null and data.id != "":
+		_sprite = SpriteLoader.build(data.id, sprite_subdir)
+		if _sprite != null:
+			add_child(_sprite)
+			_body.visible = false
+
 	var bar_pos := Vector2(-box_size * 0.5, -box_size * 0.5 - 18.0)   # (= -6 × 3)
 	var bg := ColorRect.new()
 	bg.color = Palette.HP_BACK
@@ -68,6 +79,7 @@ func _build() -> void:
 func _physics_process(delta: float) -> void:
 	if data == null or not is_instance_valid(target):
 		return
+	_anim_lock = maxf(0.0, _anim_lock - delta)
 	# Gravidade contínua; o chão (camada 4) segura o inimigo.
 	if not is_on_floor():
 		velocity.y += GRAVITY * delta
@@ -75,8 +87,10 @@ func _physics_process(delta: float) -> void:
 	# IA lateral: avança no eixo X em direção ao player.
 	var dx := target.global_position.x - global_position.x
 	var dy := target.global_position.y - global_position.y
+	var moving := false
 	if absf(dx) > ATTACK_RANGE:
 		velocity.x = signf(dx) * float(data.stats.move_speed) * ViewScale.WORLD
+		moving = true
 	else:
 		velocity.x = 0.0
 		# Só ataca se o player estiver ao alcance horizontal E vertical: quem pula/pogo
@@ -87,14 +101,36 @@ func _physics_process(delta: float) -> void:
 				_attack_cd = ATTACK_INTERVAL
 				if target.has_method("apply_enemy_hit"):
 					target.apply_enemy_hit(data.stats)
+				_play_attack_anim()
 	velocity.x += _knockback.x
 	_knockback = _knockback.lerp(Vector2.ZERO, 0.2)   # recuo decai rápido
 	move_and_slide()
+	_update_sprite(dx, moving)
+
+## Vira o sprite para o player e escolhe walk/idle (salvo durante a anim de ataque travada).
+func _update_sprite(dx: float, moving: bool) -> void:
+	if _sprite == null:
+		return
+	if dx != 0.0:
+		_sprite.flip_h = dx < 0.0
+	if _anim_lock > 0.0:
+		return
+	SpriteLoader.play_safe(_sprite, "walk" if moving else "idle")
+
+func _play_attack_anim() -> void:
+	if _sprite == null or _sprite.sprite_frames == null or not _sprite.sprite_frames.has_animation("attack"):
+		return
+	_sprite.play("attack")
+	_sprite.frame = 0
+	_anim_lock = ATTACK_INTERVAL * 0.5
 
 func apply_damage(amount: int, knockback_mult := 1.0) -> void:
 	data.stats.current_hp -= amount
 	_refresh_hp_bar()
-	Juice.flash(_body, body_color)
+	if _sprite != null:
+		Juice.flash_modulate(_sprite)
+	else:
+		Juice.flash(_body, body_color)
 	Juice.burst(get_parent(), global_position, Palette.HIT_SPARK, 6)
 	if is_instance_valid(target):
 		# Recuo horizontal (afastando do atacante); o finisher do combo empurra mais.
