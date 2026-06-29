@@ -18,7 +18,7 @@ func _ready() -> void:
 	var weapon := weapons.get_weapon("wpn_sword_mourning")
 	if weapon == null:
 		weapon = Weapon.from_dict({
-			"base_damage": 15, "weapon_growth": 1.12, "attack_speed": 1.2, "attack_range": 55})
+			"base_damage": 15, "weapon_growth": 1.12, "attack_speed": 1.5, "attack_range": 55})
 	_player = Player.create_new("Kael", weapon)
 
 	var pv := PlayerView.new()

@@ -27,6 +27,21 @@ static func flash(rect: ColorRect, base: Color, dur := 0.08) -> void:
 	var tw := rect.create_tween()
 	tw.tween_property(rect, "color", base, dur)
 
+## Rastro/eco visual: uma cópia estática translúcida que some no lugar. Usado no dash da
+## esquiva para dar sensação de velocidade. Auto-libera ao fim do fade.
+static func afterimage(parent: Node, pos: Vector2, size: Vector2, color: Color, dur := 0.22) -> void:
+	if parent == null:
+		return
+	var g := ColorRect.new()
+	g.color = Color(color.r, color.g, color.b, 0.45)
+	g.size = size
+	g.position = pos - size * 0.5
+	g.z_index = 5
+	parent.add_child(g)
+	var tw := g.create_tween()
+	tw.tween_property(g, "modulate:a", 0.0, dur)
+	tw.tween_callback(g.queue_free)
+
 ## Explosão curta de partículas no ponto do impacto/morte. Auto-libera após a vida útil.
 static func burst(parent: Node, pos: Vector2, color: Color, amount := 8, speed := 90.0) -> void:
 	if parent == null:

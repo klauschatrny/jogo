@@ -90,13 +90,17 @@ func _physics_process(delta: float) -> void:
 	_knockback = _knockback.lerp(Vector2.ZERO, 0.2)   # recuo decai rápido
 	move_and_slide()
 
-func apply_damage(amount: int) -> void:
+func apply_damage(amount: int, knockback_mult := 1.0) -> void:
 	data.stats.current_hp -= amount
 	_refresh_hp_bar()
 	Juice.flash(_body, body_color)
 	Juice.burst(get_parent(), global_position, Palette.HIT_SPARK, 6)
 	if is_instance_valid(target):
-		_knockback = (global_position - target.global_position).normalized() * KNOCKBACK_FORCE
+		# Recuo horizontal (afastando do atacante); o finisher do combo empurra mais.
+		var dir := signf(global_position.x - target.global_position.x)
+		if dir == 0.0:
+			dir = 1.0
+		_knockback = Vector2(dir * KNOCKBACK_FORCE * knockback_mult, 0.0)
 	_on_after_damage()
 	if data.stats.current_hp <= 0:
 		Juice.burst(get_parent(), global_position, body_color, 16, 140.0)

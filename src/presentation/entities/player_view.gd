@@ -1,7 +1,7 @@
 ## Apresentação do jogador (§2.3). Side-scroller de chão plano: A/D anda, Espaço/W pula,
-## J/K ataca na direção do facing (esquerda/direita), Shift esquiva (dash com i-frames).
-## Monta o próprio visual/colisão via código (placeholder ColorRect — spritesheet entra
-## na Leva 4). A lógica de combate vive no Core (CombatResolver).
+## J/K ataca (combo de 3 golpes; pra baixo no ar = pogo), Shift esquiva (dash direcional
+## com i-frames + rastro). Monta o próprio visual/colisão via código (placeholder ColorRect
+## — spritesheet entra na Leva 4). A lógica de combate vive no Core (CombatResolver).
 class_name PlayerView
 extends CharacterBody2D
 
@@ -11,10 +11,14 @@ const BASE_COLOR := Palette.PLAYER
 # Feel de movimento (constantes de apresentação, como ATTACK_RANGE no EnemyView).
 const GRAVITY := 1400.0
 const JUMP_VELOCITY := -460.0
-const DODGE_SPEED := 360.0
-const DODGE_TIME := 0.22         # duração do dash (com i-frames)
-const DODGE_COOLDOWN := 0.55
+const DODGE_SPEED := 430.0
+const DODGE_TIME := 0.20          # duração do dash (com i-frames)
+const DODGE_COOLDOWN := 0.5
+const AFTERIMAGE_STEP := 0.035   # intervalo entre ecos do rastro do dash
 const POGO_BOUNCE := -380.0      # impulso pra cima ao acertar um golpe pra baixo no ar
+const COMBO_GRACE := 0.28        # folga sobre o cooldown do golpe para encadear o combo
+const COMBO_MAX := 3             # combo de 3 golpes (0, 1, 2=finisher)
+const FINISHER_KNOCKBACK := 2.4  # o 3º golpe empurra bem mais
 
 var data: Player                    # entidade Core
 var god_mode := false               # debug: ignora dano recebido
@@ -23,6 +27,10 @@ var _attack_dir := Vector2.RIGHT    # direção do golpe atual (facing, ou DOWN 
 var _attack_cd := 0.0
 var _dodge_time := 0.0              # >0 enquanto esquiva (concede i-frames)
 var _dodge_cd := 0.0
+var _dodge_dir := Vector2.RIGHT    # direção do dash (input atual, ou facing)
+var _afterimage_acc := 0.0
+var _combo := 0                    # passo atual do combo (0..COMBO_MAX-1)
+var _combo_timer := 0.0            # tempo restante para encadear o próximo golpe
 var _body: ColorRect
 
 func setup(player: Player) -> void:
@@ -58,15 +66,20 @@ func _physics_process(delta: float) -> void:
 		return
 	_attack_cd = maxf(0.0, _attack_cd - delta)
 	_dodge_cd = maxf(0.0, _dodge_cd - delta)
+	_combo_timer = maxf(0.0, _combo_timer - delta)
+	if _combo_timer <= 0.0:
+		_combo = 0                    # combo expira fora da janela
 
 	# Gravidade contínua; o chão (StaticBody2D) segura o player via is_on_floor().
 	if not is_on_floor():
 		velocity.y += GRAVITY * delta
 
-	# Esquiva: dash horizontal no facing, mantém a gravidade, ignora dano (i-frames).
+	# Esquiva: dash na direção escolhida, mantém a gravidade, ignora dano (i-frames),
+	# deixa um rastro de ecos.
 	if _dodge_time > 0.0:
 		_dodge_time -= delta
-		velocity.x = _facing.x * DODGE_SPEED
+		velocity.x = _dodge_dir.x * DODGE_SPEED
+		_emit_afterimages(delta)
 		move_and_slide()
 		return
 
@@ -79,34 +92,57 @@ func _physics_process(delta: float) -> void:
 		velocity.y = JUMP_VELOCITY
 
 	if Input.is_action_just_pressed("dodge") and _dodge_cd <= 0.0:
-		_dodge_time = DODGE_TIME
-		_dodge_cd = DODGE_COOLDOWN
+		_start_dodge(ix)
 
 	move_and_slide()
 
 	if Input.is_action_pressed("attack") and _attack_cd <= 0.0:
 		_attack()
 
+## Inicia o dash da esquiva: direção = input atual (permite esquivar pra trás), ou o facing.
+func _start_dodge(ix: float) -> void:
+	_dodge_time = DODGE_TIME
+	_dodge_cd = DODGE_COOLDOWN
+	_dodge_dir = (Vector2.RIGHT if ix > 0.0 else Vector2.LEFT) if ix != 0.0 else _facing
+	_afterimage_acc = 0.0
+
+## Solta ecos translúcidos em intervalos fixos durante o dash (rastro de velocidade).
+func _emit_afterimages(delta: float) -> void:
+	_afterimage_acc += delta
+	if _afterimage_acc >= AFTERIMAGE_STEP:
+		_afterimage_acc -= AFTERIMAGE_STEP
+		Juice.afterimage(get_parent(), global_position, Vector2(SIZE, SIZE), BASE_COLOR)
+
 func _attack() -> void:
 	var spd := data.weapon.attack_speed if data.weapon else 1.0
-	_attack_cd = 1.0 / maxf(spd, 0.1)
+	var cd := 1.0 / maxf(spd, 0.1)
+	_attack_cd = cd
 	_attack_dir = _current_attack_dir()
+
+	# Combo de 3 golpes: cada ataque dentro da janela avança o passo; o 3º é o finisher.
+	# A janela = cooldown do golpe + folga, então atacar no ritmo do cooldown mantém o combo.
+	var step := _combo
+	var is_finisher := step >= COMBO_MAX - 1
+	_combo = (step + 1) % COMBO_MAX
+	_combo_timer = cd + COMBO_GRACE
+
+	var kb := FINISHER_KNOCKBACK if is_finisher else 1.0
 	var total_dmg := 0
 	for b in _enemies_in_reach():
 		var dmg := int(round(CombatResolver.player_hit(data, b.data.stats)))
-		b.apply_damage(dmg)
+		b.apply_damage(dmg, kb)
 		total_dmg += dmg
 	# Roubo de vida: cura uma fração do dano total causado neste golpe.
 	var heal := CombatResolver.lifesteal_heal(data.stats.lifesteal, total_dmg)
 	if heal > 0:
 		data.heal(heal)
-	if total_dmg > 0:                       # impacto: hit-stop + tremor de tela
-		Juice.hit_stop(get_tree())
-		_shake(0.22)
+	if total_dmg > 0:                       # impacto: hit-stop + tremor (mais forte no finisher)
+		Juice.hit_stop(get_tree(), 0.07 if is_finisher else 0.05)
+		_shake(0.32 if is_finisher else 0.2)
 		# Pogo: golpe pra baixo no ar que acerta impulsiona o player pra cima.
 		if _attack_dir == Vector2.DOWN and not is_on_floor():
 			velocity.y = POGO_BOUNCE
-	_spawn_slash()
+	_spawn_slash(step)
 
 ## Direção do golpe: pra baixo se estiver no ar segurando ↓/S; senão, o facing horizontal.
 func _current_attack_dir() -> Vector2:
@@ -151,18 +187,20 @@ func _enemies_in_reach() -> Array:
 			result.append(b)
 	return result
 
-## Arco de corte: um crescente fino na direção do golpe, que aparece e some rápido,
-## com um leve "sweep" (gira um pouco) para dar sensação de movimento da lâmina.
-func _spawn_slash() -> void:
+## Arco de corte na direção do golpe. O sentido da varredura alterna por passo do combo
+## (dá ritmo aos golpes encadeados) e o finisher é mais largo, grosso e brilhante.
+func _spawn_slash(step: int) -> void:
 	var reach := _reach()
-	var radius := reach * 0.5
+	var is_finisher := step >= COMBO_MAX - 1
+	var radius := reach * (0.62 if is_finisher else 0.5)
 	var base := _attack_dir.angle()
-	var span := deg_to_rad(120.0)
-	var steps := 10
+	var span := deg_to_rad(160.0 if is_finisher else 120.0)
+	var steps := 12
+	var forward := (step % 2 == 0)           # alterna o sentido da lâmina a cada golpe
 
 	var slash := Line2D.new()
-	slash.width = 5.0
-	slash.default_color = Palette.SLASH
+	slash.width = 7.0 if is_finisher else 5.0
+	slash.default_color = Palette.HIT_SPARK if is_finisher else Palette.SLASH
 	slash.begin_cap_mode = Line2D.LINE_CAP_ROUND
 	slash.end_cap_mode = Line2D.LINE_CAP_ROUND
 	slash.joint_mode = Line2D.LINE_JOINT_ROUND
@@ -170,12 +208,14 @@ func _spawn_slash() -> void:
 	for i in steps + 1:
 		var a := base - span * 0.5 + span * (float(i) / steps)
 		slash.add_point(Vector2(cos(a), sin(a)) * radius)
-	slash.rotation = -span * 0.25            # começa puxado pra trás...
+	var from_rot := (-span * 0.25) if forward else (span * 0.25)
+	var to_rot := (span * 0.25) if forward else (-span * 0.25)
+	slash.rotation = from_rot
 	add_child(slash)
 
 	var tw := slash.create_tween()
 	tw.set_parallel(true)
-	tw.tween_property(slash, "rotation", span * 0.25, 0.12)   # ...e varre pra frente
+	tw.tween_property(slash, "rotation", to_rot, 0.12)
 	tw.tween_property(slash, "modulate:a", 0.0, 0.14)
 	tw.tween_property(slash, "width", 1.5, 0.14)
 	tw.chain().tween_callback(slash.queue_free)

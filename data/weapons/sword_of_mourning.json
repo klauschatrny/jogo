@@ -6,7 +6,7 @@
   "base_damage": 15,
   "weapon_growth": 1.12,
   "attack_range": 55,
-  "attack_speed": 1.2,
+  "attack_speed": 1.5,
   "crit_bonus": 0.0,
   "modifiers": [],
   "special_ability": {
