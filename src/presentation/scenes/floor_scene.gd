@@ -31,6 +31,8 @@ var _boss_repo: BossRepository
 var _ghost_repo: GhostRepository
 var _crt: CrtOverlay
 var _camera: GameCamera
+var _bg: BiomeBackground        # fundo ambiental (parallax) por bioma
+var _biomes: Array = []         # paletas de bioma (data/biomes.json)
 var _corridor_length := 5760.0  # (= 1920 × 3, viewport 1920×1080)
 var _arena_width := 5760.0      # largura do ambiente atual (corredor ou sala do boss)
 var _env: Node2D               # container do cenário atual (reconstruído por andar/sala)
@@ -51,6 +53,13 @@ func _ready() -> void:
 	var cfg = JsonLoader.load_file("res://data/floors/floor_default.json")
 	_floor_config = cfg if typeof(cfg) == TYPE_DICTIONARY else {}
 	_corridor_length = float(_floor_config.get("corridor_length", _corridor_length))
+
+	var bcfg = JsonLoader.load_file("res://data/biomes.json")
+	_biomes = (bcfg.get("biomes", []) if typeof(bcfg) == TYPE_DICTIONARY else [])
+
+	# Fundo ambiental (parallax) atrás de tudo; o conteúdo é definido por bioma em _build_environment.
+	_bg = BiomeBackground.new()
+	add_child(_bg)
 
 	# Câmera que segue o player no eixo X, presa às bordas do nível; permite screen shake.
 	# O cenário (corredor/sala) é construído por _start_floor, que ajusta os limites dela.
@@ -121,12 +130,13 @@ func _build_environment(width: float, is_boss_room: bool) -> void:
 	_env = Node2D.new()
 	add_child(_env)
 
-	var bg := ColorRect.new()
-	bg.color = Palette.BG.darkened(0.18) if is_boss_room else Palette.BG
-	bg.position = Vector2(-120, -120)       # folga para o screen shake não revelar as bordas
-	bg.size = Vector2(width + 240, 1320)
-	bg.z_index = -10
-	_env.add_child(bg)
+	# Bioma atual define o fundo (parallax) e as cores do chão. Sala do boss = mais escura.
+	var biome := _biome_for_floor(_run.current_floor)
+	var dim := 0.22 if is_boss_room else 0.0
+	if _bg != null:
+		_bg.apply(biome, dim)
+	var ground_col := Color(String(biome.get("ground", "3b3f54"))).darkened(dim)
+	var edge_col := Color(String(biome.get("ground_edge", "29283b"))).darkened(dim)
 
 	var body := StaticBody2D.new()
 	body.collision_layer = 4
@@ -147,14 +157,14 @@ func _build_environment(width: float, is_boss_room: bool) -> void:
 	_env.add_child(body)
 
 	var fill := ColorRect.new()
-	fill.color = Palette.GROUND
+	fill.color = ground_col
 	fill.position = Vector2(-120, GROUND_Y)
 	fill.size = Vector2(width + 240, 1320 - (GROUND_Y + 120))
 	fill.z_index = -5
 	_env.add_child(fill)
 
 	var edge := ColorRect.new()
-	edge.color = Palette.GROUND_EDGE
+	edge.color = edge_col
 	edge.position = Vector2(-120, GROUND_Y)
 	edge.size = Vector2(width + 240, 9)
 	edge.z_index = -5
@@ -250,6 +260,10 @@ func _open_exit_door() -> void:
 	_msg.text = "A porta para o andar superior se abriu →"
 
 func _process(_delta: float) -> void:
+	# Parallax do fundo segue a câmera (todo frame, em qualquer fase).
+	if _bg != null and _camera != null:
+		_bg.update_scroll(_camera.global_position.x)
+
 	# Detecta o player chegando à porta ativa.
 	if _phase != "to_boss_door" and _phase != "to_exit_door":
 		return
@@ -411,6 +425,13 @@ func _random_spawn_pos() -> Vector2:
 	var px := _player_view.global_position.x if is_instance_valid(_player_view) else 0.0
 	var x := minf(px + randf_range(1140.0, 1560.0), _arena_width - 120.0)
 	return Vector2(x, GROUND_Y - 120.0)
+
+## Bioma do andar: 10 andares por zona (1–10, 11–20, …), preso ao último.
+func _biome_for_floor(floor: int) -> Dictionary:
+	if _biomes.is_empty():
+		return {}
+	var idx := clampi((floor - 1) / 10, 0, _biomes.size() - 1)
+	return _biomes[idx]
 
 ## Boss aparece no lado direito da sala do boss (arena fechada).
 func _boss_spawn_pos() -> Vector2:

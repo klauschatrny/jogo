@@ -1,0 +1,54 @@
+{
+  "biomes": [
+    {
+      "id": "ossuary",
+      "name": "O Ossário",
+      "bg_top": "15161f",
+      "bg_bottom": "23271f",
+      "far": "2b3a30",
+      "mid": "3c4d3e",
+      "ground": "44443a",
+      "ground_edge": "2c2c22"
+    },
+    {
+      "id": "swamp",
+      "name": "O Pântano Pestilento",
+      "bg_top": "141a14",
+      "bg_bottom": "212c1c",
+      "far": "2c3a22",
+      "mid": "44502a",
+      "ground": "3a3a26",
+      "ground_edge": "2a2e1a"
+    },
+    {
+      "id": "forge",
+      "name": "A Forja Infernal",
+      "bg_top": "1d1310",
+      "bg_bottom": "311a13",
+      "far": "3c2018",
+      "mid": "5e2c18",
+      "ground": "2a201c",
+      "ground_edge": "7a3418"
+    },
+    {
+      "id": "crypt",
+      "name": "O Sepulcro Gélido",
+      "bg_top": "141b24",
+      "bg_bottom": "20303e",
+      "far": "2c3e4e",
+      "mid": "3e566c",
+      "ground": "3a4452",
+      "ground_edge": "5a7a8a"
+    },
+    {
+      "id": "shadow",
+      "name": "O Santuário das Sombras",
+      "bg_top": "120f1a",
+      "bg_bottom": "1d1430",
+      "far": "2a1c3a",
+      "mid": "3c2452",
+      "ground": "2a2436",
+      "ground_edge": "6a3a78"
+    }
+  ]
+}

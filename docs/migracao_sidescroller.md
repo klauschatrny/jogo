@@ -88,4 +88,8 @@ Objetivo: combate lateral funcionando, ainda como "arena", para validar o feel.
   (`{ "row", "frames", "fps", "loop" }`). Sem PNG/manifesto → mantém o placeholder.
 - Falta: integrar o `SpriteLoader` nas views (player/inimigos/boss) trocando o `ColorRect`.
 
-**Ambientação (a fazer):** parallax de fundo + chão em tile por **bioma** (as 5 zonas do bestiário).
+**Ambientação (feito — placeholder procedural):** fundo com parallax por **bioma** (5 zonas do
+bestiário, `data/biomes.json`): céu em gradiente + 2 camadas de silhuetas com scroll horizontal
+manual (`BiomeBackground`, CanvasLayer atrás do mundo). O chão é tingido pela paleta do bioma; a
+sala do boss usa a mesma paleta escurecida. Mapeamento: 10 andares por zona. Pronto para trocar as
+silhuetas/gradiente por arte de parallax real depois.
