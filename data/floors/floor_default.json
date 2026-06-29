@@ -1,5 +1,6 @@
 {
   "id": "floor_default",
+  "corridor_length": 1920,
   "waves_base": 2,
   "enemies_per_wave": 3,
   "enemy_pool": ["enm_skeleton"],

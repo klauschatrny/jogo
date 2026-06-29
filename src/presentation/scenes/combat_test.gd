@@ -7,8 +7,11 @@ var _player: Player
 var _enemies_alive := 0
 var _msg: Label
 
+const GROUND_Y := 300.0
+
 func _ready() -> void:
 	_add_background()
+	_add_ground()
 
 	var weapons := WeaponRepository.new()
 	weapons.load_all()
@@ -20,13 +23,13 @@ func _ready() -> void:
 
 	var pv := PlayerView.new()
 	pv.setup(_player)
-	pv.position = Vector2(320, 180)
+	pv.position = Vector2(320, GROUND_Y - 40)
 	add_child(pv)
 
 	var enemies := EnemyRepository.new()
 	enemies.load_all()
-	_spawn(enemies, "enm_skeleton", Vector2(470, 110), pv)
-	_spawn(enemies, "enm_skeleton", Vector2(180, 250), pv)
+	_spawn(enemies, "enm_skeleton", Vector2(470, GROUND_Y - 40), pv)
+	_spawn(enemies, "enm_skeleton", Vector2(560, GROUND_Y - 40), pv)
 
 	var layer := CanvasLayer.new()
 	add_child(layer)
@@ -47,6 +50,25 @@ func _add_background() -> void:
 	bg.size = Vector2(640, 360)
 	bg.z_index = -10
 	add_child(bg)
+
+func _add_ground() -> void:
+	var body := StaticBody2D.new()
+	body.collision_layer = 4
+	body.collision_mask = 0
+	var col := CollisionShape2D.new()
+	var rect := RectangleShape2D.new()
+	rect.size = Vector2(1280, 200)
+	col.shape = rect
+	col.position = Vector2(320, GROUND_Y + 100)
+	body.add_child(col)
+	add_child(body)
+
+	var fill := ColorRect.new()
+	fill.color = Palette.GROUND
+	fill.position = Vector2(0, GROUND_Y)
+	fill.size = Vector2(640, 60)
+	fill.z_index = -5
+	add_child(fill)
 
 func _spawn(repo: EnemyRepository, id: String, pos: Vector2, target: Node2D) -> void:
 	var enemy := repo.get_enemy(id)

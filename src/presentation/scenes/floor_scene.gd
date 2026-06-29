@@ -30,16 +30,29 @@ var _enemy_repo: EnemyRepository
 var _boss_repo: BossRepository
 var _ghost_repo: GhostRepository
 var _crt: CrtOverlay
+var _camera: GameCamera
+var _corridor_length := 1920.0
+
+## Linha de topo do chão (eixo Y). Player e inimigos pousam aqui pela gravidade.
+const GROUND_Y := 300.0
 
 func _ready() -> void:
 	randomize()
-	_add_background()
 
-	# Câmera centralizada na arena (640x360) que permite screen shake nos impactos.
-	var cam := GameCamera.new()
-	cam.position = Vector2(320, 180)
-	add_child(cam)
-	cam.make_current()
+	# Config do andar carregada cedo: define o comprimento do corredor (cenário + câmera).
+	var cfg = JsonLoader.load_file("res://data/floors/floor_default.json")
+	_floor_config = cfg if typeof(cfg) == TYPE_DICTIONARY else {}
+	_corridor_length = float(_floor_config.get("corridor_length", _corridor_length))
+
+	_add_background()
+	_add_ground()
+
+	# Câmera que segue o player no eixo X, presa às bordas do corredor; permite screen shake.
+	_camera = GameCamera.new()
+	_camera.setup_corridor(_corridor_length)
+	_camera.position = Vector2(320, 180)
+	add_child(_camera)
+	_camera.make_current()
 
 	# Overlay CRT/scanline acima de tudo (inclusive HUD). Alterna com F9.
 	var crt_layer := CanvasLayer.new()
@@ -70,17 +83,15 @@ func _ready() -> void:
 	_boss_repo.load_all()
 	_ghost_repo = GhostRepository.new()
 
-	var cfg = JsonLoader.load_file("res://data/floors/floor_default.json")
-	_floor_config = cfg if typeof(cfg) == TYPE_DICTIONARY else {}
-
 	var tcfg = JsonLoader.load_file("res://data/floors/tower.json")
 	_tower = TowerManager.from_config(tcfg if typeof(tcfg) == TYPE_DICTIONARY else {})
 
 	_run = RunState.start_new("Kael", weapon, aug_repo.all_augments(), randi())
 	_player_view = PlayerView.new()
 	_player_view.setup(_run.player)
-	_player_view.position = Vector2(320, 200)
+	_player_view.position = Vector2(80, GROUND_Y - 40)   # início à esquerda do corredor
 	add_child(_player_view)
+	_camera.follow_target = _player_view                 # câmera passa a seguir o player
 	_hud.set_player(_run.player)
 
 	EventBus.player_died.connect(_on_player_died)
@@ -94,10 +105,48 @@ func _ready() -> void:
 func _add_background() -> void:
 	var bg := ColorRect.new()
 	bg.color = Palette.BG
-	bg.position = Vector2(-40, -40)       # folga para o screen shake não revelar as bordas
-	bg.size = Vector2(720, 440)
+	# Cobre o corredor inteiro (+ folga para o screen shake não revelar as bordas).
+	bg.position = Vector2(-40, -40)
+	bg.size = Vector2(_corridor_length + 80, 440)
 	bg.z_index = -10
 	add_child(bg)
+
+## Chão sólido (camada 4) ao longo de todo o corredor + paredes nas duas pontas (mesma
+## camada) para conter player e inimigos. Visual: bloco de pedra com linha de topo escura.
+func _add_ground() -> void:
+	var body := StaticBody2D.new()
+	body.collision_layer = 4
+	body.collision_mask = 0
+	# Chão
+	var floor_col := CollisionShape2D.new()
+	var floor_rect := RectangleShape2D.new()
+	floor_rect.size = Vector2(_corridor_length + 200, 200)
+	floor_col.shape = floor_rect
+	floor_col.position = Vector2(_corridor_length * 0.5, GROUND_Y + 100)
+	body.add_child(floor_col)
+	# Parede esquerda (em x=0) e direita (em x=corridor_length)
+	for wall_x in [0.0, _corridor_length]:
+		var wcol := CollisionShape2D.new()
+		var wrect := RectangleShape2D.new()
+		wrect.size = Vector2(40, 800)
+		wcol.shape = wrect
+		wcol.position = Vector2(wall_x + (-20.0 if wall_x == 0.0 else 20.0), 0.0)
+		body.add_child(wcol)
+	add_child(body)
+
+	var fill := ColorRect.new()
+	fill.color = Palette.GROUND
+	fill.position = Vector2(-40, GROUND_Y)
+	fill.size = Vector2(_corridor_length + 80, 440 - (GROUND_Y + 40))
+	fill.z_index = -5
+	add_child(fill)
+
+	var edge := ColorRect.new()
+	edge.color = Palette.GROUND_EDGE
+	edge.position = Vector2(-40, GROUND_Y)
+	edge.size = Vector2(_corridor_length + 80, 3)
+	edge.z_index = -5
+	add_child(edge)
 
 func _start_floor() -> void:
 	var floor := _run.current_floor
@@ -153,14 +202,14 @@ func _spawn_boss() -> void:
 	var bv := BossView.new()
 	bv.summon_ghost.connect(_on_summon_ghost)
 	_boss_view = bv
-	_add_view(bv, boss, Vector2(320, 70))
+	_add_view(bv, boss, _boss_spawn_pos())             # entra pela direita, no chão
 
 func _on_summon_ghost() -> void:
 	if _ghost_to_summon == null or _ghost_summoned:
 		return
 	_ghost_summoned = true
 	var ghost := GhostFactory.build(_ghost_to_summon, _run.player)
-	_add_view(GhostView.new(), ghost, Vector2(360, 120))
+	_add_view(GhostView.new(), ghost, _boss_spawn_pos() + Vector2(-80, 0))
 	_msg.text = "%s foi invocado para te enfrentar!" % ghost.name
 
 func _add_view(view: EnemyView, enemy: Enemy, pos: Vector2) -> void:
@@ -255,14 +304,17 @@ func _show_end_screen(title: String, lines: Array, accent: Color) -> void:
 	_layer.add_child(es)
 
 func _random_spawn_pos() -> Vector2:
-	# borda aleatória, longe do centro onde o jogador começa
-	var margin := 40.0
-	var side := randi() % 4
-	match side:
-		0: return Vector2(randf_range(margin, 600), margin)
-		1: return Vector2(randf_range(margin, 600), 320)
-		2: return Vector2(margin, randf_range(margin, 320))
-		_: return Vector2(600, randf_range(margin, 320))
+	# Side-scroller: inimigos entram pela direita, logo fora da vista atual (à frente do
+	# player), no nível do chão. Presos ao corredor para não nascerem após a parede.
+	var px := _player_view.global_position.x if is_instance_valid(_player_view) else 0.0
+	var x := minf(px + randf_range(380.0, 520.0), _corridor_length - 40.0)
+	return Vector2(x, GROUND_Y - 40.0)
+
+## Boss entra à frente do player, sempre dentro do corredor. (Na Leva 2 isso vira a sala.)
+func _boss_spawn_pos() -> Vector2:
+	var px := _player_view.global_position.x if is_instance_valid(_player_view) else 0.0
+	var x := minf(px + 420.0, _corridor_length - 80.0)
+	return Vector2(x, GROUND_Y - 60.0)
 
 func _unhandled_input(event: InputEvent) -> void:
 	# F9 alterna o overlay CRT (disponível sempre, não só em debug).
@@ -276,7 +328,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 # ---------------------------------------------------------------------------
 # DEBUG — atalhos para testar partes específicas sem jogar a run inteira.
-# Teclas escolhidas para não colidir com o jogo (ataque = Espaço/J, mover = WASD/setas).
+# Teclas escolhidas para não colidir com o jogo (mover A/D, pular Espaço/W, atacar J/K, esquivar Shift/L).
 # ---------------------------------------------------------------------------
 
 func _apply_debug_start() -> void:

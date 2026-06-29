@@ -7,7 +7,9 @@ extends CharacterBody2D
 signal died
 
 const ATTACK_RANGE := 30.0
+const ATTACK_VRANGE := 30.0        # alcance vertical: não acerta quem está acima (pogo)
 const ATTACK_INTERVAL := 1.0
+const GRAVITY := 1400.0            # mesma gravidade do player (side-scroller plano)
 
 var data: Enemy                     # entidade Core
 var target: Node2D                  # quem perseguir (o PlayerView)
@@ -27,11 +29,13 @@ func setup(enemy: Enemy, target_node: Node2D) -> void:
 
 func _ready() -> void:
 	collision_layer = 2
-	# Só colide com outros inimigos (camada 2) para manter separação entre eles.
-	# NÃO colide com o jogador (camada 1): dois CharacterBody2D se bloqueando ao
-	# encostar fazia o inimigo "prender"/encavalar. A IA já para em ATTACK_RANGE,
-	# então não há sobreposição visual mesmo sem colisão física com o jogador.
-	collision_mask = 2
+	# Colide APENAS com o chão (camada 4). Sem body-block entre entidades: inimigos
+	# atravessam uns aos outros e o player livremente (nada de "encavalar"/travar).
+	# A camada 2 é mantida só para a query de acerto da espada encontrá-los.
+	collision_mask = 4
+	# Profundidade por tamanho: menores ficam à frente dos maiores. Sempre acima do chão
+	# (z=-5) e sempre atrás do player (z=200). box_size já está definido pelo setup().
+	z_index = 100 - int(box_size)
 	_build()
 
 func _build() -> void:
@@ -63,17 +67,26 @@ func _build() -> void:
 func _physics_process(delta: float) -> void:
 	if data == null or not is_instance_valid(target):
 		return
-	var to_target := target.global_position - global_position
-	if to_target.length() > ATTACK_RANGE:
-		velocity = to_target.normalized() * float(data.stats.move_speed)
+	# Gravidade contínua; o chão (camada 4) segura o inimigo.
+	if not is_on_floor():
+		velocity.y += GRAVITY * delta
+
+	# IA lateral: avança no eixo X em direção ao player.
+	var dx := target.global_position.x - global_position.x
+	var dy := target.global_position.y - global_position.y
+	if absf(dx) > ATTACK_RANGE:
+		velocity.x = signf(dx) * float(data.stats.move_speed)
 	else:
-		velocity = Vector2.ZERO
-		_attack_cd -= delta
-		if _attack_cd <= 0.0:
-			_attack_cd = ATTACK_INTERVAL
-			if target.has_method("apply_enemy_hit"):
-				target.apply_enemy_hit(data.stats)
-	velocity += _knockback
+		velocity.x = 0.0
+		# Só ataca se o player estiver ao alcance horizontal E vertical: quem pula/pogo
+		# por cima fica fora do alcance e não toma dano por estar "em cima" do inimigo.
+		if absf(dy) <= ATTACK_VRANGE:
+			_attack_cd -= delta
+			if _attack_cd <= 0.0:
+				_attack_cd = ATTACK_INTERVAL
+				if target.has_method("apply_enemy_hit"):
+					target.apply_enemy_hit(data.stats)
+	velocity.x += _knockback.x
 	_knockback = _knockback.lerp(Vector2.ZERO, 0.2)   # recuo decai rápido
 	move_and_slide()
 

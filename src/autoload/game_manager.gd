@@ -34,13 +34,17 @@ func _on_state_changed(state_name: String) -> void:
 	EventBus.state_changed.emit(state_name)
 
 ## Registra as ações de input via código (mais robusto que editar o formato do
-## project.godot à mão). Só teclado nesta fase: WASD/setas para mover, Espaço/J ataca.
+## project.godot à mão). Side-scroller: A/D (ou setas) anda, Espaço/W/cima pula,
+## J/K ataca, Shift/L esquiva. move_up/down ficam registradas (não usadas no movimento
+## lateral) para não quebrar menus/UI que dependam delas.
 func _setup_input_actions() -> void:
 	_ensure_action("move_up", [KEY_W, KEY_UP])
 	_ensure_action("move_down", [KEY_S, KEY_DOWN])
 	_ensure_action("move_left", [KEY_A, KEY_LEFT])
 	_ensure_action("move_right", [KEY_D, KEY_RIGHT])
-	_ensure_action("attack", [KEY_SPACE, KEY_J])
+	_ensure_action("attack", [KEY_J, KEY_K])
+	_ensure_action("jump", [KEY_SPACE, KEY_W, KEY_UP])
+	_ensure_action("dodge", [KEY_SHIFT, KEY_L])
 
 func _ensure_action(action: String, physical_keys: Array) -> void:
 	if InputMap.has_action(action):

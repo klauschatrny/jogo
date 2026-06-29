@@ -6,6 +6,8 @@ extends RefCounted
 
 const BG := Color("1a1c2c")          # fundo (azul-noite escuro)
 const BG_EDGE := Color("141520")     # bordas/vinheta
+const GROUND := Color("3b3f54")      # chão da dungeon (pedra)
+const GROUND_EDGE := Color("29283b") # linha de topo do chão
 
 const PLAYER := Color("41a6f6")      # jogador (azul)
 const ENEMY := Color("d9575b")       # inimigo comum (vermelho)

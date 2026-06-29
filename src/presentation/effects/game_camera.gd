@@ -6,13 +6,31 @@ extends Camera2D
 const DECAY := 1.6                         # quão rápido o trauma some (por segundo)
 const MAX_OFFSET := Vector2(9.0, 7.0)      # deslocamento máximo do tremor (px)
 const MAX_ROLL := 0.04                     # rotação máxima do tremor (rad)
+const FOLLOW_LERP := 8.0                   # suavidade do follow horizontal
+const SCREEN_H := 360.0
 
 var _trauma := 0.0
+var follow_target: Node2D                  # segue este nó no eixo X (o PlayerView)
+var _base_y := SCREEN_H * 0.5              # Y fixo: corredor é plano, câmera só anda em X
 
 func add_trauma(amount: float) -> void:
 	_trauma = clampf(_trauma + amount, 0.0, 1.0)
 
+## Configura os limites do corredor: a câmera não revela além das bordas. O range
+## vertical = altura da tela trava o Y (corredor plano, sem rolagem vertical).
+func setup_corridor(length: float) -> void:
+	limit_left = 0
+	limit_right = int(length)
+	limit_top = 0
+	limit_bottom = int(SCREEN_H)
+
 func _process(delta: float) -> void:
+	# Follow horizontal suave; Y travado. Os limit_* clampam a vista nas bordas do corredor.
+	if follow_target != null and is_instance_valid(follow_target):
+		var t := 1.0 - exp(-FOLLOW_LERP * delta)
+		global_position.x = lerpf(global_position.x, follow_target.global_position.x, t)
+		global_position.y = _base_y
+
 	if _trauma <= 0.0:
 		offset = Vector2.ZERO
 		rotation = 0.0
