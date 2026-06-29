@@ -47,7 +47,7 @@ sobreviver à run inteira. Padrão correto:
 
 ## Roadmap (Levas)
 
-### Leva 0 — Fundação física (corredor plano lateral) — EM ANDAMENTO
+### Leva 0 — Fundação física (corredor plano lateral) — CONCLUÍDA
 Objetivo: combate lateral funcionando, ainda como "arena", para validar o feel.
 - `PlayerView`: movimento A/D + **gravidade + pulo + esquiva (i-frames)**, facing
   esquerda/direita, ataque horizontal (`attack_range` vira alcance lateral). Mantém slash/juice.
@@ -56,12 +56,12 @@ Objetivo: combate lateral funcionando, ainda como "arena", para validar o feel.
 - Inputs novos: `jump` (W/Espaço/seta-cima), `dodge` (Shift). Ataque migra para outra tecla
   para não colidir com pulo, se necessário.
 
-### Leva 1 — Corredor + spawn lateral + câmera
+### Leva 1 — Corredor + spawn lateral + câmera — CONCLUÍDA
 - Corredor horizontal de **comprimento configurável** (vai para `floor_*.json`).
 - Player começa na esquerda; câmera segue X com limites (não passa das bordas).
 - Spawn **fora da tela à direita**; inimigos avançam para a esquerda.
 
-### Leva 2 — Porta + sala do boss (cena separada com fade)
+### Leva 2 — Porta + sala do boss (cena separada com fade) — CONCLUÍDA
 - Limpou as waves → **porta no fim do corredor abre**. Player anda até ela → fade →
   **sala do boss** (sub-cena dedicada). Fluxo nemesis/catarse idêntico.
 - Boss caiu → porta de saída → `_next_floor()` (nível superior).
