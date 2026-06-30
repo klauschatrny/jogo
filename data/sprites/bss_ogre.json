@@ -1,6 +1,6 @@
 {
-  "cell_w": 48, "cell_h": 48,
-  "hitbox": [16, 38],
+  "cell_w": 48, "cell_h": 64,
+  "hitbox": [26, 52],
   "facing": "left",
   "scale": 2,
   "animations": {
