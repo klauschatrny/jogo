@@ -1,0 +1,8 @@
+{
+  "cell_w": 32, "cell_h": 32,
+  "hitbox": [8, 26],
+  "scale": 2,
+  "animations": {
+    "idle": { "row": 0, "frames": 1, "fps": 1 }
+  }
+}

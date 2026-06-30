@@ -1,0 +1,16 @@
+{
+  "id": "bss_ogre",
+  "name": "Ogro Carrasco",
+  "archetype": "TANK",
+  "rank": "BOSS",
+  "base_stats": { "max_hp": 48, "attack": 18, "defense": 5, "move_speed": 50 },
+  "ai_profile": "boss_phased",
+  "abilities": ["abil_ground_slam"],
+  "phases": [
+    { "hp_threshold": 0.5, "on_enter": ["enrage"], "atk_mult": 1.3 }
+  ],
+  "can_summon_ghost": true,
+  "ghost_summon_threshold": 0.6,
+  "intro_dialogue": "Carne nova para esmagar.",
+  "loot": { "gold_min": 50, "gold_max": 90, "xp": 150, "guaranteed_drop_tier": "RELIC" }
+}

@@ -1,0 +1,6 @@
+{
+  "cell_w": 128, "cell_h": 160,
+  "animations": {
+    "idle": { "row": 0, "frames": 1, "fps": 1 }
+  }
+}

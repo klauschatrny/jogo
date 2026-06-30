@@ -59,6 +59,13 @@ static func build(id: String, subdir: String) -> AnimatedSprite2D:
 	var spr := AnimatedSprite2D.new()
 	spr.sprite_frames = sf
 	spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST   # pixel-art sem suavização
+	# Multiplicador de tamanho (padrão 1). Use inteiro (2, 3) para manter os pixels nítidos.
+	# Escala SÓ o ator no mundo (cenário fica igual); a hitbox é escalada junto pelas views.
+	var sc := maxf(0.01, float(m.get("scale", 1.0)))
+	spr.scale = Vector2(sc, sc)
+	# Direção em que a arte foi desenhada ("right" padrão | "left"). As views usam isto para
+	# decidir o flip_h: arte virada p/ esquerda inverte o espelhamento. Guardado como meta.
+	spr.set_meta("faces_left", String(m.get("facing", "right")) == "left")
 	# Âncora nos PÉS: coloca o bottom-center do quadro no (0,0) local do sprite. A view então
 	# desloca esse ponto para a base da hitbox (o chão). Assim o artista desenha os pés colados
 	# na borda inferior do canvas — sem vão e sem cálculo de offset, com canvas de qualquer altura.
@@ -67,6 +74,30 @@ static func build(id: String, subdir: String) -> AnimatedSprite2D:
 	spr.animation = "idle" if sf.has_animation("idle") else String(anims.keys()[0])
 	spr.play()
 	return spr
+
+## Lê a hitbox opcional do manifesto (data/sprites/<id>.json → "hitbox": [largura, altura]).
+## Retorna Vector2(w, h) em px (base 640×360), ou Vector2.ZERO se ausente/inválida (a view
+## então cai no seu padrão por rank). Mantém os dados de arte (canvas + hitbox) num arquivo só.
+static func hitbox_for(id: String) -> Vector2:
+	if id == "":
+		return Vector2.ZERO
+	var manifest: Variant = JsonLoader.load_file("res://data/sprites/%s.json" % id)
+	if typeof(manifest) != TYPE_DICTIONARY:
+		return Vector2.ZERO
+	var hb: Array = (manifest as Dictionary).get("hitbox", [])
+	if hb.size() < 2:
+		return Vector2.ZERO
+	return Vector2(float(hb[0]), float(hb[1]))
+
+## Multiplicador de tamanho do manifesto (data/sprites/<id>.json → "scale", padrão 1.0).
+## As views usam isto para escalar a hitbox junto com a arte (mesmo fator → proporção mantida).
+static func scale_for(id: String) -> float:
+	if id == "":
+		return 1.0
+	var manifest: Variant = JsonLoader.load_file("res://data/sprites/%s.json" % id)
+	if typeof(manifest) != TYPE_DICTIONARY:
+		return 1.0
+	return maxf(0.01, float((manifest as Dictionary).get("scale", 1.0)))
 
 ## Toca uma animação só se ela existir (senão tenta o fallback); evita reiniciar a mesma.
 static func play_safe(spr: AnimatedSprite2D, anim: String, fallback := "idle") -> void:

@@ -32,8 +32,11 @@ var _dodge_dir := Vector2.RIGHT    # direção do dash (input atual, ou facing)
 var _afterimage_acc := 0.0
 var _combo := 0                    # passo atual do combo (0..COMBO_MAX-1)
 var _combo_timer := 0.0            # tempo restante para encadear o próximo golpe
+var box_w := SIZE                  # hitbox efetiva (px); resolvida em _build do manifesto player.json
+var box_h := SIZE                  # (ou SIZE × SIZE se o manifesto não definir "hitbox")
 var _body: ColorRect
 var _sprite: AnimatedSprite2D      # arte (null = usa o placeholder _body)
+var _faces_left := false           # true se a arte foi desenhada virada p/ esquerda (manifesto)
 var _anim_lock := 0.0              # trava a anim de locomoção enquanto toca ataque
 
 func setup(player: Player) -> void:
@@ -52,22 +55,35 @@ func _ready() -> void:
 	_build()
 
 func _build() -> void:
+	# Hitbox: "hitbox": [w, h] do manifesto player.json (ou SIZE), × "scale" do manifesto —
+	# a hitbox cresce junto com a arte (mesmo fator → proporção mantida).
+	var s := SpriteLoader.scale_for(SPRITE_ID)
+	var hb := SpriteLoader.hitbox_for(SPRITE_ID)
+	if hb != Vector2.ZERO:
+		box_w = hb.x * s
+		box_h = hb.y * s
+	else:
+		box_w = SIZE * s
+		box_h = SIZE * s
+	var box := Vector2(box_w, box_h)
+
 	_body = ColorRect.new()
 	_body.color = BASE_COLOR
-	_body.size = Vector2(SIZE, SIZE)
-	_body.position = -0.5 * Vector2(SIZE, SIZE)
+	_body.size = box
+	_body.position = -0.5 * box
 	add_child(_body)
 
 	var col := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
-	rect.size = Vector2(SIZE, SIZE)
+	rect.size = box
 	col.shape = rect
 	add_child(col)
 
 	# Arte: se houver spritesheet+manifesto, usa-o e esconde o placeholder ColorRect.
 	_sprite = SpriteLoader.build(SPRITE_ID, "player")
 	if _sprite != null:
-		_sprite.position.y = SIZE * 0.5   # âncora nos pés: base do sprite = base da hitbox (chão)
+		_sprite.position.y = box_h * 0.5   # âncora nos pés: base do sprite = base da hitbox (chão)
+		_faces_left = bool(_sprite.get_meta("faces_left", false))
 		add_child(_sprite)
 		_body.visible = false
 
@@ -127,12 +143,13 @@ func _emit_afterimages(delta: float) -> void:
 	_afterimage_acc += delta
 	if _afterimage_acc >= AFTERIMAGE_STEP:
 		_afterimage_acc -= AFTERIMAGE_STEP
-		Juice.afterimage(get_parent(), global_position, Vector2(SIZE, SIZE), BASE_COLOR)
+		Juice.afterimage(get_parent(), global_position, Vector2(box_w, box_h), BASE_COLOR)
 
 ## Vira o sprite conforme a direção (no-op sem sprite).
 func _flip(dir: Vector2) -> void:
 	if _sprite != null and dir.x != 0.0:
-		_sprite.flip_h = dir.x < 0.0
+		# XOR com a direção em que a arte foi desenhada (_faces_left), igual ao EnemyView.
+		_sprite.flip_h = (dir.x < 0.0) != _faces_left
 
 func _play_anim(anim: String) -> void:
 	SpriteLoader.play_safe(_sprite, anim)

@@ -13,9 +13,12 @@ const GRAVITY := 1400.0            # mesma gravidade do player (side-scroller pl
 
 var data: Enemy                     # entidade Core
 var target: Node2D                  # quem perseguir (o PlayerView)
-var box_size := 18.0                # footprint base 640×360 — subclasses ajustam antes de entrar na árvore
+var box_size := 18.0                # footprint quadrado padrão por rank — subclasses ajustam antes de entrar na árvore
+var box_w := 0.0                    # hitbox efetiva (px); resolvida em _build a partir de data.hitbox
+var box_h := 0.0                    # (ou box_size × box_size se o JSON da entidade não definir "hitbox")
 var body_color := Palette.ENEMY
 var sprite_subdir := "enemies"      # subpasta da arte (BossView usa "bosses")
+var sprite_id_override := ""        # id de sprite alternativo; vazio = usa data.id (o eco usa "player")
 
 const KNOCKBACK_FORCE := 130.0     # base 640×360
 
@@ -23,6 +26,7 @@ var _attack_cd := 0.0
 var _hp_bar: ColorRect
 var _body: ColorRect
 var _sprite: AnimatedSprite2D       # arte (null = usa o placeholder _body)
+var _faces_left := false            # true se a arte foi desenhada virada p/ esquerda (manifesto)
 var _anim_lock := 0.0
 var _knockback := Vector2.ZERO
 
@@ -43,39 +47,61 @@ func _ready() -> void:
 	_build()
 
 func _build() -> void:
+	_resolve_hitbox()
+	var box := Vector2(box_w, box_h)
 	_body = ColorRect.new()
 	_body.color = body_color
-	_body.size = Vector2(box_size, box_size)
-	_body.position = -0.5 * Vector2(box_size, box_size)
+	_body.size = box
+	_body.position = -0.5 * box
 	add_child(_body)
 
 	var col := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
-	rect.size = Vector2(box_size, box_size)
+	rect.size = box
 	col.shape = rect
 	add_child(col)
 
-	# Arte: se houver spritesheet+manifesto para este id, usa-o e esconde o placeholder.
+	# Arte: usa sprite_id_override (ex.: o eco empresta a arte "player") ou o id da entidade.
 	# Adicionado antes da barra de HP para a barra ficar por cima do sprite.
-	if data != null and data.id != "":
-		_sprite = SpriteLoader.build(data.id, sprite_subdir)
+	var sprite_id := _sprite_id()
+	if sprite_id != "":
+		_sprite = SpriteLoader.build(sprite_id, sprite_subdir)
 		if _sprite != null:
-			_sprite.position.y = box_size * 0.5   # âncora nos pés: base do sprite = base da hitbox (chão)
+			_sprite.position.y = box_h * 0.5   # âncora nos pés: base do sprite = base da hitbox (chão)
+			_faces_left = bool(_sprite.get_meta("faces_left", false))
 			add_child(_sprite)
 			_body.visible = false
 
-	var bar_pos := Vector2(-box_size * 0.5, -box_size * 0.5 - 6.0)   # base 640×360
+	var bar_pos := Vector2(-box_w * 0.5, -box_h * 0.5 - 6.0)   # base 640×360
 	var bg := ColorRect.new()
 	bg.color = Palette.HP_BACK
-	bg.size = Vector2(box_size, 3)                                    # base 640×360
+	bg.size = Vector2(box_w, 3)                                # base 640×360
 	bg.position = bar_pos
 	add_child(bg)
 
 	_hp_bar = ColorRect.new()
 	_hp_bar.color = Palette.HP_FILL
-	_hp_bar.size = Vector2(box_size, 3)
+	_hp_bar.size = Vector2(box_w, 3)
 	_hp_bar.position = bar_pos
 	add_child(_hp_bar)
+
+## Id usado para carregar arte E hitbox/scale do manifesto. sprite_id_override permite que uma
+## view empreste a arte de outro id (o eco usa "player" → herda arte, hitbox e scale do jogador).
+func _sprite_id() -> String:
+	return sprite_id_override if sprite_id_override != "" else (data.id if data != null else "")
+
+## Resolve a hitbox efetiva: "hitbox": [w, h] do manifesto (ou box_size por rank), multiplicada
+## pelo "scale" do manifesto — assim a hitbox cresce junto com a arte e a proporção se mantém.
+func _resolve_hitbox() -> void:
+	var sid := _sprite_id()
+	var s := SpriteLoader.scale_for(sid)
+	var hb := SpriteLoader.hitbox_for(sid)
+	if hb != Vector2.ZERO:
+		box_w = hb.x * s
+		box_h = hb.y * s
+	else:
+		box_w = box_size * s
+		box_h = box_size * s
 
 func _physics_process(delta: float) -> void:
 	if data == null or not is_instance_valid(target):
@@ -113,7 +139,9 @@ func _update_sprite(dx: float, moving: bool) -> void:
 	if _sprite == null:
 		return
 	if dx != 0.0:
-		_sprite.flip_h = dx < 0.0
+		# Quer olhar p/ esquerda quando o alvo está à esquerda (dx<0); XOR com a direção
+		# em que a arte foi desenhada (_faces_left) resolve o espelhamento correto.
+		_sprite.flip_h = (dx < 0.0) != _faces_left
 	if _anim_lock > 0.0:
 		return
 	SpriteLoader.play_safe(_sprite, "walk" if moving else "idle")
@@ -147,7 +175,7 @@ func apply_damage(amount: int, knockback_mult := 1.0) -> void:
 
 func _refresh_hp_bar() -> void:
 	var ratio := clampf(float(data.stats.current_hp) / float(maxi(data.stats.max_hp, 1)), 0.0, 1.0)
-	_hp_bar.size.x = box_size * ratio
+	_hp_bar.size.x = box_w * ratio
 
 ## Hook para subclasses (Boss reage às fases aqui). Padrão: nada.
 func _on_after_damage() -> void:

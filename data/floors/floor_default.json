@@ -3,6 +3,6 @@
   "corridor_length": 1920,
   "waves_base": 2,
   "enemies_per_wave": 3,
-  "enemy_pool": ["enm_skeleton"],
-  "boss_id": "bss_guardian"
+  "enemy_pool": ["enm_skeleton_minion", "enm_skeleton_armored"],
+  "boss_id": "bss_ogre"
 }

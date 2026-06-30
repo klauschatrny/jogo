@@ -2,7 +2,7 @@
   "id": "tower_main",
   "total_floors": 50,
   "king_floor": 51,
-  "default_boss": "bss_guardian",
+  "default_boss": "bss_ogre",
   "boss_schedule": {
     "10": "gbs_bone_colossus",
     "20": "gbs_plague_warden",
