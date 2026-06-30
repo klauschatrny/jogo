@@ -7,7 +7,7 @@ var _player: Player
 var _enemies_alive := 0
 var _msg: Label
 
-const GROUND_Y := 900.0   # (= 300 × 3, viewport 1920×1080)
+const GROUND_Y := 300.0   # base 640×360
 
 func _ready() -> void:
 	_add_background()
@@ -23,13 +23,13 @@ func _ready() -> void:
 
 	var pv := PlayerView.new()
 	pv.setup(_player)
-	pv.position = Vector2(960, GROUND_Y - 120)
+	pv.position = Vector2(320, GROUND_Y - 40)
 	add_child(pv)
 
 	var enemies := EnemyRepository.new()
 	enemies.load_all()
-	_spawn(enemies, "enm_skeleton", Vector2(1410, GROUND_Y - 120), pv)
-	_spawn(enemies, "enm_skeleton", Vector2(1680, GROUND_Y - 120), pv)
+	_spawn(enemies, "enm_skeleton", Vector2(470, GROUND_Y - 40), pv)
+	_spawn(enemies, "enm_skeleton", Vector2(560, GROUND_Y - 40), pv)
 
 	var layer := CanvasLayer.new()
 	add_child(layer)
@@ -38,8 +38,8 @@ func _ready() -> void:
 	hud.set_player(_player)
 
 	_msg = Label.new()
-	_msg.position = Vector2(690, 450)
-	_msg.add_theme_font_size_override("font_size", 66)
+	_msg.position = Vector2(230, 150)
+	_msg.add_theme_font_size_override("font_size", 22)
 	layer.add_child(_msg)
 
 	EventBus.player_died.connect(_on_player_died)
@@ -47,7 +47,7 @@ func _ready() -> void:
 func _add_background() -> void:
 	var bg := ColorRect.new()
 	bg.color = Color(0.1, 0.1, 0.13)
-	bg.size = Vector2(1920, 1080)
+	bg.size = Vector2(640, 360)
 	bg.z_index = -10
 	add_child(bg)
 
@@ -57,16 +57,16 @@ func _add_ground() -> void:
 	body.collision_mask = 0
 	var col := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
-	rect.size = Vector2(3840, 600)
+	rect.size = Vector2(1280, 200)
 	col.shape = rect
-	col.position = Vector2(960, GROUND_Y + 300)
+	col.position = Vector2(320, GROUND_Y + 100)
 	body.add_child(col)
 	add_child(body)
 
 	var fill := ColorRect.new()
 	fill.color = Palette.GROUND
 	fill.position = Vector2(0, GROUND_Y)
-	fill.size = Vector2(1920, 180)
+	fill.size = Vector2(640, 60)
 	fill.z_index = -5
 	add_child(fill)
 

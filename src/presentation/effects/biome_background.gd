@@ -5,9 +5,9 @@
 class_name BiomeBackground
 extends CanvasLayer
 
-const VIEW := Vector2(1920.0, 1080.0)
-const HORIZON := 900.0          # linha do chão (GROUND_Y) em coordenadas de tela
-const PATTERN := 1920.0         # largura do padrão que se repete
+const VIEW := Vector2(640.0, 360.0)
+const HORIZON := 300.0          # linha do chão (GROUND_Y) em coordenadas de tela
+const PATTERN := 640.0          # largura do padrão que se repete
 
 var _layers: Array = []         # [{ node, scale }] para o scroll manual
 
@@ -23,8 +23,8 @@ func apply(biome: Dictionary, dim := 0.0) -> void:
 	var top := _col(biome, "bg_top", "15161f").darkened(dim)
 	var bottom := _col(biome, "bg_bottom", "23271f").darkened(dim)
 	_add_sky(top, bottom)
-	_add_silhouettes(0.2, _col(biome, "far", "2b3a30").darkened(dim), 5, 240.0, 520.0, 200.0, 360.0)
-	_add_silhouettes(0.45, _col(biome, "mid", "3c4d3e").darkened(dim), 7, 160.0, 360.0, 150.0, 280.0)
+	_add_silhouettes(0.2, _col(biome, "far", "2b3a30").darkened(dim), 5, 80.0, 173.0, 67.0, 120.0)
+	_add_silhouettes(0.45, _col(biome, "mid", "3c4d3e").darkened(dim), 7, 53.0, 120.0, 50.0, 93.0)
 
 ## Chamado todo frame com a posição X da câmera para deslocar as camadas (parallax).
 func update_scroll(camera_x: float) -> void:
@@ -63,7 +63,7 @@ func _add_silhouettes(scale: float, color: Color, count: int, hmin: float, hmax:
 		for i in count:
 			var w := rng.randf_range(wmin, wmax)
 			var h := rng.randf_range(hmin, hmax)
-			var x := base_x + (PATTERN / count) * i + rng.randf_range(-50.0, 50.0)
+			var x := base_x + (PATTERN / count) * i + rng.randf_range(-17.0, 17.0)
 			var rect := ColorRect.new()
 			rect.color = color
 			rect.size = Vector2(w, h)

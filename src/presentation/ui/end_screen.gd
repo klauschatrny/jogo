@@ -4,7 +4,7 @@
 class_name EndScreen
 extends Control
 
-const W := 1920.0   # (= 640 × 3, viewport 1920×1080)
+const W := 640.0   # largura do viewport base 640×360
 
 func setup(title: String, lines: Array, accent: Color) -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -15,14 +15,14 @@ func setup(title: String, lines: Array, accent: Color) -> void:
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
-	add_child(_centered(title, 330, 96, accent))
+	add_child(_centered(title, 110, 32, accent))
 
-	var y := 540
+	var y := 180
 	for line in lines:
-		add_child(_centered(String(line), y, 40, Palette.TEXT))
-		y += 64
+		add_child(_centered(String(line), y, 13, Palette.TEXT))
+		y += 21
 
-	add_child(_centered("Enter para voltar ao menu", 960, 32, Palette.TEXT))
+	add_child(_centered("Enter para voltar ao menu", 320, 11, Palette.TEXT))
 
 func _centered(text: String, y: int, font_size: int, color: Color) -> Label:
 	var l := Label.new()

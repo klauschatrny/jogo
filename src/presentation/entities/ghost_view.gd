@@ -6,5 +6,5 @@ extends EnemyView
 
 func setup(enemy: Enemy, target_node: Node2D) -> void:
 	super.setup(enemy, target_node)
-	box_size = 66.0   # (= 22 × 3, viewport 1920×1080)
+	box_size = 22.0   # footprint do eco/elite (base 640×360)
 	body_color = Color(Palette.GHOST, 0.7)   # eco: ciano translúcido

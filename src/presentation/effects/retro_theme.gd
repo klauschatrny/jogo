@@ -6,7 +6,7 @@ class_name RetroTheme
 extends RefCounted
 
 const FONT_PATH := "res://assets/fonts/PixelOperator.ttf"
-const DEFAULT_SIZE := 32   # corpo de texto a 1080p (= 16 × 2, múltiplo nativo = nítido)
+const DEFAULT_SIZE := 16   # corpo de texto no base 640×360 (tamanho nativo da fonte = nítido)
 
 static func build() -> Theme:
 	var theme := Theme.new()

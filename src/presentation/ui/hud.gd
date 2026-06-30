@@ -3,7 +3,7 @@
 class_name Hud
 extends Control
 
-const BAR_WIDTH := 600.0   # (= 200 × 3, viewport 1920×1080)
+const BAR_WIDTH := 200.0   # base 640×360
 
 var _player: Player
 var _bar: ColorRect
@@ -15,19 +15,19 @@ func _ready() -> void:
 
 	var bg := ColorRect.new()
 	bg.color = Palette.HP_BACK
-	bg.position = Vector2(36, 36)
-	bg.size = Vector2(BAR_WIDTH, 54)
+	bg.position = Vector2(12, 12)
+	bg.size = Vector2(BAR_WIDTH, 18)
 	add_child(bg)
 
 	_bar = ColorRect.new()
 	_bar.color = Palette.PLAYER_HP
-	_bar.position = Vector2(36, 36)
-	_bar.size = Vector2(BAR_WIDTH, 54)
+	_bar.position = Vector2(12, 12)
+	_bar.size = Vector2(BAR_WIDTH, 18)
 	add_child(_bar)
 
 	_label = Label.new()
-	_label.position = Vector2(48, 42)
-	_label.add_theme_font_size_override("font_size", 34)   # HP/Nível na barra (= 48 − 30%)
+	_label.position = Vector2(16, 14)
+	_label.add_theme_font_size_override("font_size", 11)   # HP/Nível na barra (base 640×360)
 	add_child(_label)
 
 	_refresh()

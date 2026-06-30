@@ -6,18 +6,18 @@ extends CharacterBody2D
 
 signal died
 
-const ATTACK_RANGE := 90.0         # (= 30 × 3, viewport 1920×1080)
-const ATTACK_VRANGE := 90.0        # alcance vertical: não acerta quem está acima (pogo)
+const ATTACK_RANGE := 30.0         # base 640×360
+const ATTACK_VRANGE := 30.0        # alcance vertical: não acerta quem está acima (pogo)
 const ATTACK_INTERVAL := 1.0
-const GRAVITY := 4200.0            # mesma gravidade do player (side-scroller plano)
+const GRAVITY := 1400.0            # mesma gravidade do player (side-scroller plano)
 
 var data: Enemy                     # entidade Core
 var target: Node2D                  # quem perseguir (o PlayerView)
-var box_size := 54.0                # (= 18 × 3) — subclasses ajustam antes de entrar na árvore
+var box_size := 18.0                # footprint base 640×360 — subclasses ajustam antes de entrar na árvore
 var body_color := Palette.ENEMY
 var sprite_subdir := "enemies"      # subpasta da arte (BossView usa "bosses")
 
-const KNOCKBACK_FORCE := 390.0     # (= 130 × 3)
+const KNOCKBACK_FORCE := 130.0     # base 640×360
 
 var _attack_cd := 0.0
 var _hp_bar: ColorRect
@@ -60,19 +60,20 @@ func _build() -> void:
 	if data != null and data.id != "":
 		_sprite = SpriteLoader.build(data.id, sprite_subdir)
 		if _sprite != null:
+			_sprite.position.y = box_size * 0.5   # âncora nos pés: base do sprite = base da hitbox (chão)
 			add_child(_sprite)
 			_body.visible = false
 
-	var bar_pos := Vector2(-box_size * 0.5, -box_size * 0.5 - 18.0)   # (= -6 × 3)
+	var bar_pos := Vector2(-box_size * 0.5, -box_size * 0.5 - 6.0)   # base 640×360
 	var bg := ColorRect.new()
 	bg.color = Palette.HP_BACK
-	bg.size = Vector2(box_size, 9)                                    # (= 3 × 3)
+	bg.size = Vector2(box_size, 3)                                    # base 640×360
 	bg.position = bar_pos
 	add_child(bg)
 
 	_hp_bar = ColorRect.new()
 	_hp_bar.color = Palette.HP_FILL
-	_hp_bar.size = Vector2(box_size, 9)
+	_hp_bar.size = Vector2(box_size, 3)
 	_hp_bar.position = bar_pos
 	add_child(_hp_bar)
 
@@ -140,7 +141,7 @@ func apply_damage(amount: int, knockback_mult := 1.0) -> void:
 		_knockback = Vector2(dir * KNOCKBACK_FORCE * knockback_mult, 0.0)
 	_on_after_damage()
 	if data.stats.current_hp <= 0:
-		Juice.burst(get_parent(), global_position, body_color, 16, 420.0)
+		Juice.burst(get_parent(), global_position, body_color, 16, 140.0)
 		died.emit()
 		queue_free()
 

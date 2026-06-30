@@ -20,25 +20,25 @@ func _ready() -> void:
 
 	var title := Label.new()
 	title.text = "ESCOLHA UMA CARTA  (1 / 2 / 3)"
-	title.position = Vector2(0, 144)
-	title.size = Vector2(1920, 72)
+	title.position = Vector2(0, 48)
+	title.size = Vector2(640, 24)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 48)
+	title.add_theme_font_size_override("font_size", 16)
 	add_child(title)
 
-	var card_w := 516       # (= 172 × 3, viewport 1920×1080)
-	var card_h := 600
-	var gap := 72
+	var card_w := 172       # base 640×360
+	var card_h := 200
+	var gap := 24
 	var total := _cards.size() * card_w + (_cards.size() - 1) * gap
-	var start_x := (1920 - total) / 2
+	var start_x := (640 - total) / 2
 
 	for i in _cards.size():
 		add_child(_make_card(_cards[i], i, start_x + i * (card_w + gap), card_w, card_h))
 
 func _make_card(aug: Augment, index: int, x: int, w: int, h: int) -> Control:
-	const PAD := 30
+	const PAD := 10
 	var panel := Control.new()
-	panel.position = Vector2(x, 300)
+	panel.position = Vector2(x, 100)
 	panel.size = Vector2(w, h)
 	panel.clip_contents = true        # nada vaza para fora do card
 
@@ -56,17 +56,17 @@ func _make_card(aug: Augment, index: int, x: int, w: int, h: int) -> Control:
 	panel.add_child(margin)
 
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 18)
+	vbox.add_theme_constant_override("separation", 6)
 	margin.add_child(vbox)
 
-	vbox.add_child(_label("%d. %s" % [index + 1, aug.name], 40, false))
+	vbox.add_child(_label("%d. %s" % [index + 1, aug.name], 13, false))
 
-	var desc := _label(aug.description, 32, true)
+	var desc := _label(aug.description, 11, true)
 	desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	desc.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	vbox.add_child(desc)
 
-	vbox.add_child(_label(aug.tier, 28, false))
+	vbox.add_child(_label(aug.tier, 9, false))
 	return panel
 
 ## Label centralizado com wrap, para uso dentro do VBox do card.

@@ -5,18 +5,18 @@
 class_name PlayerView
 extends CharacterBody2D
 
-const SIZE := 60.0               # (= 20 × 3, viewport 1920×1080)
+const SIZE := 20.0               # footprint do player (base 640×360)
 const BASE_COLOR := Palette.PLAYER
 const SPRITE_ID := "player"      # arte: assets/sprites/player/player.png + data/sprites/player.json
 
-# Feel de movimento (constantes de apresentação já no espaço 1920×1080 = base × 3).
-const GRAVITY := 4200.0
-const JUMP_VELOCITY := -1380.0
-const DODGE_SPEED := 1290.0
+# Feel de movimento (constantes de apresentação no espaço base 640×360).
+const GRAVITY := 1400.0
+const JUMP_VELOCITY := -460.0
+const DODGE_SPEED := 430.0
 const DODGE_TIME := 0.20          # duração do dash (com i-frames) — tempo, não escala
 const DODGE_COOLDOWN := 0.5
 const AFTERIMAGE_STEP := 0.035   # intervalo entre ecos do rastro do dash
-const POGO_BOUNCE := -1140.0     # impulso pra cima ao acertar um golpe pra baixo no ar
+const POGO_BOUNCE := -380.0      # impulso pra cima ao acertar um golpe pra baixo no ar
 const COMBO_GRACE := 0.28        # folga sobre o cooldown do golpe para encadear o combo
 const COMBO_MAX := 3             # combo de 3 golpes (0, 1, 2=finisher)
 const FINISHER_KNOCKBACK := 2.4  # o 3º golpe empurra bem mais
@@ -67,6 +67,7 @@ func _build() -> void:
 	# Arte: se houver spritesheet+manifesto, usa-o e esconde o placeholder ColorRect.
 	_sprite = SpriteLoader.build(SPRITE_ID, "player")
 	if _sprite != null:
+		_sprite.position.y = SIZE * 0.5   # âncora nos pés: base do sprite = base da hitbox (chão)
 		add_child(_sprite)
 		_body.visible = false
 
@@ -243,7 +244,7 @@ func _spawn_slash(step: int) -> void:
 	var forward := (step % 2 == 0)           # alterna o sentido da lâmina a cada golpe
 
 	var slash := Line2D.new()
-	slash.width = 21.0 if is_finisher else 15.0    # (= 7/5 × 3)
+	slash.width = 7.0 if is_finisher else 5.0    # base 640×360
 	slash.default_color = Palette.HIT_SPARK if is_finisher else Palette.SLASH
 	slash.begin_cap_mode = Line2D.LINE_CAP_ROUND
 	slash.end_cap_mode = Line2D.LINE_CAP_ROUND
@@ -261,5 +262,5 @@ func _spawn_slash(step: int) -> void:
 	tw.set_parallel(true)
 	tw.tween_property(slash, "rotation", to_rot, 0.12)
 	tw.tween_property(slash, "modulate:a", 0.0, 0.14)
-	tw.tween_property(slash, "width", 4.5, 0.14)    # (= 1.5 × 3)
+	tw.tween_property(slash, "width", 1.5, 0.14)    # base 640×360
 	tw.chain().tween_callback(slash.queue_free)

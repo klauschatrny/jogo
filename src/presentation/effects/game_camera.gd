@@ -4,10 +4,10 @@ class_name GameCamera
 extends Camera2D
 
 const DECAY := 1.6                         # quão rápido o trauma some (por segundo)
-const MAX_OFFSET := Vector2(27.0, 21.0)     # deslocamento máximo do tremor (px) (= 9/7 × 3)
+const MAX_OFFSET := Vector2(9.0, 7.0)     # deslocamento máximo do tremor (px) (base 640×360)
 const MAX_ROLL := 0.04                     # rotação máxima do tremor (rad)
 const FOLLOW_LERP := 8.0                   # suavidade do follow horizontal
-const SCREEN_H := 1080.0                    # (= 360 × 3, viewport 1920×1080)
+const SCREEN_H := 360.0                    # altura do viewport base 640×360
 
 var _trauma := 0.0
 var follow_target: Node2D                  # segue este nó no eixo X (o PlayerView)
