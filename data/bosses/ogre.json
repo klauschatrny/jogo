@@ -3,7 +3,7 @@
   "name": "Ogro Carrasco",
   "archetype": "TANK",
   "rank": "BOSS",
-  "base_stats": { "max_hp": 48, "attack": 18, "defense": 5, "move_speed": 50 },
+  "base_stats": { "max_hp": 48, "attack": 18, "defense": 5, "move_speed": 39 },
   "ai_profile": "boss_phased",
   "abilities": ["abil_ground_slam"],
   "phases": [

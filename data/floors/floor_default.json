@@ -1,8 +1,12 @@
 {
   "id": "floor_default",
   "corridor_length": 1920,
-  "waves_base": 2,
-  "enemies_per_wave": 3,
-  "enemy_pool": ["enm_skeleton_minion", "enm_skeleton_armored"],
-  "boss_id": "bss_ogre"
+  "boss_id": "bss_ogre",
+  "room": {
+    "respawn_delay": 4.0,
+    "minions": { "ids": ["enm_skeleton_minion"], "count": 5 },
+    "normals": { "ids": ["enm_skeleton_armored"], "count": 3 },
+    "heavies": { "ids": ["enm_skeleton_heavy"], "count": 1 },
+    "elites":  [ { "id": "enm_necromancer", "count": 1 } ]
+  }
 }

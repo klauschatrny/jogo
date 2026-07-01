@@ -1,0 +1,12 @@
+{
+  "id": "enm_necromancer",
+  "name": "Necromante",
+  "archetype": "CASTER",
+  "rank": "ELITE",
+  "base_stats": { "max_hp": 45, "attack": 12, "defense": 3, "move_speed": 0 },
+  "ai_profile": "necromancer",
+  "abilities": ["abil_raise_dead"],
+  "loot": { "gold_min": 30, "gold_max": 60, "xp": 80 },
+  "spawn_floors": [1, 50],
+  "sprite": "enm_necromancer"
+}

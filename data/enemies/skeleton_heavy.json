@@ -1,0 +1,12 @@
+{
+  "id": "enm_skeleton_heavy",
+  "name": "Esqueleto Pesado",
+  "archetype": "MELEE",
+  "rank": "ELITE",
+  "base_stats": { "max_hp": 70, "attack": 11, "defense": 4, "move_speed": 61 },
+  "ai_profile": "aggressive",
+  "abilities": ["abil_basic_slash"],
+  "loot": { "gold_min": 12, "gold_max": 24, "xp": 40 },
+  "spawn_floors": [1, 50],
+  "sprite": "enm_skeleton_heavy"
+}

@@ -13,6 +13,7 @@ const GRAVITY := 1400.0            # mesma gravidade do player (side-scroller pl
 
 var data: Enemy                     # entidade Core
 var target: Node2D                  # quem perseguir (o PlayerView)
+var dormant := false                # passivo: não persegue nem ataca até ser ativado (elites em estágio)
 var box_size := 18.0                # footprint quadrado padrão por rank — subclasses ajustam antes de entrar na árvore
 var box_w := 0.0                    # hitbox efetiva (px); resolvida em _build a partir de data.hitbox
 var box_h := 0.0                    # (ou box_size × box_size se o JSON da entidade não definir "hitbox")
@@ -113,6 +114,13 @@ func _physics_process(delta: float) -> void:
 
 	# IA lateral: avança no eixo X em direção ao player.
 	var dx := target.global_position.x - global_position.x
+	# Dormente (elite em estágio): parado, encarando o player, só gravidade e recuo, até ativar.
+	if dormant:
+		velocity.x = _knockback.x
+		_knockback = _knockback.lerp(Vector2.ZERO, 0.2)
+		move_and_slide()
+		_update_sprite(dx, false)
+		return
 	var dy := target.global_position.y - global_position.y
 	var moving := false
 	if absf(dx) > ATTACK_RANGE:

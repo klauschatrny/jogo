@@ -1,4 +1,4 @@
-## Loop de um andar (§2.4 Fase 3): waves de inimigos comuns → boss → recompensa de cards
+## Loop de um andar: sala regida por elites (horda reciclada) → boss → recompensa de cards
 ## → próximo andar. Mantém o RunState vivo entre andares (não troca de cena), recriando os
 ## inimigos a cada andar. Matar inimigos concede XP (level-up via Leveling).
 ## Provisório quanto à FSM: a integração com a StateMachine vem na Fase 4.
@@ -10,15 +10,25 @@ const DEBUG_START_FLOOR := 0   # 0 = normal; ex.: 10 começa no 1º great boss
 const DEBUG_START_LEVEL := 0   # 0 = normal; nível inicial do jogador
 
 var _run: RunState
-var _floor_mgr: FloorManager
 var _tower: TowerManager
 var _player_view: PlayerView
 var _enemies: Array = []
 var _hud: Hud
 var _msg: Label
 var _layer: CanvasLayer
-var _phase := "waves"          # waves | to_boss_door | transition | boss | reward | to_exit_door | dead | victory
+var _phase := "room"           # room | to_boss_door | transition | boss | reward | to_exit_door | dead | victory
 var _floor_config: Dictionary = {}
+
+# --- Sala (regida pelo Necromante) ---
+# O Necromante (classe "elite") nasce no fim da sala, estático e ranged. Enquanto vive, cada
+# esqueleto morto (minion/normal/heavy) renasce após respawn_delay num raio ao redor dele. Ao
+# morrer, TODOS os esqueletos morrem e a sala é liberada. Heavies mantêm o encadeamento a/b/c (andar 1).
+var _room: Dictionary = {}
+var _alive := { "minion": 0, "normal": 0, "heavy": 0, "elite": 0 }
+# Andar 1: heavies a/b/c em estágio. Cada item: { view, spawn_x, activated, dead }.
+var _heavy_stage: Array = []
+var _first_kill_done := false   # 1º esqueleto da horda morto (um dos gatilhos do heavy 'a')
+var _necro: NecromancerView     # o Necromante (objetivo da sala); null se morto/inexistente
 var _current_boss_id := ""
 var _boss_view: EnemyView
 var _ghost_to_summon: GhostData
@@ -42,6 +52,8 @@ var _door_x := 0.0
 
 ## Linha de topo do chão (eixo Y). Player e inimigos pousam aqui pela gravidade.
 const GROUND_Y := 300.0         # base 640×360
+const ENV_TILE_SCALE := 2.0     # arte de terreno em texel 2 (mesmo dos personagens)
+const SPAWN_EXCLUSION := 180.0  # zona inicial (à esquerda) sem inimigos ao começar o andar
 const BOSS_ROOM_W := 640.0     # sala do boss = uma tela fechada (base 640×360)
 const DOOR_REACH := 30.0       # distância para "entrar" na porta (base 640×360)
 const FADE_TIME := 0.35
@@ -156,19 +168,36 @@ func _build_environment(width: float, is_boss_room: bool) -> void:
 		body.add_child(wcol)
 	_env.add_child(body)
 
+	# Chão sólido (backing): sempre presente, cobre qualquer vão sob a textura/tremor da câmera.
 	var fill := ColorRect.new()
 	fill.color = ground_col
 	fill.position = Vector2(-40, GROUND_Y)
 	fill.size = Vector2(width + 80, 440 - (GROUND_Y + 40))
-	fill.z_index = -5
+	fill.z_index = -6
 	_env.add_child(fill)
 
-	var edge := ColorRect.new()
-	edge.color = edge_col
-	edge.position = Vector2(-40, GROUND_Y)
-	edge.size = Vector2(width + 80, 3)
-	edge.z_index = -5
-	_env.add_child(edge)
+	# Terreno: textura em tile (assets/bg/<id>/ground.png) sobre o backing, ou a linha de
+	# borda procedural se não houver arte.
+	var ground_png := "res://assets/bg/%s/ground.png" % String(biome.get("id", ""))
+	if String(biome.get("id", "")) != "" and ResourceLoader.exists(ground_png):
+		var gtex := load(ground_png) as Texture2D
+		var ground := TextureRect.new()
+		ground.texture = gtex
+		ground.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		ground.stretch_mode = TextureRect.STRETCH_TILE
+		ground.scale = Vector2(ENV_TILE_SCALE, ENV_TILE_SCALE)   # tile nativo ampliado ×2 (texel 2)
+		ground.position = Vector2(-40, GROUND_Y)
+		ground.size = Vector2((width + 80) / ENV_TILE_SCALE, gtex.get_height())
+		ground.z_index = -5
+		ground.modulate = Color(1, 1, 1).darkened(dim)
+		_env.add_child(ground)
+	else:
+		var edge := ColorRect.new()
+		edge.color = edge_col
+		edge.position = Vector2(-40, GROUND_Y)
+		edge.size = Vector2(width + 80, 3)
+		edge.z_index = -5
+		_env.add_child(edge)
 
 	_camera.setup_corridor(width)
 
@@ -226,23 +255,219 @@ func _start_floor() -> void:
 
 	_build_environment(_corridor_length, false)
 	_reset_player_to_start()
-	_phase = "waves"
-	var cfg := _floor_config.duplicate()
-	cfg["boss_id"] = _current_boss_id
-	_floor_mgr = FloorManager.build(floor, cfg)
-	_msg.text = "Andar %d / %d" % [floor, _tower.total_floors]
-	_spawn_next_wave()
+	_phase = "room"
+	_start_room()
 
-func _spawn_next_wave() -> void:
-	if not _floor_mgr.has_next_wave():
-		_open_boss_door()      # corredor limpo: abre a porta para a sala do boss
+# ---------------------------------------------------------------------------
+# Sala regida pelo Necromante. Composição vem de floor_config["room"]:
+#   elites   → Necromante(s): estático no fim da sala, ranged, revive a horda, mata todos ao cair.
+#   heavies  → esqueletos pesados (andar 1: encadeamento a/b/c dormente).
+#   minions/normals → horda espalhada; cada morto renasce perto do Necromante após respawn_delay.
+# ---------------------------------------------------------------------------
+
+func _start_room() -> void:
+	_room = _floor_config.get("room", {})
+	_alive = { "minion": 0, "normal": 0, "heavy": 0, "elite": 0 }
+	_heavy_stage.clear()
+	_first_kill_done = false
+	_necro = null
+
+	# Necromante(s): objetivo da sala. Nasce(m) no FIM do corredor, estático(s).
+	for spec in _room.get("elites", []):
+		for i in maxi(1, int(spec.get("count", 1))):
+			_spawn_necromancer(String(spec.get("id", "")))
+
+	# Heavies: andar 1 → encadeamento a/b/c dormente; demais → ativos, espalhados na 2ª metade.
+	if _run.current_floor == 1:
+		_spawn_l1_heavies()
+	else:
+		_spawn_heavies_simple()
+
+	# Horda inicial espalhada por todo o corredor.
+	_fill_pool("minion")
+	_fill_pool("normal")
+
+	_msg.text = "Andar %d / %d — o Necromante comanda a horda. Elimine-o!" % [_run.current_floor, _tower.total_floors]
+	_check_room_cleared()   # fallback: sem Necromante, a sala limpa por contagem
+
+## Spec de um tier: { "ids": [...], "count": N }.
+func _tier_spec(tier: String) -> Dictionary:
+	match tier:
+		"minion": return _room.get("minions", {})
+		"normal": return _room.get("normals", {})
+		"heavy": return _room.get("heavies", {})
+	return {}
+
+## Spawna até o pool do tier encher. No início do nível a horda nasce espalhada (_scatter_pos).
+func _fill_pool(tier: String) -> void:
+	var spec := _tier_spec(tier)
+	var cap := int(spec.get("count", 0))
+	var ids: Array = spec.get("ids", [])
+	while _alive[tier] < cap and not ids.is_empty():
+		_spawn_room_enemy(tier, String(ids[randi() % ids.size()]), _scatter_pos(false))
+
+func _spawn_room_enemy(tier: String, id: String, pos: Vector2) -> EnemyView:
+	if id == "":
+		return null
+	var base := _enemy_repo.get_by_id(id)
+	if base.is_empty():
+		return null
+	var enemy := EnemyFactory.build(base, _run.current_floor)
+	var view := EnemyView.new()
+	view.set_meta("tier", tier)
+	_alive[tier] += 1
+	_add_view(view, enemy, pos)
+	return view
+
+## Necromante: estático no fim da sala (extremo direito), rastreado em _necro.
+func _spawn_necromancer(id: String) -> void:
+	if id == "":
 		return
-	for enemy_id in _floor_mgr.next_wave():
-		var base := _enemy_repo.get_by_id(enemy_id)
-		if base.is_empty():
+	var base := _enemy_repo.get_by_id(id)
+	if base.is_empty():
+		return
+	var enemy := EnemyFactory.build(base, _run.current_floor)
+	var view := NecromancerView.new()
+	view.set_meta("tier", "elite")
+	_alive["elite"] += 1
+	_necro = view
+	_add_view(view, enemy, Vector2(_arena_width - 48.0, GROUND_Y - 40.0))
+
+## Andar 1: os heavies a<b<c EM ORDEM de proximidade, um em cada terço da 2ª metade, dormentes.
+## Acordam em cadeia — ver _update_heavy_chain.
+func _spawn_l1_heavies() -> void:
+	var spec: Dictionary = _room.get("heavies", {})
+	var ids: Array = spec.get("ids", [])
+	var n := int(spec.get("count", 3))
+	if ids.is_empty():
+		return
+	var half := _arena_width * 0.5
+	var right := _arena_width - 48.0
+	var band := (right - half) / maxf(1.0, float(n))
+	for i in n:
+		var x := randf_range(half + band * i, half + band * (i + 1))
+		var v := _spawn_room_enemy("heavy", String(ids[i % ids.size()]), Vector2(x, GROUND_Y - 40.0))
+		if v != null:
+			v.dormant = true
+		_heavy_stage.append({ "view": v, "spawn_x": x, "activated": false, "dead": false })
+
+## Demais andares: heavies já ativos, espalhados na 2ª metade (sem encadeamento).
+func _spawn_heavies_simple() -> void:
+	var spec: Dictionary = _room.get("heavies", {})
+	var ids: Array = spec.get("ids", [])
+	for i in int(spec.get("count", 0)):
+		if ids.is_empty():
+			break
+		_spawn_room_enemy("heavy", String(ids[i % ids.size()]), _scatter_pos(true))
+
+func _on_room_enemy_died(view: EnemyView) -> void:
+	var tier := String(view.get_meta("tier", ""))
+	if tier == "":
+		return
+	_alive[tier] = maxi(0, _alive[tier] - 1)
+	match tier:
+		"elite":
+			# Necromante morto: TODOS os esqueletos morrem e a sala é liberada.
+			_necro = null
+			_kill_all_skeletons()
+			_open_boss_door()
+			return
+		"heavy":
+			_mark_heavy_dead(view)            # andar 1: destrava o próximo heavy da cadeia
+			if _has_necro():
+				_schedule_respawn("heavy")    # renasce perto do Necromante após o delay
+		"minion", "normal":
+			_first_kill_done = true           # 1º esqueleto da horda → gatilho do heavy 'a'
+			if _has_necro():
+				_schedule_respawn(tier)
+	_update_heavy_chain()
+	_check_room_cleared()
+
+# ---------------------------------------------------------------------------
+# Andar 1 — ativação encadeada dos heavies a/b/c (dormentes até o gatilho):
+#   a: acorda ao matar o 1º esqueleto OU ao sair da zona de exclusão.
+#   b: acorda quando a morre OU o player passa do spawn de a.
+#   c: acorda quando b morre OU o player passa do spawn de b.
+# ---------------------------------------------------------------------------
+
+func _update_heavy_chain() -> void:
+	if _heavy_stage.is_empty() or not is_instance_valid(_player_view):
+		return
+	var px := _player_view.global_position.x
+	for i in _heavy_stage.size():
+		var st: Dictionary = _heavy_stage[i]
+		if st["activated"]:
 			continue
-		var enemy := EnemyFactory.build(base, _run.current_floor)
-		_add_view(EnemyView.new(), enemy, _random_spawn_pos())
+		var trigger := false
+		if i == 0:
+			trigger = _first_kill_done or px > SPAWN_EXCLUSION
+		else:
+			var prev: Dictionary = _heavy_stage[i - 1]
+			trigger = bool(prev["dead"]) or px > float(prev["spawn_x"])
+		if trigger:
+			st["activated"] = true
+			if is_instance_valid(st["view"]):
+				(st["view"] as EnemyView).dormant = false
+
+func _mark_heavy_dead(view: EnemyView) -> void:
+	for st in _heavy_stage:
+		if st["view"] == view:
+			st["dead"] = true
+			return
+
+# --- Respawn automático por morte (perto do Necromante) ---
+# Ao morrer um esqueleto (minion/normal/heavy) com o Necromante vivo, ele renasce após
+# respawn_delay dentro de um raio ao redor do Necromante. Matar o Necromante encerra tudo.
+
+const RESPAWN_RADIUS := 24.0
+
+func _has_necro() -> bool:
+	return is_instance_valid(_necro)
+
+## Ponto aleatório uniforme num disco de RESPAWN_RADIUS ao redor do Necromante.
+func _necro_spawn_pos() -> Vector2:
+	var c := _necro.global_position if _has_necro() else Vector2(_arena_width - 48.0, GROUND_Y - 40.0)
+	var ang := randf() * TAU
+	var r := sqrt(randf()) * RESPAWN_RADIUS
+	return c + Vector2(cos(ang), sin(ang)) * r
+
+func _schedule_respawn(tier: String) -> void:
+	var delay := float(_room.get("respawn_delay", 4.0))
+	var ids: Array = _tier_spec(tier).get("ids", [])
+	get_tree().create_timer(delay).timeout.connect(func() -> void:
+		if _phase != "room" or not _has_necro() or ids.is_empty():
+			return
+		var v := _spawn_room_enemy(tier, String(ids[randi() % ids.size()]), _necro_spawn_pos())
+		if tier == "heavy" and v != null:
+			_reassign_heavy(v))
+
+## Reassocia um heavy renascido (já ativo) ao primeiro estágio morto, para o encadeamento seguir.
+func _reassign_heavy(v: EnemyView) -> void:
+	for st in _heavy_stage:
+		if bool(st["dead"]):
+			st["view"] = v
+			st["dead"] = false
+			st["activated"] = true
+			return
+
+## Necromante caiu → todos os esqueletos morrem. Libera o resto da sala.
+func _kill_all_skeletons() -> void:
+	for v in _enemies.duplicate():
+		if is_instance_valid(v):
+			v.queue_free()
+	_enemies.clear()
+	for c in get_children():
+		if c is NecroProjectile:
+			c.queue_free()
+	_alive = { "minion": 0, "normal": 0, "heavy": 0, "elite": 0 }
+
+## Sala limpa: com Necromante vivo, só ao matá-lo (trata direto no _on_room_enemy_died). Sem
+## Necromante (fallback), limpa quando não sobra ninguém.
+func _check_room_cleared() -> void:
+	if _phase != "room" or _has_necro():
+		return
+	if _alive["heavy"] <= 0 and _alive["minion"] <= 0 and _alive["normal"] <= 0:
+		_open_boss_door()
 
 # ---------------------------------------------------------------------------
 # Portas & transições (Leva 2): porta do boss (após as waves) e porta de saída
@@ -263,6 +488,10 @@ func _process(_delta: float) -> void:
 	# Parallax do fundo segue a câmera (todo frame, em qualquer fase).
 	if _bg != null and _camera != null:
 		_bg.update_scroll(_camera.global_position.x)
+
+	# Andar 1: reavalia os gatilhos de posição dos heavies (sair da exclusão / passar dos spawns).
+	if _phase == "room":
+		_update_heavy_chain()
 
 	# Detecta o player chegando à porta ativa.
 	if _phase != "to_boss_door" and _phase != "to_exit_door":
@@ -343,9 +572,8 @@ func _on_enemy_died(view: EnemyView, enemy: Enemy) -> void:
 		_on_ghost_defeated()   # catarse — não encerra o andar (o boss segue)
 
 	match _phase:
-		"waves":
-			if _enemies.is_empty():
-				_spawn_next_wave()
+		"room":
+			_on_room_enemy_died(view)
 		"boss":
 			# Derrotar o eco NÃO é obrigatório (§1.4.2): o andar termina quando o boss cai,
 			# mesmo que o fantasma ainda esteja vivo.
@@ -419,12 +647,14 @@ func _show_end_screen(title: String, lines: Array, accent: Color) -> void:
 	es.setup(title, lines, accent)
 	_layer.add_child(es)
 
-func _random_spawn_pos() -> Vector2:
-	# Side-scroller: inimigos entram pela direita, logo fora da vista atual (à frente do
-	# player), no nível do chão. Presos ao corredor para não nascerem após a parede.
-	var px := _player_view.global_position.x if is_instance_valid(_player_view) else 0.0
-	var x := minf(px + randf_range(380.0, 520.0), _arena_width - 40.0)
-	return Vector2(x, GROUND_Y - 40.0)
+## Posição inicial ESPALHADA pelo nível (não na porta). Zona de exclusão dos 180px iniciais;
+## se second_half, restringe à metade direita do corredor (usado pelos elites).
+func _scatter_pos(second_half: bool) -> Vector2:
+	var min_x := SPAWN_EXCLUSION                        # exclusão dos px iniciais (folga do ponto de partida)
+	if second_half:
+		min_x = maxf(min_x, _arena_width * 0.5)
+	var max_x := maxf(min_x, _arena_width - 48.0)      # margem antes da parede direita
+	return Vector2(randf_range(min_x, max_x), GROUND_Y - 40.0)
 
 ## Bioma do andar: 10 andares por zona (1–10, 11–20, …), preso ao último.
 func _biome_for_floor(floor: int) -> Dictionary:
