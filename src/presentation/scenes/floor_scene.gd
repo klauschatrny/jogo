@@ -55,7 +55,7 @@ var _door_x := 0.0
 const GROUND_Y := 300.0         # base 640×360
 const ENV_TILE_SCALE := 2.0     # arte de terreno em texel 2 (mesmo dos personagens)
 const SPAWN_EXCLUSION := 180.0  # zona inicial (à esquerda) sem inimigos ao começar o andar
-const L1_NECRO_ONLY := true     # TESTE: andar 1 só com o necromante (sem horda/heavies)
+const L1_NECRO_ONLY := false    # TESTE: andar 1 só com o necromante (sem horda/heavies)
 const BOSS_ROOM_W := 640.0     # sala do boss = uma tela fechada (base 640×360)
 const DOOR_REACH := 30.0       # distância para "entrar" na porta (base 640×360)
 const FADE_TIME := 0.35
