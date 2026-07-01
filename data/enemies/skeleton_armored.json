@@ -4,6 +4,7 @@
   "archetype": "MELEE",
   "rank": "NORMAL",
   "base_stats": { "max_hp": 55, "attack": 9, "defense": 5, "move_speed": 44 },
+  "attack_range": 30,
   "ai_profile": "aggressive",
   "abilities": ["abil_basic_slash"],
   "loot": { "gold_min": 6, "gold_max": 14, "xp": 16 },

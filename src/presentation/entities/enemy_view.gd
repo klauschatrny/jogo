@@ -14,6 +14,7 @@ const GRAVITY := 1400.0            # mesma gravidade do player (side-scroller pl
 var data: Enemy                     # entidade Core
 var target: Node2D                  # quem perseguir (o PlayerView)
 var dormant := false                # passivo: não persegue nem ataca até ser ativado (elites em estágio)
+var attack_range := ATTACK_RANGE    # alcance do golpe melee (hit E tamanho do efeito visual)
 var box_size := 18.0                # footprint quadrado padrão por rank — subclasses ajustam antes de entrar na árvore
 var box_w := 0.0                    # hitbox efetiva (px); resolvida em _build a partir de data.hitbox
 var box_h := 0.0                    # (ou box_size × box_size se o JSON da entidade não definir "hitbox")
@@ -34,6 +35,8 @@ var _knockback := Vector2.ZERO
 func setup(enemy: Enemy, target_node: Node2D) -> void:
 	data = enemy
 	target = target_node
+	if enemy != null and enemy.attack_range > 0.0:
+		attack_range = enemy.attack_range   # alcance melee data-driven (dirige hit + efeito)
 
 func _ready() -> void:
 	collision_layer = 2
@@ -123,7 +126,7 @@ func _physics_process(delta: float) -> void:
 		return
 	var dy := target.global_position.y - global_position.y
 	var moving := false
-	if absf(dx) > ATTACK_RANGE:
+	if absf(dx) > attack_range:
 		velocity.x = signf(dx) * float(data.stats.move_speed) * ViewScale.WORLD
 		moving = true
 	else:
@@ -137,6 +140,7 @@ func _physics_process(delta: float) -> void:
 				if target.has_method("apply_enemy_hit"):
 					target.apply_enemy_hit(data.stats)
 				_play_attack_anim()
+				_spawn_attack_fx(dx)
 	velocity.x += _knockback.x
 	_knockback = _knockback.lerp(Vector2.ZERO, 0.2)   # recuo decai rápido
 	move_and_slide()
@@ -160,6 +164,12 @@ func _play_attack_anim() -> void:
 	_sprite.play("attack")
 	_sprite.frame = 0
 	_anim_lock = ATTACK_INTERVAL * 0.5
+
+## Efeito de golpe melee: um arco de corte na direção do player, com o RAIO = attack_range
+## (então o tamanho acompanha o alcance de ataque do inimigo). Funciona mesmo sem arte.
+func _spawn_attack_fx(dx: float) -> void:
+	var ang := 0.0 if dx >= 0.0 else PI
+	Juice.slash_arc(self, Vector2(0.0, -box_h * 0.25), ang, attack_range, body_color.lightened(0.3))
 
 func apply_damage(amount: int, knockback_mult := 1.0) -> void:
 	data.stats.current_hp -= amount

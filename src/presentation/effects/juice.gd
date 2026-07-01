@@ -37,6 +37,35 @@ static func flash_modulate(item: CanvasItem, dur := 0.08) -> void:
 	var tw := item.create_tween()
 	tw.tween_property(item, "modulate", Color.WHITE, dur)
 
+## Arco de corte (swipe) curto para telegrafar/impactar um golpe melee, na direção `angle`,
+## com `radius` = alcance visual (use o attack range da entidade). Filho de `parent`, em `pos`
+## local. Varre um pouco, some e afina; auto-libera ao fim.
+static func slash_arc(parent: Node, pos: Vector2, angle: float, radius: float, color: Color,
+		thickness := 3.0, span_deg := 110.0, dur := 0.16) -> void:
+	if parent == null:
+		return
+	var slash := Line2D.new()
+	slash.width = thickness
+	slash.default_color = color
+	slash.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	slash.end_cap_mode = Line2D.LINE_CAP_ROUND
+	slash.joint_mode = Line2D.LINE_JOINT_ROUND
+	slash.z_index = 20
+	var span := deg_to_rad(span_deg)
+	var steps := 10
+	for i in steps + 1:
+		var a := angle - span * 0.5 + span * (float(i) / steps)
+		slash.add_point(Vector2(cos(a), sin(a)) * radius)
+	slash.position = pos
+	slash.rotation = -span * 0.25
+	parent.add_child(slash)
+	var tw := slash.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(slash, "rotation", span * 0.25, dur)
+	tw.tween_property(slash, "modulate:a", 0.0, dur * 1.1)
+	tw.tween_property(slash, "width", thickness * 0.3, dur * 1.1)
+	tw.chain().tween_callback(slash.queue_free)
+
 ## Rastro/eco visual: uma cópia estática translúcida que some no lugar. Usado no dash da
 ## esquiva para dar sensação de velocidade. Auto-libera ao fim do fade.
 static func afterimage(parent: Node, pos: Vector2, size: Vector2, color: Color, dur := 0.22) -> void:

@@ -11,6 +11,7 @@ var stats: StatBlock
 var ai_profile: String = "aggressive"
 var abilities: Array = []
 var loot: Dictionary = {}
+var attack_range: float = 0.0       # alcance do golpe melee (px). 0 = a view usa seu padrão
 
 static func from_dict(d: Dictionary) -> Enemy:
 	var e := Enemy.new()
@@ -28,4 +29,5 @@ func _populate(d: Dictionary) -> void:
 	abilities = abil.duplicate()
 	var lt: Dictionary = d.get("loot", {})
 	loot = lt.duplicate(true)
+	attack_range = float(d.get("attack_range", 0.0))
 	stats = StatBlock.from_dict(d.get("base_stats", {}))
