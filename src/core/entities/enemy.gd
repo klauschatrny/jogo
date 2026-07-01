@@ -12,6 +12,9 @@ var ai_profile: String = "aggressive"
 var abilities: Array = []
 var loot: Dictionary = {}
 var attack_range: float = 0.0       # alcance do golpe melee (px). 0 = a view usa seu padrão
+var attack_style: String = ""       # estilo do efeito melee: "slash" | "thrust". "" = padrão (slash)
+var windup: float = -1.0            # tempo de windup do golpe melee (s). < 0 = a view usa seu padrão
+var attack_cooldown: float = -1.0   # intervalo entre golpes melee (s). < 0 = a view usa seu padrão
 
 static func from_dict(d: Dictionary) -> Enemy:
 	var e := Enemy.new()
@@ -30,4 +33,7 @@ func _populate(d: Dictionary) -> void:
 	var lt: Dictionary = d.get("loot", {})
 	loot = lt.duplicate(true)
 	attack_range = float(d.get("attack_range", 0.0))
+	attack_style = String(d.get("attack_style", ""))
+	windup = float(d.get("windup", -1.0))
+	attack_cooldown = float(d.get("attack_cooldown", -1.0))
 	stats = StatBlock.from_dict(d.get("base_stats", {}))

@@ -9,22 +9,29 @@ signal died
 const ATTACK_RANGE := 30.0         # base 640×360
 const ATTACK_VRANGE := 30.0        # alcance vertical: não acerta quem está acima (pogo)
 const ATTACK_INTERVAL := 1.0
+const WINDUP := 0.18               # 180 ms de aviso ("!") antes do golpe conectar (janela p/ desviar)
 const GRAVITY := 1400.0            # mesma gravidade do player (side-scroller plano)
 
 var data: Enemy                     # entidade Core
 var target: Node2D                  # quem perseguir (o PlayerView)
 var dormant := false                # passivo: não persegue nem ataca até ser ativado (elites em estágio)
 var attack_range := ATTACK_RANGE    # alcance do golpe melee (hit E tamanho do efeito visual)
+var attack_style := "slash"         # estilo do efeito melee: "slash" (arco) | "thrust" (estocada)
+var windup_time := WINDUP            # duração do windup (s) — data-driven via "windup" no JSON
+var attack_interval := ATTACK_INTERVAL  # cooldown entre golpes (s) — data-driven via "attack_cooldown"
 var box_size := 18.0                # footprint quadrado padrão por rank — subclasses ajustam antes de entrar na árvore
 var box_w := 0.0                    # hitbox efetiva (px); resolvida em _build a partir de data.hitbox
 var box_h := 0.0                    # (ou box_size × box_size se o JSON da entidade não definir "hitbox")
 var body_color := Palette.ENEMY
+var hp_bar_visible := true           # false nos bosses (usam a barra grande no rodapé)
 var sprite_subdir := "enemies"      # subpasta da arte (BossView usa "bosses")
 var sprite_id_override := ""        # id de sprite alternativo; vazio = usa data.id (o eco usa "player")
 
 const KNOCKBACK_FORCE := 130.0     # base 640×360
 
 var _attack_cd := 0.0
+var _windup := 0.0                  # >0 = em windup (aviso "!" visível); ao zerar, resolve o golpe
+var _warn: Node2D                   # o "!" acima do inimigo durante o windup
 var _hp_bar: ColorRect
 var _body: ColorRect
 var _sprite: AnimatedSprite2D       # arte (null = usa o placeholder _body)
@@ -37,6 +44,12 @@ func setup(enemy: Enemy, target_node: Node2D) -> void:
 	target = target_node
 	if enemy != null and enemy.attack_range > 0.0:
 		attack_range = enemy.attack_range   # alcance melee data-driven (dirige hit + efeito)
+	if enemy != null and enemy.attack_style != "":
+		attack_style = enemy.attack_style   # estilo do efeito: "slash" (padrão) | "thrust"
+	if enemy != null and enemy.windup >= 0.0:
+		windup_time = enemy.windup          # duração do windup data-driven
+	if enemy != null and enemy.attack_cooldown >= 0.0:
+		attack_interval = enemy.attack_cooldown   # cooldown data-driven
 
 func _ready() -> void:
 	collision_layer = 2
@@ -76,18 +89,20 @@ func _build() -> void:
 			add_child(_sprite)
 			_body.visible = false
 
-	var bar_pos := Vector2(-box_w * 0.5, -box_h * 0.5 - 6.0)   # base 640×360
-	var bg := ColorRect.new()
-	bg.color = Palette.HP_BACK
-	bg.size = Vector2(box_w, 3)                                # base 640×360
-	bg.position = bar_pos
-	add_child(bg)
+	# Barra acima da cabeça (inimigos comuns/eco). Bosses escondem: usam a barra grande no rodapé.
+	if hp_bar_visible:
+		var bar_pos := Vector2(-box_w * 0.5, -box_h * 0.5 - 6.0)   # base 640×360
+		var bg := ColorRect.new()
+		bg.color = Palette.HP_BACK
+		bg.size = Vector2(box_w, 3)                                # base 640×360
+		bg.position = bar_pos
+		add_child(bg)
 
-	_hp_bar = ColorRect.new()
-	_hp_bar.color = Palette.HP_FILL
-	_hp_bar.size = Vector2(box_w, 3)
-	_hp_bar.position = bar_pos
-	add_child(_hp_bar)
+		_hp_bar = ColorRect.new()
+		_hp_bar.color = Palette.HP_FILL
+		_hp_bar.size = Vector2(box_w, 3)
+		_hp_bar.position = bar_pos
+		add_child(_hp_bar)
 
 ## Id usado para carregar arte E hitbox/scale do manifesto. sprite_id_override permite que uma
 ## view empreste a arte de outro id (o eco usa "player" → herda arte, hitbox e scale do jogador).
@@ -124,6 +139,18 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		_update_sprite(dx, false)
 		return
+
+	# Windup: parado com o "!" visível; ao zerar (80 ms), resolve o golpe (re-checando alcance).
+	if _windup > 0.0:
+		_windup -= delta
+		velocity.x = _knockback.x
+		_knockback = _knockback.lerp(Vector2.ZERO, 0.2)
+		move_and_slide()
+		_update_sprite(dx, false)
+		if _windup <= 0.0:
+			_resolve_attack(dx)
+		return
+
 	var dy := target.global_position.y - global_position.y
 	var moving := false
 	if absf(dx) > attack_range:
@@ -136,11 +163,8 @@ func _physics_process(delta: float) -> void:
 		if absf(dy) <= ATTACK_VRANGE:
 			_attack_cd -= delta
 			if _attack_cd <= 0.0:
-				_attack_cd = ATTACK_INTERVAL
-				if target.has_method("apply_enemy_hit"):
-					target.apply_enemy_hit(data.stats)
-				_play_attack_anim()
-				_spawn_attack_fx(dx)
+				_attack_cd = attack_interval
+				_start_windup()   # mostra o aviso "!" e agenda o golpe (80 ms)
 	velocity.x += _knockback.x
 	_knockback = _knockback.lerp(Vector2.ZERO, 0.2)   # recuo decai rápido
 	move_and_slide()
@@ -163,13 +187,60 @@ func _play_attack_anim() -> void:
 		return
 	_sprite.play("attack")
 	_sprite.frame = 0
-	_anim_lock = ATTACK_INTERVAL * 0.5
+	_anim_lock = attack_interval * 0.5
 
-## Efeito de golpe melee: um arco de corte na direção do player, com o RAIO = attack_range
-## (então o tamanho acompanha o alcance de ataque do inimigo). Funciona mesmo sem arte.
+## Efeito de golpe melee na direção do player, dimensionado por attack_range. O estilo vem de
+## attack_style: "thrust" (estocada reta) ou "slash" (arco, padrão). Funciona mesmo sem arte.
 func _spawn_attack_fx(dx: float) -> void:
 	var ang := 0.0 if dx >= 0.0 else PI
-	Juice.slash_arc(self, Vector2(0.0, -box_h * 0.25), ang, attack_range, body_color.lightened(0.3))
+	var pos := Vector2(0.0, -box_h * 0.25)
+	var col := body_color.lightened(0.3)
+	if attack_style == "thrust":
+		Juice.thrust(self, pos, ang, attack_range, col)
+	else:
+		Juice.slash_arc(self, pos, ang, attack_range, col)
+
+## Inicia o windup: mostra o "!" e trava o golpe por WINDUP segundos (janela para o player desviar).
+func _start_windup() -> void:
+	_windup = windup_time
+	_show_warn()
+
+## Fim do windup: some o "!" e conecta o golpe se o player ainda estiver ao alcance (sair do
+## alcance evita; a esquiva também, via i-frames em apply_enemy_hit). O swing/anim sempre tocam.
+func _resolve_attack(dx: float) -> void:
+	_hide_warn()
+	if is_instance_valid(target):
+		var in_range := absf(dx) <= attack_range \
+			and absf(target.global_position.y - global_position.y) <= ATTACK_VRANGE
+		if in_range and target.has_method("apply_enemy_hit"):
+			target.apply_enemy_hit(data.stats)
+	_play_attack_anim()
+	_spawn_attack_fx(dx)
+
+## "!" vermelho acima da cabeça (feito com ColorRects — nítido no low-res). Só durante o windup.
+func _show_warn() -> void:
+	_hide_warn()
+	var col := Color(1.0, 0.22, 0.22)
+	var w := Node2D.new()
+	w.z_index = 30
+	var bar := ColorRect.new()
+	bar.color = col
+	bar.size = Vector2(2, 6)
+	bar.position = Vector2(-1, 0)
+	w.add_child(bar)
+	var dot := ColorRect.new()
+	dot.color = col
+	dot.size = Vector2(2, 2)
+	dot.position = Vector2(-1, 8)
+	w.add_child(dot)
+	w.position = Vector2(0, -box_h * 0.5 - 16)   # acima da cabeça
+	add_child(w)
+	_warn = w
+
+func _hide_warn() -> void:
+	if _warn != null and is_instance_valid(_warn):
+		_warn.queue_free()
+	_warn = null
 
 func apply_damage(amount: int, knockback_mult := 1.0) -> void:
 	data.stats.current_hp -= amount
@@ -192,6 +263,8 @@ func apply_damage(amount: int, knockback_mult := 1.0) -> void:
 		queue_free()
 
 func _refresh_hp_bar() -> void:
+	if _hp_bar == null:   # bosses não têm barra acima da cabeça
+		return
 	var ratio := clampf(float(data.stats.current_hp) / float(maxi(data.stats.max_hp, 1)), 0.0, 1.0)
 	_hp_bar.size.x = box_w * ratio
 

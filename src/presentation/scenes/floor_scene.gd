@@ -31,6 +31,7 @@ var _first_kill_done := false   # 1º esqueleto da horda morto (um dos gatilhos 
 var _necro: NecromancerView     # o Necromante (objetivo da sala); null se morto/inexistente
 var _current_boss_id := ""
 var _boss_view: EnemyView
+var _boss_bar: BossHealthBar    # barra de vida grande no rodapé (Dark Souls)
 var _ghost_to_summon: GhostData
 var _ghost_summoned := false
 var _ghost_beaten_this_floor := false
@@ -54,6 +55,7 @@ var _door_x := 0.0
 const GROUND_Y := 300.0         # base 640×360
 const ENV_TILE_SCALE := 2.0     # arte de terreno em texel 2 (mesmo dos personagens)
 const SPAWN_EXCLUSION := 180.0  # zona inicial (à esquerda) sem inimigos ao começar o andar
+const L1_NECRO_ONLY := true     # TESTE: andar 1 só com o necromante (sem horda/heavies)
 const BOSS_ROOM_W := 640.0     # sala do boss = uma tela fechada (base 640×360)
 const DOOR_REACH := 30.0       # distância para "entrar" na porta (base 640×360)
 const FADE_TIME := 0.35
@@ -93,6 +95,9 @@ func _ready() -> void:
 	add_child(_layer)
 	_hud = Hud.new()
 	_layer.add_child(_hud)
+	_boss_bar = BossHealthBar.new()          # barra grande no rodapé (só visível na luta de boss)
+	_boss_bar.visible = false
+	_layer.add_child(_boss_bar)
 	_msg = Label.new()
 	_msg.position = Vector2(16, 36)
 	_msg.add_theme_font_size_override("font_size", 8)   # mensagem de seção (andar/avisos)
@@ -277,15 +282,17 @@ func _start_room() -> void:
 		for i in maxi(1, int(spec.get("count", 1))):
 			_spawn_necromancer(String(spec.get("id", "")))
 
-	# Heavies: andar 1 → encadeamento a/b/c dormente; demais → ativos, espalhados na 2ª metade.
-	if _run.current_floor == 1:
-		_spawn_l1_heavies()
-	else:
-		_spawn_heavies_simple()
+	# TESTE: andar 1 só com o necromante (pula heavies e horda).
+	if not (_run.current_floor == 1 and L1_NECRO_ONLY):
+		# Heavies: andar 1 → encadeamento a/b/c dormente; demais → ativos, espalhados na 2ª metade.
+		if _run.current_floor == 1:
+			_spawn_l1_heavies()
+		else:
+			_spawn_heavies_simple()
 
-	# Horda inicial espalhada por todo o corredor.
-	_fill_pool("minion")
-	_fill_pool("normal")
+		# Horda inicial espalhada por todo o corredor.
+		_fill_pool("minion")
+		_fill_pool("normal")
 
 	_msg.text = "Andar %d / %d — o Necromante comanda a horda. Elimine-o!" % [_run.current_floor, _tower.total_floors]
 	_check_room_cleared()   # fallback: sem Necromante, a sala limpa por contagem
@@ -489,6 +496,8 @@ func _process(_delta: float) -> void:
 	if _bg != null and _camera != null:
 		_bg.update_scroll(_camera.global_position.x)
 
+	_update_boss_bar()
+
 	# Andar 1: reavalia os gatilhos de posição dos heavies (sair da exclusão / passar dos spawns).
 	if _phase == "room":
 		_update_heavy_chain()
@@ -544,9 +553,11 @@ func _spawn_boss() -> void:
 	else:
 		_msg.text = "Andar %d — CHEFE!" % floor
 
-	var bv := BossView.new()
+	var bv: BossView = OgreView.new() if _current_boss_id == "bss_ogre" else BossView.new()
 	bv.summon_ghost.connect(_on_summon_ghost)
 	_boss_view = bv
+	if _boss_bar != null:
+		_boss_bar.setup(boss.name)                     # nome no rodapé; a barra aparece via _process
 	_add_view(bv, boss, _boss_spawn_pos())             # entra pela direita, no chão
 
 func _on_summon_ghost() -> void:
@@ -666,6 +677,17 @@ func _biome_for_floor(floor: int) -> Dictionary:
 ## Boss aparece no lado direito da sala do boss (arena fechada).
 func _boss_spawn_pos() -> Vector2:
 	return Vector2(_arena_width - 120.0, GROUND_Y - 60.0)
+
+## Barra de boss (rodapé): visível só na fase do boss, com o HP atual. Some ao sair da luta.
+func _update_boss_bar() -> void:
+	if _boss_bar == null:
+		return
+	if _phase == "boss" and is_instance_valid(_boss_view) and _boss_view.data != null:
+		var st := _boss_view.data.stats
+		_boss_bar.set_ratio(float(st.current_hp) / float(maxi(st.max_hp, 1)))
+		_boss_bar.visible = true
+	else:
+		_boss_bar.visible = false
 
 func _unhandled_input(event: InputEvent) -> void:
 	# F9 alterna o overlay CRT (disponível sempre, não só em debug).

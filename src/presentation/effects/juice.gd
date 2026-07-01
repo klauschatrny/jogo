@@ -66,6 +66,29 @@ static func slash_arc(parent: Node, pos: Vector2, angle: float, radius: float, c
 	tw.tween_property(slash, "width", thickness * 0.3, dur * 1.1)
 	tw.chain().tween_callback(slash.queue_free)
 
+## Estocada (thrust): uma linha reta que avança rápido na direção `angle` até `length` e some.
+## `length` = alcance visual (use o attack range). Filho de `parent`, em `pos` local.
+static func thrust(parent: Node, pos: Vector2, angle: float, length: float, color: Color,
+		thickness := 4.0, dur := 0.16) -> void:
+	if parent == null:
+		return
+	var dir := Vector2(cos(angle), sin(angle))
+	var line := Line2D.new()
+	line.width = thickness
+	line.default_color = color
+	line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	line.end_cap_mode = Line2D.LINE_CAP_ROUND
+	line.z_index = 20
+	line.add_point(Vector2.ZERO)
+	line.add_point(dir * (length * 0.3))
+	line.position = pos
+	parent.add_child(line)
+	var tw := line.create_tween()
+	# Avança a ponta até o alcance total (o "empurrão"), depois some.
+	tw.tween_method(func(t: float) -> void: line.set_point_position(1, dir * (length * t)), 0.3, 1.0, dur * 0.45)
+	tw.tween_property(line, "modulate:a", 0.0, dur * 0.55)
+	tw.tween_callback(line.queue_free)
+
 ## Rastro/eco visual: uma cópia estática translúcida que some no lugar. Usado no dash da
 ## esquiva para dar sensação de velocidade. Auto-libera ao fim do fade.
 static func afterimage(parent: Node, pos: Vector2, size: Vector2, color: Color, dur := 0.22) -> void:

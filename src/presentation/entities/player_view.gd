@@ -220,6 +220,18 @@ func apply_enemy_hit(attacker_stats: StatBlock) -> void:
 		Juice.flash(_body, BASE_COLOR)
 	_shake(0.15)
 
+## Dano FIXO (ignora defesa) — usado por habilidades (ex.: AoE do Necromante). Respeita a
+## esquiva (i-frames) e o god mode, igual ao golpe comum.
+func apply_flat_damage(amount: int) -> void:
+	if god_mode or _dodge_time > 0.0:
+		return
+	data.take_damage(amount)
+	if _sprite != null:
+		Juice.flash_modulate(_sprite)
+	else:
+		Juice.flash(_body, BASE_COLOR)
+	_shake(0.25)
+
 ## Tremor de tela via a câmera ativa (GameCamera). Sem câmera, é no-op.
 func _shake(amount: float) -> void:
 	var cam := get_viewport().get_camera_2d()

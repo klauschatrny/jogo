@@ -13,6 +13,7 @@ func setup(enemy: Enemy, target_node: Node2D) -> void:
 	box_size = 34.0   # footprint do boss (base 640×360)
 	body_color = Palette.BOSS
 	sprite_subdir = "bosses"   # arte de boss vem de assets/sprites/bosses/<id>.png
+	hp_bar_visible = false     # boss usa a barra grande no rodapé (estilo Dark Souls)
 
 func _on_after_damage() -> void:
 	if data is Boss:
