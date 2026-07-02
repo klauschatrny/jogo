@@ -577,7 +577,10 @@ func _add_view(view: EnemyView, enemy: Enemy, pos: Vector2) -> void:
 
 func _on_enemy_died(view: EnemyView, enemy: Enemy) -> void:
 	_enemies.erase(view)
-	Leveling.add_xp(_run.player, int(enemy.loot.get("xp", 0)))
+	# Esqueletos da sala (minion/normal/heavy) são reinvocados pelo Necromante sem parar → NÃO
+	# dão XP (senão dava pra farmar XP infinita). Só o Necromante (elite) e o boss concedem XP.
+	if not (String(view.get_meta("tier", "")) in ["minion", "normal", "heavy"]):
+		Leveling.add_xp(_run.player, int(enemy.loot.get("xp", 0)))
 
 	if view is GhostView:
 		_on_ghost_defeated()   # catarse — não encerra o andar (o boss segue)

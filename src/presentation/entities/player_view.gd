@@ -36,6 +36,8 @@ var _combo := 0                    # passo atual do combo (0..COMBO_MAX-1)
 var _combo_timer := 0.0            # tempo restante para encadear o próximo golpe
 var _contact_cd := 0.0             # cooldown do hit por colisão (>0 = imune a colisão)
 var _knockback := Vector2.ZERO     # empurrão horizontal (decai); somado à velocidade
+var _attack_cost := 20.0           # custo de stamina por golpe (data-driven via balance.json)
+var _dodge_cost := 30.0            # custo de stamina por esquiva
 var box_w := SIZE                  # hitbox efetiva (px); resolvida em _build do manifesto player.json
 var box_h := SIZE                  # (ou SIZE × SIZE se o manifesto não definir "hitbox")
 var _body: ColorRect
@@ -45,9 +47,19 @@ var _anim_lock := 0.0              # trava a anim de locomoção enquanto toca a
 
 func setup(player: Player) -> void:
 	data = player
+	_attack_cost = float(BalanceConfig.stamina.get("ATTACK_COST", 20.0))
+	_dodge_cost = float(BalanceConfig.stamina.get("DODGE_COST", 30.0))
 
 func is_dodging() -> bool:
 	return _dodge_time > 0.0
+
+## Há stamina para iniciar uma ação? (sem stamina configurada = sempre permite, à prova de falha).
+func _has_stamina() -> bool:
+	return data.stamina == null or data.stamina.can_act()
+
+func _spend_stamina(cost: float) -> void:
+	if data.stamina != null:
+		data.stamina.consume(cost)
 
 func _ready() -> void:
 	z_index = 200             # player sempre desenhado na frente de tudo (inimigos < 100)
@@ -99,6 +111,8 @@ func _physics_process(delta: float) -> void:
 	_anim_lock = maxf(0.0, _anim_lock - delta)
 	_combo_timer = maxf(0.0, _combo_timer - delta)
 	_contact_cd = maxf(0.0, _contact_cd - delta)
+	if data.stamina != null:
+		data.stamina.tick(delta)      # stamina regenera (após o atraso desde o último gasto)
 	if _combo_timer <= 0.0:
 		_combo = 0                    # combo expira fora da janela
 
@@ -128,8 +142,9 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("jump") and is_on_floor():
 		velocity.y = JUMP_VELOCITY
 
-	if Input.is_action_just_pressed("dodge") and _dodge_cd <= 0.0:
+	if Input.is_action_just_pressed("dodge") and _dodge_cd <= 0.0 and _has_stamina():
 		_start_dodge(ix)
+		_spend_stamina(_dodge_cost)
 
 	move_and_slide()
 	_knockback = _knockback.lerp(Vector2.ZERO, 0.2)   # empurrão do contato decai rápido
@@ -137,8 +152,9 @@ func _physics_process(delta: float) -> void:
 	_flip(_facing)
 	_update_locomotion(ix)
 
-	if Input.is_action_pressed("attack") and _attack_cd <= 0.0:
+	if Input.is_action_pressed("attack") and _attack_cd <= 0.0 and _has_stamina():
 		_attack()
+		_spend_stamina(_attack_cost)
 
 ## Inicia o dash da esquiva: direção = input atual (permite esquivar pra trás), ou o facing.
 func _start_dodge(ix: float) -> void:

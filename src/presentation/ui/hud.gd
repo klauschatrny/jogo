@@ -4,10 +4,13 @@ class_name Hud
 extends Control
 
 const BAR_WIDTH := 200.0   # base 640×360
+const STAM_Y := 33.0       # barra de stamina logo abaixo da de HP
+const STAM_H := 7.0
 
 var _player: Player
 var _bar: ColorRect
 var _label: Label
+var _stam_bar: ColorRect
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -24,6 +27,18 @@ func _ready() -> void:
 	_bar.position = Vector2(12, 12)
 	_bar.size = Vector2(BAR_WIDTH, 18)
 	add_child(_bar)
+
+	var stam_bg := ColorRect.new()
+	stam_bg.color = Color(0.09, 0.12, 0.09)
+	stam_bg.position = Vector2(12, STAM_Y)
+	stam_bg.size = Vector2(BAR_WIDTH, STAM_H)
+	add_child(stam_bg)
+
+	_stam_bar = ColorRect.new()
+	_stam_bar.color = Color(0.36, 0.72, 0.32)   # verde de stamina (estilo Dark Souls)
+	_stam_bar.position = Vector2(12, STAM_Y)
+	_stam_bar.size = Vector2(BAR_WIDTH, STAM_H)
+	add_child(_stam_bar)
 
 	_label = Label.new()
 	_label.position = Vector2(16, 14)
@@ -46,3 +61,5 @@ func _refresh() -> void:
 	var ratio := clampf(float(_player.stats.current_hp) / float(maxi(_player.stats.max_hp, 1)), 0.0, 1.0)
 	_bar.size.x = BAR_WIDTH * ratio
 	_label.text = "HP %d/%d    Nv %d" % [_player.stats.current_hp, _player.stats.max_hp, _player.level]
+	if _stam_bar != null:
+		_stam_bar.size.x = BAR_WIDTH * (_player.stamina.ratio() if _player.stamina != null else 0.0)

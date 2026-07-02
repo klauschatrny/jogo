@@ -14,6 +14,7 @@ var level: int = 1
 var experience: int = 0
 var xp_to_next: int = 100
 var stats: StatBlock
+var stamina: Stamina                # recurso de ações (ataque/esquiva), estilo Dark Souls
 var weapon: Weapon
 var augments: Array = []            # Array[Augment]
 var gold: int = 0
@@ -28,6 +29,7 @@ static func create_new(player_name: String, chosen_weapon: Weapon) -> Player:
 	p.weapon = chosen_weapon
 	p.level = 1
 	p.recalculate_stats()
+	p.stamina = Stamina.from_config(BalanceConfig.stamina)
 	p.xp_to_next = int(Leveling.xp_to_next(1))
 	return p
 

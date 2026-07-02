@@ -11,6 +11,7 @@ const SUITES := {
 	"StatBlock": "res://tests/test_stat_block.gd",
 	"Weapon": "res://tests/test_weapon.gd",
 	"Player": "res://tests/test_player.gd",
+	"Stamina": "res://tests/test_stamina.gd",
 	"Enemy": "res://tests/test_enemy.gd",
 	"CombatResolver": "res://tests/test_combat_resolver.gd",
 	"Scaling": "res://tests/test_scaling.gd",

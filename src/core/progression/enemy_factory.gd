@@ -1,6 +1,6 @@
 ## Cria inimigos/bosses ESCALADOS para um andar (§1.2.1). Trata o base_stats do JSON como
-## o baseline do andar 1 e aplica a curva geométrica (GROWTH^(f-1)) e o multiplicador de
-## rank. Para um inimigo NORMAL com base = BASE_* global, reproduz a tabela do §1.2.1.
+## o baseline do andar 1 e aplica a curva geométrica (GROWTH^(f-1)). O multiplicador de rank
+## de HP vale SÓ para bosses (comuns usam o HP base puro); o de ATK vale para todos.
 class_name EnemyFactory
 extends RefCounted
 
@@ -22,7 +22,10 @@ static func _scale(e: Enemy, floor: int) -> void:
 	var ga := float(es.get("GROWTH_ATK", 1.07))
 	var gd := float(es.get("GROWTH_DEF", 1.05))
 
-	var hp := e.stats.max_hp * pow(gh, f - 1) * Scaling.rank_mult(e.rank, "hp")
+	# HP: mult de rank aplica-se SÓ a bosses; inimigos comuns usam o HP base puro (× curva do andar).
+	var hp := e.stats.max_hp * pow(gh, f - 1)
+	if e is Boss:
+		hp *= Scaling.rank_mult(e.rank, "hp")
 	var atk := e.stats.attack * pow(ga, f - 1) * Scaling.rank_mult(e.rank, "atk")
 	var df := e.stats.defense * pow(gd, f - 1)
 

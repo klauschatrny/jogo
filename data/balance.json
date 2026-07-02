@@ -28,6 +28,13 @@
   "defense_curve": {
     "DEFENSE_K": 100
   },
+  "stamina": {
+    "MAX": 100,
+    "REGEN_PER_SEC": 45,
+    "REGEN_DELAY": 0.5,
+    "ATTACK_COST": 20,
+    "DODGE_COST": 30
+  },
   "augments": {
     "tier_weights": { "FRAGMENT": 100, "RELIC": 30, "ARTIFACT": 6 },
     "LUCK_RARITY_FACTOR": { "FRAGMENT": 0.0, "RELIC": 0.02, "ARTIFACT": 0.05 },
