@@ -3,6 +3,6 @@
   "hitbox": [8, 26],
   "scale": 2,
   "animations": {
-    "idle": { "row": 0, "frames": 1, "fps": 1 }
+    "idle": { "row": 0, "frames": 9, "fps": 8 }
   }
 }
