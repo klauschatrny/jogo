@@ -16,8 +16,10 @@ var _enemies: Array = []
 var _hud: Hud
 var _msg: Label
 var _layer: CanvasLayer
-var _phase := "room"           # room | to_boss_door | transition | boss | reward | to_exit_door | dead | victory
-var _floor_config: Dictionary = {}
+var _phase := "room"           # room | to_chest_door | transition | boss | chest_room | reward | to_exit_door | dead | victory
+var _floor_config: Dictionary = {}   # config do nível ATUAL (de levels.json ou o fallback)
+var _levels: Dictionary = {}         # nível(int) -> config (data/floors/levels.json)
+var _default_level: Dictionary = {}  # fallback para níveis ainda não desenhados (floor_default.json)
 
 # --- Sala (regida pelo Necromante) ---
 # O Necromante (classe "elite") nasce no fim da sala, estático e ranged. Enquanto vive, cada
@@ -29,6 +31,8 @@ var _alive := { "minion": 0, "normal": 0, "heavy": 0, "elite": 0 }
 var _heavy_stage: Array = []
 var _first_kill_done := false   # 1º esqueleto da horda morto (um dos gatilhos do heavy 'a')
 var _necro: NecromancerView     # o Necromante (objetivo da sala); null se morto/inexistente
+var _dead_pool: Array = []      # tiers de esqueletos eliminados aguardando reinvocação (1 por cast)
+var _respawn_running := false   # o loop de cast de respawn está ativo?
 var _current_boss_id := ""
 var _boss_view: EnemyView
 var _boss_bar: BossHealthBar    # barra de vida grande no rodapé (Dark Souls)
@@ -50,6 +54,9 @@ var _env: Node2D               # container do cenário atual (reconstruído por 
 var _fade: ColorRect           # overlay de fade das transições
 var _door: Node2D              # porta ativa (nula quando não há)
 var _door_x := 0.0
+var _chest: Node2D             # baú da sala de recompensa (null fora dela)
+var _chest_x := 0.0
+var _chest_opened := false
 
 ## Linha de topo do chão (eixo Y). Player e inimigos pousam aqui pela gravidade.
 const GROUND_Y := 300.0         # base 640×360
@@ -57,16 +64,27 @@ const ENV_TILE_SCALE := 2.0     # arte de terreno em texel 2 (mesmo dos personag
 const SPAWN_EXCLUSION := 180.0  # zona inicial (à esquerda) sem inimigos ao começar o andar
 const L1_NECRO_ONLY := false    # TESTE: andar 1 só com o necromante (sem horda/heavies)
 const BOSS_ROOM_W := 640.0     # sala do boss = uma tela fechada (base 640×360)
-const DOOR_REACH := 30.0       # distância para "entrar" na porta (base 640×360)
+const DOOR_REACH := 30.0       # distância para "entrar" na porta / abrir o baú (base 640×360)
 const FADE_TIME := 0.35
+
+# --- Dungeon (60 níveis; cada 4º é um boss → 15 bosses) ---
+const TOTAL_LEVELS := 60
+const BOSS_EVERY := 4          # níveis 4, 8, …, 60 são de boss
+const DEFAULT_BOSS := "bss_ogre"   # boss padrão dos níveis de boss (até levels.json definir outro)
+const CHEST_ROOM_W := 480.0    # sala do baú (fechada), acessada por uma porta ao fim do nível
 
 func _ready() -> void:
 	randomize()
 
-	# Config do andar carregada cedo: define o comprimento do corredor (cenário + câmera).
+	# Config por-nível da dungeon. levels.json = níveis desenhados (level 1 = sala do Necromante,
+	# level 2 = boss ogro, …); floor_default.json = fallback dos níveis ainda não definidos.
 	var cfg = JsonLoader.load_file("res://data/floors/floor_default.json")
-	_floor_config = cfg if typeof(cfg) == TYPE_DICTIONARY else {}
-	_corridor_length = float(_floor_config.get("corridor_length", _corridor_length))
+	_default_level = cfg if typeof(cfg) == TYPE_DICTIONARY else {}
+	var lcfg = JsonLoader.load_file("res://data/floors/levels.json")
+	if typeof(lcfg) == TYPE_DICTIONARY:
+		var lv: Dictionary = lcfg.get("levels", {})
+		for k in lv:
+			_levels[int(k)] = lv[k]   # chaves JSON vêm como String
 
 	var bcfg = JsonLoader.load_file("res://data/biomes.json")
 	_biomes = (bcfg.get("biomes", []) if typeof(bcfg) == TYPE_DICTIONARY else [])
@@ -245,19 +263,35 @@ func _reset_player_to_start() -> void:
 	_player_view.velocity = Vector2.ZERO
 	_camera.global_position.x = _player_view.global_position.x
 
+## Início de um nível da dungeon. Cada nível é de UM tipo (data-driven, levels.json):
+##   "boss" → arena fechada, direto no chefe.
+##   "room" → sala/corredor a limpar (ex.: sala do Necromante). Sem chefe.
+## Níveis não desenhados caem no fallback (floor_default.json = sala do Necromante).
 func _start_floor() -> void:
 	var floor := _run.current_floor
-	_current_boss_id = _tower.boss_for_floor(floor)
 	_ghost_beaten_this_floor = false
+	_floor_config = _levels.get(floor, {})
+	var ltype := String(_floor_config.get("type", ""))
+	if ltype == "":
+		# Nível não desenhado em levels.json: regra da dungeon — cada BOSS_EVERY-ésimo é de boss;
+		# os demais caem no fallback de sala (floor_default = sala do Necromante).
+		if floor % BOSS_EVERY == 0:
+			ltype = "boss"
+		else:
+			_floor_config = _default_level
+			ltype = "room"
 
-	# Arena do Rei (andar final): sem waves de trash, monta a sala e vai direto ao boss.
-	if _tower.is_boss_only_floor(floor):
+	if ltype == "boss":
+		_current_boss_id = String(_floor_config.get("boss_id", DEFAULT_BOSS))
 		_build_environment(BOSS_ROOM_W, true)
 		_reset_player_to_start()
 		_phase = "boss"
 		_spawn_boss()
 		return
 
+	_current_boss_id = ""
+	_boss_view = null
+	_corridor_length = float(_floor_config.get("corridor_length", _corridor_length))
 	_build_environment(_corridor_length, false)
 	_reset_player_to_start()
 	_phase = "room"
@@ -276,6 +310,8 @@ func _start_room() -> void:
 	_heavy_stage.clear()
 	_first_kill_done = false
 	_necro = null
+	_dead_pool.clear()
+	_respawn_running = false
 
 	# Necromante(s): objetivo da sala. Nasce(m) no FIM do corredor, estático(s).
 	for spec in _room.get("elites", []):
@@ -294,7 +330,8 @@ func _start_room() -> void:
 		_fill_pool("minion")
 		_fill_pool("normal")
 
-	_msg.text = "Andar %d / %d — o Necromante comanda a horda. Elimine-o!" % [_run.current_floor, _tower.total_floors]
+	_msg.text = "Nível %d / %d — o Necromante comanda a horda. Elimine-o!" % [_run.current_floor, TOTAL_LEVELS]
+	_start_respawn_cast()   # loop de reinvocação: 1 esqueleto do pool por cast, enquanto o Necromante vive
 	_check_room_cleared()   # fallback: sem Necromante, a sala limpa por contagem
 
 ## Spec de um tier: { "ids": [...], "count": N }.
@@ -338,7 +375,7 @@ func _spawn_necromancer(id: String) -> void:
 	view.set_meta("tier", "elite")
 	_alive["elite"] += 1
 	_necro = view
-	_add_view(view, enemy, Vector2(_arena_width - 48.0, GROUND_Y - 40.0))
+	_add_view(view, enemy, Vector2(_arena_width - 198.0, GROUND_Y - 40.0))   # 150px à esquerda do fim
 
 ## Andar 1: os heavies a<b<c EM ORDEM de proximidade, um em cada terço da 2ª metade, dormentes.
 ## Acordam em cadeia — ver _update_heavy_chain.
@@ -374,19 +411,19 @@ func _on_room_enemy_died(view: EnemyView) -> void:
 	_alive[tier] = maxi(0, _alive[tier] - 1)
 	match tier:
 		"elite":
-			# Necromante morto: TODOS os esqueletos morrem e a sala é liberada.
+			# Necromante morto: TODOS os esqueletos morrem e o nível é concluído.
 			_necro = null
 			_kill_all_skeletons()
-			_open_boss_door()
+			_on_floor_cleared()
 			return
 		"heavy":
 			_mark_heavy_dead(view)            # andar 1: destrava o próximo heavy da cadeia
 			if _has_necro():
-				_schedule_respawn("heavy")    # renasce perto do Necromante após o delay
+				_dead_pool.append("heavy")    # entra no pool; renasce num cast futuro
 		"minion", "normal":
 			_first_kill_done = true           # 1º esqueleto da horda → gatilho do heavy 'a'
 			if _has_necro():
-				_schedule_respawn(tier)
+				_dead_pool.append(tier)
 	_update_heavy_chain()
 	_check_room_cleared()
 
@@ -433,20 +470,37 @@ func _has_necro() -> bool:
 
 ## Ponto aleatório uniforme num disco de RESPAWN_RADIUS ao redor do Necromante.
 func _necro_spawn_pos() -> Vector2:
-	var c := _necro.global_position if _has_necro() else Vector2(_arena_width - 48.0, GROUND_Y - 40.0)
+	var c := _necro.global_position if _has_necro() else Vector2(_arena_width - 198.0, GROUND_Y - 40.0)
 	var ang := randf() * TAU
 	var r := sqrt(randf()) * RESPAWN_RADIUS
 	return c + Vector2(cos(ang), sin(ang)) * r
 
-func _schedule_respawn(tier: String) -> void:
+## Loop de reinvocação do Necromante: a cada respawn_delay, revive UMA unidade aleatória do pool
+## de esqueletos eliminados (se houver). Um cast por vez. Para de reagendar quando o Necromante cai.
+func _start_respawn_cast() -> void:
+	if _respawn_running or not _has_necro():
+		return
+	_respawn_running = true
+	_queue_next_cast()
+
+func _queue_next_cast() -> void:
 	var delay := float(_room.get("respawn_delay", 4.0))
-	var ids: Array = _tier_spec(tier).get("ids", [])
-	get_tree().create_timer(delay).timeout.connect(func() -> void:
-		if _phase != "room" or not _has_necro() or ids.is_empty():
-			return
-		var v := _spawn_room_enemy(tier, String(ids[randi() % ids.size()]), _necro_spawn_pos())
-		if tier == "heavy" and v != null:
-			_reassign_heavy(v))
+	get_tree().create_timer(delay).timeout.connect(_respawn_cast)
+
+func _respawn_cast() -> void:
+	if _phase != "room" or not _has_necro():
+		_respawn_running = false
+		return   # sala acabou / Necromante morto → encerra o loop
+	if not _dead_pool.is_empty():
+		var idx := randi() % _dead_pool.size()
+		var tier := String(_dead_pool[idx])   # 1 unidade aleatória do pool
+		_dead_pool.remove_at(idx)
+		var ids: Array = _tier_spec(tier).get("ids", [])
+		if not ids.is_empty():
+			var v := _spawn_room_enemy(tier, String(ids[randi() % ids.size()]), _necro_spawn_pos())
+			if tier == "heavy" and v != null:
+				_reassign_heavy(v)
+	_queue_next_cast()
 
 ## Reassocia um heavy renascido (já ativo) ao primeiro estágio morto, para o encadeamento seguir.
 func _reassign_heavy(v: EnemyView) -> void:
@@ -467,29 +521,24 @@ func _kill_all_skeletons() -> void:
 		if c is NecroProjectile:
 			c.queue_free()
 	_alive = { "minion": 0, "normal": 0, "heavy": 0, "elite": 0 }
+	_dead_pool.clear()
 
 ## Sala limpa: com Necromante vivo, só ao matá-lo (trata direto no _on_room_enemy_died). Sem
-## Necromante (fallback), limpa quando não sobra ninguém.
+## Necromante (fallback), limpa quando não sobra ninguém → conclui o nível.
 func _check_room_cleared() -> void:
 	if _phase != "room" or _has_necro():
 		return
 	if _alive["heavy"] <= 0 and _alive["minion"] <= 0 and _alive["normal"] <= 0:
-		_open_boss_door()
+		_on_floor_cleared()
 
 # ---------------------------------------------------------------------------
-# Portas & transições (Leva 2): porta do boss (após as waves) e porta de saída
-# (após o boss → andar superior). Entrar numa porta = chegar perto dela.
+# Porta de saída (após limpar o nível → próximo nível). Entrar = chegar perto dela.
 # ---------------------------------------------------------------------------
-
-func _open_boss_door() -> void:
-	_phase = "to_boss_door"
-	_spawn_door(_arena_width - 10.0, Palette.ENEMY)
-	_msg.text = "Caminho liberado — vá até a porta →"
 
 func _open_exit_door() -> void:
 	_phase = "to_exit_door"
 	_spawn_door(_arena_width - 10.0, Palette.ACCENT)
-	_msg.text = "A porta para o andar superior se abriu →"
+	_msg.text = "A porta para o próximo nível se abriu →"
 
 func _process(_delta: float) -> void:
 	# Parallax do fundo segue a câmera (todo frame, em qualquer fase).
@@ -498,18 +547,25 @@ func _process(_delta: float) -> void:
 
 	_update_boss_bar()
 
-	# Andar 1: reavalia os gatilhos de posição dos heavies (sair da exclusão / passar dos spawns).
+	# Nível 1: reavalia os gatilhos de posição dos heavies (sair da exclusão / passar dos spawns).
 	if _phase == "room":
 		_update_heavy_chain()
 
-	# Detecta o player chegando à porta ativa.
-	if _phase != "to_boss_door" and _phase != "to_exit_door":
+	# Sala do baú: chegar perto do baú o abre (uma vez).
+	if _phase == "chest_room":
+		if is_instance_valid(_player_view) and not _chest_opened \
+				and absf(_player_view.global_position.x - _chest_x) <= DOOR_REACH:
+			_open_chest()
+		return
+
+	# Portas: entrar na sala do baú (to_chest_door) ou ir ao próximo nível (to_exit_door).
+	if _phase != "to_chest_door" and _phase != "to_exit_door":
 		return
 	if not is_instance_valid(_player_view):
 		return
 	if absf(_player_view.global_position.x - _door_x) <= DOOR_REACH:
-		if _phase == "to_boss_door":
-			_transition(_enter_boss_room)
+		if _phase == "to_chest_door":
+			_transition(_enter_chest_room)
 		else:
 			_transition(_next_floor)
 
@@ -520,16 +576,6 @@ func _transition(on_black: Callable) -> void:
 	tw.tween_property(_fade, "modulate:a", 1.0, FADE_TIME)
 	tw.tween_callback(on_black)
 	tw.tween_property(_fade, "modulate:a", 0.0, FADE_TIME)
-
-## Sob a tela preta: limpa o corredor, monta a sala fechada e invoca o boss.
-func _enter_boss_room() -> void:
-	for v in _enemies.duplicate():
-		if is_instance_valid(v):
-			v.queue_free()
-	_enemies.clear()
-	_build_environment(BOSS_ROOM_W, true)
-	_reset_player_to_start()
-	_spawn_boss()
 
 func _spawn_boss() -> void:
 	_phase = "boss"
@@ -546,12 +592,10 @@ func _spawn_boss() -> void:
 	var g := _ghost_repo.load_active()
 	_ghost_to_summon = g if NemesisRules.should_summon(g, floor) else null
 
-	if _tower.is_king_floor(floor):
-		_msg.text = "Andar %d — O REI DA TORRE!" % floor
-	elif _tower.is_great_boss_floor(floor):
-		_msg.text = "Andar %d — GRANDE CHEFE: %s" % [floor, boss.name]
+	if floor >= TOTAL_LEVELS:
+		_msg.text = "Nível %d — O REI DA DUNGEON!" % floor
 	else:
-		_msg.text = "Andar %d — CHEFE!" % floor
+		_msg.text = "Nível %d — CHEFE: %s" % [floor, boss.name]
 
 	var bv: BossView = OgreView.new() if _current_boss_id == "bss_ogre" else BossView.new()
 	bv.summon_ghost.connect(_on_summon_ghost)
@@ -613,16 +657,67 @@ func _clear_remaining_ghost() -> void:
 			v.queue_free()
 
 func _on_floor_cleared() -> void:
-	# Derrotar o boss do andar final (Rei) conclui a torre.
-	if _tower.is_victory_floor(_run.current_floor):
+	# Vencer o último nível conclui a dungeon.
+	if _run.current_floor >= TOTAL_LEVELS:
 		_on_victory()
 		return
-	_phase = "reward"
-	# Catarse (§1.4.3): vencer o próprio Eco garante uma Relíquia+ na recompensa do andar.
+	# Nível limpo: abre a porta (ao fim do nível) que leva à SALA DO BAÚ (recompensa).
+	_phase = "to_chest_door"
+	_spawn_door(_arena_width - 10.0, Palette.ACCENT)
+	_msg.text = "Nível limpo! Vá até a porta →"
+
+## Sob a tela preta: monta a sala fechada do baú (recompensa) e coloca o player nela.
+func _enter_chest_room() -> void:
+	for v in _enemies.duplicate():
+		if is_instance_valid(v):
+			v.queue_free()
+	_enemies.clear()
+	_boss_view = null
+	_build_environment(CHEST_ROOM_W, true)
+	_reset_player_to_start()
+	_chest_opened = false
+	_spawn_chest()
+	_phase = "chest_room"
+	_msg.text = "Abra o baú →"
+
+## Baú no centro da sala do baú (placeholder em ColorRects). Abrir = chegar perto (DOOR_REACH).
+func _spawn_chest() -> void:
+	var w := 18.0
+	var h := 12.0
+	var chest := Node2D.new()
+	var body := ColorRect.new()
+	body.color = Color(0.5, 0.34, 0.18)
+	body.size = Vector2(w, h)
+	body.position = Vector2(-w * 0.5, -h)
+	chest.add_child(body)
+	var lid := ColorRect.new()
+	lid.color = Color(0.7, 0.52, 0.26)
+	lid.size = Vector2(w, 3.0)
+	lid.position = Vector2(-w * 0.5, -h)
+	chest.add_child(lid)
+	var lock := ColorRect.new()
+	lock.color = Palette.ACCENT
+	lock.size = Vector2(3, 3)
+	lock.position = Vector2(-1.5, -h * 0.5)
+	chest.add_child(lock)
+	chest.z_index = 60
+	chest.position = Vector2(CHEST_ROOM_W * 0.5, GROUND_Y)   # centro da sala do baú, base no chão
+	_chest = chest
+	_chest_x = chest.position.x
+	_env.add_child(chest)   # filho do cenário atual: some quando o cenário é reconstruído (não vaza)
+
+## Abre o baú: mostra as opções de augment. Sem augments → abre direto a porta do próximo nível.
+func _open_chest() -> void:
+	_chest_opened = true
+	if is_instance_valid(_chest):
+		Juice.burst(self, _chest.global_position + Vector2(0.0, -6.0), Palette.ACCENT, 16, 130.0)
+		_chest.modulate = Color(1.3, 1.2, 0.9)   # brilho de "aberto"
+	# Catarse (§1.4.3): vencer o próprio Eco garante uma Relíquia+ na recompensa.
 	var cards := _run.offer_augments_catharsis() if _ghost_beaten_this_floor else _run.offer_augments()
 	if cards.is_empty():
 		_open_exit_door()
 		return
+	_phase = "reward"
 	var cs := CardSelect.new()
 	cs.setup(cards)
 	cs.chosen.connect(_on_card_chosen.bind(cs))
@@ -631,7 +726,7 @@ func _on_floor_cleared() -> void:
 func _on_card_chosen(aug: Augment, cs: CardSelect) -> void:
 	cs.queue_free()
 	_run.choose_augment(aug)
-	_open_exit_door()      # escolhida a recompensa, abre a porta para subir de andar
+	_open_exit_door()      # escolhida a recompensa, abre a porta para o próximo nível
 
 func _next_floor() -> void:
 	_run.advance_floor()
@@ -643,7 +738,7 @@ func _on_player_died(_p: Player) -> void:
 	var coeff := float(BalanceConfig.nemesis.get("NEMESIS_COEFF", 0.65))
 	_ghost_repo.record_death(_run.player.snapshot(), _run.current_floor, _run.player.run_id, coeff)
 	_show_end_screen("VOCÊ MORREU", [
-		"Tombou no andar %d de %d" % [_run.current_floor, _tower.total_floors],
+		"Tombou no nível %d de %d" % [_run.current_floor, TOTAL_LEVELS],
 		"Nível %d" % _run.player.level,
 		"Um Eco seu ficou para trás...",
 	], Palette.ENEMY)

@@ -1,0 +1,20 @@
+{
+  "_comment": "Config por-nível da dungeon (60 níveis, cada um único). type = 'room' (sala a limpar) ou 'boss' (arena fechada). Regra: todo 4º nível (4,8,...,60) é boss (15 no total). Níveis não listados caem no fallback floor_default.json (sala do Necromante); níveis de boss não listados usam o boss padrão (bss_ogre). Defina aqui os bosses/salas únicos.",
+  "levels": {
+    "1": {
+      "type": "room",
+      "corridor_length": 1440,
+      "room": {
+        "respawn_delay": 4.0,
+        "minions": { "ids": ["enm_skeleton_minion"], "count": 3 },
+        "normals": { "ids": ["enm_skeleton_armored"], "count": 2 },
+        "heavies": { "ids": ["enm_skeleton_heavy"], "count": 1 },
+        "elites":  [ { "id": "enm_necromancer", "count": 1 } ]
+      }
+    },
+    "4": {
+      "type": "boss",
+      "boss_id": "bss_ogre"
+    }
+  }
+}
