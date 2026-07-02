@@ -15,7 +15,8 @@ const GRAVITY := 1400.0            # mesma gravidade do player (side-scroller pl
 var data: Enemy                     # entidade Core
 var target: Node2D                  # quem perseguir (o PlayerView)
 var dormant := false                # passivo: não persegue nem ataca até ser ativado (elites em estágio)
-var attack_range := ATTACK_RANGE    # alcance do golpe melee (hit E tamanho do efeito visual)
+var attack_range := ATTACK_RANGE    # alcance de GATILHO/aproximação do golpe melee
+var hit_range := 0.0                # alcance de DANO/efeito do golpe (0 = usa attack_range)
 var attack_style := "slash"         # estilo do efeito melee: "slash" (arco) | "thrust" (estocada)
 var windup_time := WINDUP            # duração do windup (s) — data-driven via "windup" no JSON
 var attack_interval := ATTACK_INTERVAL  # cooldown entre golpes (s) — data-driven via "attack_cooldown"
@@ -43,7 +44,9 @@ func setup(enemy: Enemy, target_node: Node2D) -> void:
 	data = enemy
 	target = target_node
 	if enemy != null and enemy.attack_range > 0.0:
-		attack_range = enemy.attack_range   # alcance melee data-driven (dirige hit + efeito)
+		attack_range = enemy.attack_range   # alcance de gatilho/aproximação data-driven
+	if enemy != null and enemy.hit_range > 0.0:
+		hit_range = enemy.hit_range         # alcance de dano/efeito (separado do gatilho)
 	if enemy != null and enemy.attack_style != "":
 		attack_style = enemy.attack_style   # estilo do efeito: "slash" (padrão) | "thrust"
 	if enemy != null and enemy.windup >= 0.0:
@@ -189,16 +192,20 @@ func _play_attack_anim() -> void:
 	_sprite.frame = 0
 	_anim_lock = attack_interval * 0.5
 
-## Efeito de golpe melee na direção do player, dimensionado por attack_range. O estilo vem de
+## Alcance efetivo de DANO/efeito do golpe: hit_range se definido, senão o attack_range (gatilho).
+func _hit_range() -> float:
+	return hit_range if hit_range > 0.0 else attack_range
+
+## Efeito de golpe melee na direção do player, dimensionado por _hit_range(). O estilo vem de
 ## attack_style: "thrust" (estocada reta) ou "slash" (arco, padrão). Funciona mesmo sem arte.
 func _spawn_attack_fx(dx: float) -> void:
 	var ang := 0.0 if dx >= 0.0 else PI
 	var pos := Vector2(0.0, -box_h * 0.25)
 	var col := body_color.lightened(0.3)
 	if attack_style == "thrust":
-		Juice.thrust(self, pos, ang, attack_range, col)
+		Juice.thrust(self, pos, ang, _hit_range(), col)
 	else:
-		Juice.slash_arc(self, pos, ang, attack_range, col)
+		Juice.slash_arc(self, pos, ang, _hit_range(), col)
 
 ## Inicia o windup: mostra o "!" e trava o golpe por WINDUP segundos (janela para o player desviar).
 func _start_windup() -> void:
@@ -210,7 +217,7 @@ func _start_windup() -> void:
 func _resolve_attack(dx: float) -> void:
 	_hide_warn()
 	if is_instance_valid(target):
-		var in_range := absf(dx) <= attack_range \
+		var in_range := absf(dx) <= _hit_range() \
 			and absf(target.global_position.y - global_position.y) <= ATTACK_VRANGE
 		if in_range and target.has_method("apply_enemy_hit"):
 			target.apply_enemy_hit(data.stats)

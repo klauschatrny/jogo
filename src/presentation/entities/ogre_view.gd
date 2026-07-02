@@ -1,33 +1,72 @@
-## Ogro (boss): além do ataque melee normal (EnemyView), ao cruzar 50%/35%/15% de vida ele
-## entra em fúria e faz uma INVESTIDA: durante o windup rastreia o lado do player e TRAVA a
-## direção quando faltam 200 ms; então corre cegamente nessa direção (150% da vel. do player)
-## desferindo até 3 golpes (50 de dano cada). Depois fica imóvel e cansado por 2s e volta ao normal.
+## Ogro (boss). Habilidades NORMAIS escolhidas por DISTÂNCIA do player (dx horizontal):
+##  - ≤ 100px (zona comum baderna+melee): sorteia golpe melee ou baderna.
+##  - 100–250px: aproxima (nenhuma habilidade nessa faixa).
+##  - 250–560px (zona de rochas): arremesso de 3 rochas (25 de dano cada); cooldown próprio de 8s.
+##  - > 560px: aproxima.
+## Nas zonas exclusivas ele SEMPRE usa a habilidade daquela zona; só sorteia na zona comum.
+## O golpe melee PODE andar em direção ao player durante o windup; a baderna e as rochas ficam
+## paradas. Entre QUALQUER habilidade normal há um cooldown global de 2s — durante ele o ogro
+## anda em direção ao player (só para para castar quando o cooldown zera). Cada instância de dano
+## recebida DURANTE o cooldown corta 0.4s dele (quanto mais apanha, mais rápido revida); dano fora
+## do cooldown não conta. Detalhes:
+##  - Arremesso de rochas — windup inicial 1s e 0.9s entre os arremessos; rocha voa reta até o player.
+##    Além do cooldown global, tem cooldown PRÓPRIO de 8s (na faixa de rochas, se em cooldown, aproxima).
+##  - Baderna — 6 golpes alternando lados (3 direita / 3 esquerda); windup inicial 1s, 0.3s entre.
+## Habilidade ESPECIAL: ao cruzar 50%/35%/15% de vida ele entra em fúria e faz uma INVESTIDA
+## ÚNICA — no windup rastreia o lado do player e TRAVA a direção a 200 ms do fim; corre cegamente
+## (200% da vel. do player) e causa dano UMA vez quando a hitbox toca a do player, SEM parar por
+## isso (atravessa); depois fica imóvel e cansado por 2s (encerra ao bater na parede ou por timeout).
 class_name OgreView
 extends BossView
 
 const THRESHOLDS := [0.5, 0.35, 0.15]   # % de vida que disparam a investida
-const CHARGE_SPEED_MULT := 1.5          # 150% da velocidade do player
+const CHARGE_SPEED_MULT := 2.0          # 200% da velocidade do player
 const LOCK_AT_REMAINING := 0.2          # trava a direção quando faltam 200 ms de windup
-const CHARGE_HITS := 3
 const CHARGE_DAMAGE := 50
-const CHARGE_HIT_CD := 0.3              # intervalo mínimo entre golpes da investida
 const CHARGE_MAX_TIME := 2.0            # segurança: encerra a investida
 const TIRED_TIME := 2.0
 
-var _special := ""                      # "" (normal) | "windup" | "charge" | "tired"
+const ABILITY_GCD := 2.0                 # cooldown global entre QUALQUER cast de habilidade normal
+const GCD_HIT_REDUCTION := 0.4           # cada dano recebido corta isto do cooldown atual
+
+const ROCK_COUNT := 3                    # arremesso de rochas: quantidade
+const ROCK_DAMAGE := 25
+const ROCK_INITIAL_WINDUP := 1.0        # windup antes do 1º arremesso
+const ROCK_BETWEEN_WINDUP := 0.9        # windup entre os arremessos
+const ROCK_SPEED := 250.0
+const ROCK_CD := 8.0                     # cooldown PRÓPRIO do arremesso de rochas (além do global)
+
+const BADERNA_HITS := 6                  # 3 direita + 3 esquerda, intercalados
+const BADERNA_INITIAL_WINDUP := 1.0
+const BADERNA_BETWEEN := 0.3            # windup entre os golpes individuais
+
+const ROCK_MIN_RANGE := 250.0           # distância mínima p/ arremessar rochas
+const ROCK_RANGE := 560.0               # distância máxima da zona de rochas
+const ROCK_VRANGE := 200.0             # alcance vertical p/ arremessar (arena plana: quase irrestrito)
+const BADERNA_RANGE := 100.0            # gatilho da baderna (≤ isto entra no sorteio com o melee)
+
+var _special := ""                      # "" | "windup" | "charge" | "tired" | "rocks" | "baderna" | "melee"
 var _sp_windup := 0.0
 var _charge_dir := 1.0
 var _dir_locked := false
 var _charge_speed := 0.0
-var _charge_hits := 0
-var _charge_hit_cd := 0.0
 var _charge_time := 0.0
+var _charge_hit := false                # já causou o dano único desta investida?
 var _tired := 0.0
 var _next_threshold := 0
+
+var _ability_timer := 0.0               # rochas/baderna: tempo até o próximo arremesso/golpe
+var _rock_left := 0
+var _bad_left := 0
+var _bad_side := 1.0
+var _gcd := 0.0                         # cooldown global: bloqueia novo cast por ABILITY_GCD
+var _rock_cd := 0.0                     # cooldown próprio das rochas (ROCK_CD)
 
 ## Após cada dano: fases do BossView (enrage/summon) + checa os limiares da investida.
 func _on_after_damage() -> void:
 	super._on_after_damage()
+	if _gcd > 0.0:                                # só encurta se HÁ cooldown ativo; dano fora dele não conta
+		_gcd = maxf(0.0, _gcd - GCD_HIT_REDUCTION)   # apanhar acelera o próximo golpe
 	if _special != "" or data == null:
 		return
 	var ratio := float(data.stats.current_hp) / float(maxi(data.stats.max_hp, 1))
@@ -38,8 +77,14 @@ func _on_after_damage() -> void:
 		_start_special()
 
 func _physics_process(delta: float) -> void:
+	_rock_cd = maxf(0.0, _rock_cd - delta)   # cooldown das rochas corre em qualquer estado
 	if _special == "":
-		super._physics_process(delta)   # IA melee normal do EnemyView
+		_gcd = maxf(0.0, _gcd - delta)   # cooldown global entre habilidades
+		# Seleção por DISTÂNCIA: em média distância (zona de rochas) fica parado e arremessa;
+		# perto/longe cai no super (aproxima e, ao alcance, sorteia melee/baderna).
+		if data != null and is_instance_valid(target) and _handle_ranged(delta):
+			return
+		super._physics_process(delta)
 		return
 	if data == null or not is_instance_valid(target):
 		return
@@ -47,12 +92,14 @@ func _physics_process(delta: float) -> void:
 		"windup": _tick_windup(delta)
 		"charge": _tick_charge(delta)
 		"tired": _tick_tired(delta)
+		"rocks": _tick_rocks(delta)
+		"baderna": _tick_baderna(delta)
+		"melee": _tick_melee(delta)
 
 func _start_special() -> void:
 	_special = "windup"
 	_sp_windup = windup_time
 	_dir_locked = false
-	_charge_hits = 0
 	_windup = 0.0                 # cancela qualquer windup normal em curso
 	_show_warn()
 	modulate = Color(1.6, 0.5, 0.5)   # enraivecido (vermelho forte)
@@ -78,11 +125,11 @@ func _tick_windup(delta: float) -> void:
 func _begin_charge() -> void:
 	_special = "charge"
 	_charge_time = 0.0
-	_charge_hit_cd = 0.0
+	_charge_hit = false
 	_charge_speed = CHARGE_SPEED_MULT * _player_move_speed()
 
-## Corre cegamente na direção travada; golpeia (50) ao sobrepor o player, até 3 vezes.
-## Encerra em 3 golpes, ao bater na parede, ou no tempo máximo.
+## Corre cegamente na direção travada; causa dano (50) UMA vez quando a hitbox toca a do player,
+## mas SEM parar por isso — segue atravessando. Só encerra ao bater na parede ou no tempo máximo.
 func _tick_charge(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y += GRAVITY * delta
@@ -90,15 +137,13 @@ func _tick_charge(delta: float) -> void:
 	move_and_slide()
 	_update_sprite(_charge_dir, true)
 	_charge_time += delta
-	_charge_hit_cd = maxf(0.0, _charge_hit_cd - delta)
-	if _charge_hit_cd <= 0.0 and _overlaps_player():
-		_charge_hit_cd = CHARGE_HIT_CD
-		_charge_hits += 1
+	if not _charge_hit and _overlaps_player():
+		_charge_hit = true
 		if target.has_method("apply_flat_damage"):
 			target.apply_flat_damage(CHARGE_DAMAGE)
 		_spawn_attack_fx(_charge_dir)
 		Juice.hit_stop(get_tree(), 0.05)
-	if _charge_hits >= CHARGE_HITS or is_on_wall() or _charge_time >= CHARGE_MAX_TIME:
+	if is_on_wall() or _charge_time >= CHARGE_MAX_TIME:
 		_begin_tired()
 
 func _begin_tired() -> void:
@@ -119,7 +164,163 @@ func _tick_tired(delta: float) -> void:
 	if _tired <= 0.0:
 		_special = ""
 		_attack_cd = attack_interval        # reinicia o cooldown do ataque normal
+		_gcd = ABILITY_GCD                   # cooldown global antes da próxima habilidade
 		modulate = Color(1.25, 0.8, 0.8)     # segue com aparência enraivecida
+
+## Player em MÉDIA distância (zona de rochas): fica parado, encara e arremessa quando o cooldown
+## zera. Retorna true se tratou o frame (nem perto p/ melee, nem longe p/ aproximar).
+func _handle_ranged(delta: float) -> bool:
+	if _gcd > 0.0 or _rock_cd > 0.0:
+		return false   # cooldown global ou das rochas: anda até o player (deixa o super cuidar)
+	var dx := target.global_position.x - global_position.x
+	var dy := target.global_position.y - global_position.y
+	var dist := absf(dx)
+	if dist < ROCK_MIN_RANGE or dist > ROCK_RANGE or absf(dy) > ROCK_VRANGE:
+		return false   # fora da faixa de rochas (perto → melee, ou longe → aproxima): super cuida
+	if not is_on_floor():
+		velocity.y += GRAVITY * delta
+	velocity.x = _knockback.x
+	_knockback = _knockback.lerp(Vector2.ZERO, 0.2)
+	move_and_slide()
+	_update_sprite(dx, false)
+	_start_rocks()   # zona de rochas com o cooldown pronto: para e arremessa
+	return true
+
+## Ao alcance de gatilho melee (≤ attack_range) e com o cooldown pronto, escolhe a habilidade
+## corpo-a-corpo por ZONA: ≤ BADERNA_RANGE é zona comum (sorteia melee/baderna); acima dela,
+## até attack_range, é exclusiva do melee. Rochas ficam para a média distância (ver _handle_ranged).
+func _start_windup() -> void:
+	if _gcd > 0.0:
+		return
+	var dist := absf(target.global_position.x - global_position.x)
+	if dist <= BADERNA_RANGE and randi() % 2 == 1:
+		_start_baderna()
+	else:
+		_start_melee()
+
+## --- Golpe melee normal: PODE andar em direção ao player durante o windup, depois conecta. ---
+func _start_melee() -> void:
+	_special = "melee"
+	_ability_timer = windup_time
+	_show_warn()
+
+func _tick_melee(delta: float) -> void:
+	if not is_on_floor():
+		velocity.y += GRAVITY * delta
+	var dx := target.global_position.x - global_position.x
+	velocity.x = signf(dx) * float(data.stats.move_speed)   # persegue o player durante o windup
+	move_and_slide()
+	_update_sprite(dx, true)
+	_ability_timer -= delta
+	if _ability_timer <= 0.0:
+		_hide_warn()
+		_resolve_melee()
+		_end_normal_ability()
+
+## Conecta o golpe se o player estiver no alcance de DANO (_hit_range) horizontal e vertical.
+func _resolve_melee() -> void:
+	if not is_instance_valid(target):
+		return
+	var dx := target.global_position.x - global_position.x
+	var dy := target.global_position.y - global_position.y
+	if absf(dx) <= _hit_range() and absf(dy) <= ATTACK_VRANGE:
+		if target.has_method("apply_enemy_hit"):
+			target.apply_enemy_hit(data.stats)
+	_play_attack_anim()
+	_spawn_attack_fx(dx)
+
+func _end_normal_ability() -> void:
+	_hide_warn()
+	_special = ""
+	_attack_cd = attack_interval   # reinicia o cooldown do ataque normal
+	_gcd = ABILITY_GCD             # cooldown global antes da próxima habilidade
+
+## --- Arremesso de rochas: parado, 3 rochas na direção do player (windup 1s, depois 0.9s entre) ---
+func _start_rocks() -> void:
+	_special = "rocks"
+	_rock_left = ROCK_COUNT
+	_ability_timer = ROCK_INITIAL_WINDUP
+	_rock_cd = ROCK_CD   # dispara o cooldown próprio das rochas
+	_show_warn()
+
+func _tick_rocks(delta: float) -> void:
+	if not is_on_floor():
+		velocity.y += GRAVITY * delta
+	velocity.x = 0.0
+	move_and_slide()
+	_update_sprite(target.global_position.x - global_position.x, false)
+	_ability_timer -= delta
+	if _ability_timer > 0.0:
+		return
+	_hide_warn()
+	_throw_rock()
+	_rock_left -= 1
+	if _rock_left > 0:
+		_ability_timer = ROCK_BETWEEN_WINDUP
+		_show_warn()
+	else:
+		_end_normal_ability()
+
+func _throw_rock() -> void:
+	if not is_instance_valid(target):
+		return
+	var origin := global_position + Vector2(0.0, -box_h * 0.5)   # altura do arremesso
+	var dir: Vector2 = (target.global_position - origin)
+	if dir.length() < 0.001:
+		dir = Vector2(_facing(), 0.0)
+	var rock := OgreRock.new()
+	get_parent().add_child(rock)
+	rock.global_position = origin
+	rock.setup(dir, ROCK_SPEED, ROCK_DAMAGE, target)
+	_play_attack_anim()
+
+## --- Baderna: parado, 6 golpes alternando lados (3 dir / 3 esq); windup 1s, 0.1s entre golpes ---
+func _start_baderna() -> void:
+	_special = "baderna"
+	_bad_left = BADERNA_HITS
+	_ability_timer = BADERNA_INITIAL_WINDUP
+	_bad_side = signf(target.global_position.x - global_position.x)   # começa no lado do player
+	if _bad_side == 0.0:
+		_bad_side = 1.0
+	_show_warn()
+
+func _tick_baderna(delta: float) -> void:
+	if not is_on_floor():
+		velocity.y += GRAVITY * delta
+	velocity.x = 0.0
+	move_and_slide()
+	_ability_timer -= delta
+	if _ability_timer > 0.0:
+		return
+	_hide_warn()
+	_baderna_hit(_bad_side)
+	_bad_side = -_bad_side          # intercala o lado
+	_bad_left -= 1
+	if _bad_left > 0:
+		_ability_timer = BADERNA_BETWEEN
+	else:
+		_end_normal_ability()
+
+## Um golpe da baderna num lado: acerta o player se ele estiver desse lado e ao alcance.
+func _baderna_hit(side: float) -> void:
+	_update_sprite(side, false)
+	if is_instance_valid(target):
+		var dx := target.global_position.x - global_position.x
+		var dy := target.global_position.y - global_position.y
+		var same_side := signf(dx) == signf(side)
+		if same_side and absf(dx) <= _hit_range() and absf(dy) <= ATTACK_VRANGE:
+			if target.has_method("apply_enemy_hit"):
+				target.apply_enemy_hit(data.stats)
+	_spawn_attack_fx(side)
+	Juice.hit_stop(get_tree(), 0.03)
+
+## Direção que o ogro encara (fallback quando não há alvo p/ mirar).
+func _facing() -> float:
+	if is_instance_valid(target):
+		var dx := target.global_position.x - global_position.x
+		if dx != 0.0:
+			return signf(dx)
+	return 1.0
 
 func _player_move_speed() -> float:
 	if is_instance_valid(target) and "data" in target and target.data != null:

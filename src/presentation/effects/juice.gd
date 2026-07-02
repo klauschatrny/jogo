@@ -37,6 +37,35 @@ static func flash_modulate(item: CanvasItem, dur := 0.08) -> void:
 	var tw := item.create_tween()
 	tw.tween_property(item, "modulate", Color.WHITE, dur)
 
+## Filtro branco por shader: mistura a arte em direção ao branco por `amount` (0..1) de opacidade,
+## em duas piscadas rápidas que somem. Diferente do flash_modulate (que estoura o brilho via
+## modulate), isto lava a silhueta de branco de fato — usado no dano por colisão do player. Cria
+## um ShaderMaterial no próprio item na 1ª chamada (reaproveitado depois; flash=0 = sem efeito).
+const FLASH_SHADER := "shader_type canvas_item;
+uniform float flash : hint_range(0.0, 1.0) = 0.0;
+void fragment() {
+	vec4 c = texture(TEXTURE, UV);
+	c.rgb = mix(c.rgb, vec3(1.0), flash);
+	COLOR = c;
+}
+"
+
+static func flash_white(item: CanvasItem, amount := 0.6, dur := 0.09) -> void:
+	if item == null:
+		return
+	var mat := item.material as ShaderMaterial
+	if mat == null:
+		var sh := Shader.new()
+		sh.code = FLASH_SHADER
+		mat = ShaderMaterial.new()
+		mat.shader = sh
+		item.material = mat
+	var setp := func(v: float) -> void: mat.set_shader_parameter("flash", v)
+	var tw := item.create_tween()
+	tw.tween_method(setp, amount, 0.0, dur)   # 1ª piscada
+	tw.tween_interval(0.03)
+	tw.tween_method(setp, amount, 0.0, dur)   # 2ª piscada
+
 ## Arco de corte (swipe) curto para telegrafar/impactar um golpe melee, na direção `angle`,
 ## com `radius` = alcance visual (use o attack range da entidade). Filho de `parent`, em `pos`
 ## local. Varre um pouco, some e afina; auto-libera ao fim.

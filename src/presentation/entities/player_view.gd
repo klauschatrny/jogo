@@ -20,6 +20,8 @@ const POGO_BOUNCE := -380.0      # impulso pra cima ao acertar um golpe pra baix
 const COMBO_GRACE := 0.28        # folga sobre o cooldown do golpe para encadear o combo
 const COMBO_MAX := 3             # combo de 3 golpes (0, 1, 2=finisher)
 const FINISHER_KNOCKBACK := 2.4  # o 3º golpe empurra bem mais
+const CONTACT_CD := 1.0          # imunidade entre hits por COLISÃO sequenciais
+const CONTACT_KNOCKBACK := 520.0 # empurrão horizontal ao encostar num inimigo (base 640×360)
 
 var data: Player                    # entidade Core
 var god_mode := false               # debug: ignora dano recebido
@@ -32,6 +34,8 @@ var _dodge_dir := Vector2.RIGHT    # direção do dash (input atual, ou facing)
 var _afterimage_acc := 0.0
 var _combo := 0                    # passo atual do combo (0..COMBO_MAX-1)
 var _combo_timer := 0.0            # tempo restante para encadear o próximo golpe
+var _contact_cd := 0.0             # cooldown do hit por colisão (>0 = imune a colisão)
+var _knockback := Vector2.ZERO     # empurrão horizontal (decai); somado à velocidade
 var box_w := SIZE                  # hitbox efetiva (px); resolvida em _build do manifesto player.json
 var box_h := SIZE                  # (ou SIZE × SIZE se o manifesto não definir "hitbox")
 var _body: ColorRect
@@ -94,8 +98,12 @@ func _physics_process(delta: float) -> void:
 	_dodge_cd = maxf(0.0, _dodge_cd - delta)
 	_anim_lock = maxf(0.0, _anim_lock - delta)
 	_combo_timer = maxf(0.0, _combo_timer - delta)
+	_contact_cd = maxf(0.0, _contact_cd - delta)
 	if _combo_timer <= 0.0:
 		_combo = 0                    # combo expira fora da janela
+
+	# Dano por COLISÃO: encostar num inimigo (fora dos i-frames) fere, empurra e pisca de branco.
+	_check_contact_damage()
 
 	# Gravidade contínua; o chão (StaticBody2D) segura o player via is_on_floor().
 	if not is_on_floor():
@@ -115,7 +123,7 @@ func _physics_process(delta: float) -> void:
 	var ix := Input.get_axis("move_left", "move_right")
 	if ix != 0.0:
 		_facing = Vector2.RIGHT if ix > 0.0 else Vector2.LEFT
-	velocity.x = ix * float(data.stats.move_speed) * ViewScale.WORLD
+	velocity.x = ix * float(data.stats.move_speed) * ViewScale.WORLD + _knockback.x
 
 	if Input.is_action_just_pressed("jump") and is_on_floor():
 		velocity.y = JUMP_VELOCITY
@@ -124,6 +132,7 @@ func _physics_process(delta: float) -> void:
 		_start_dodge(ix)
 
 	move_and_slide()
+	_knockback = _knockback.lerp(Vector2.ZERO, 0.2)   # empurrão do contato decai rápido
 
 	_flip(_facing)
 	_update_locomotion(ix)
@@ -208,6 +217,47 @@ func _current_attack_dir() -> Vector2:
 		return Vector2.DOWN
 	return _facing
 
+## Dano por COLISÃO: se a hitbox do player encostar na de QUALQUER inimigo (fora dos i-frames e do
+## cooldown de contato), toma o golpe daquele inimigo, é empurrado para longe e pisca de branco.
+## Um cooldown de CONTACT_CD segura o próximo hit por colisão.
+func _check_contact_damage() -> void:
+	if god_mode or _dodge_time > 0.0 or _contact_cd > 0.0:
+		return
+	var enemy := _overlapping_enemy()
+	if enemy == null:
+		return
+	_contact_cd = CONTACT_CD
+	var dmg := CombatResolver.enemy_hit(enemy.data.stats, data)
+	data.take_damage(int(round(dmg)))
+	var dir := signf(global_position.x - enemy.global_position.x)
+	if dir == 0.0:
+		dir = -signf(_facing.x) if _facing.x != 0.0 else 1.0
+	_knockback = Vector2(dir * CONTACT_KNOCKBACK, 0.0)
+	_flash_hit()
+	_shake(0.2)
+
+## Primeiro inimigo cuja hitbox sobrepõe a do player (query de forma à camada 2). null se nenhum.
+func _overlapping_enemy() -> EnemyView:
+	var shape := RectangleShape2D.new()
+	shape.size = Vector2(box_w, box_h)
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = shape
+	query.transform = Transform2D(0.0, global_position)
+	query.collision_mask = 2
+	query.collide_with_bodies = true
+	for hit in get_world_2d().direct_space_state.intersect_shape(query, 8):
+		var b: Variant = hit.get("collider")
+		if b is EnemyView and b.data != null:
+			return b
+	return null
+
+## Pisca de branco (filtro 60%) na arte, ou flash no placeholder ColorRect quando não há sprite.
+func _flash_hit() -> void:
+	if _sprite != null:
+		Juice.flash_white(_sprite, 0.6)
+	else:
+		Juice.flash(_body, BASE_COLOR)
+
 ## Chamado pelo EnemyView quando o inimigo acerta o jogador.
 func apply_enemy_hit(attacker_stats: StatBlock) -> void:
 	if god_mode or _dodge_time > 0.0:   # i-frames durante a esquiva
@@ -222,15 +272,18 @@ func apply_enemy_hit(attacker_stats: StatBlock) -> void:
 
 ## Dano FIXO (ignora defesa) — usado por habilidades (ex.: AoE do Necromante). Respeita a
 ## esquiva (i-frames) e o god mode, igual ao golpe comum.
-func apply_flat_damage(amount: int) -> void:
+## Retorna true se o dano conectou; false se foi ignorado (esquiva/god) — deixa quem chama
+## (ex.: a rocha do ogro) saber se deve sumir ou passar reto pelo player.
+func apply_flat_damage(amount: int) -> bool:
 	if god_mode or _dodge_time > 0.0:
-		return
+		return false
 	data.take_damage(amount)
 	if _sprite != null:
 		Juice.flash_modulate(_sprite)
 	else:
 		Juice.flash(_body, BASE_COLOR)
 	_shake(0.25)
+	return true
 
 ## Tremor de tela via a câmera ativa (GameCamera). Sem câmera, é no-op.
 func _shake(amount: float) -> void:
