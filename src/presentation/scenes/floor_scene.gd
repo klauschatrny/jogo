@@ -16,7 +16,7 @@ var _enemies: Array = []
 var _hud: Hud
 var _msg: Label
 var _layer: CanvasLayer
-var _phase := "room"           # room | to_chest_door | transition | boss | chest_room | reward | to_exit_door | dead | victory
+var _phase := "room"           # tutorial | room | to_chest_door | transition | boss | chest_room | reward | to_exit_door | dead | victory
 var _floor_config: Dictionary = {}   # config do nível ATUAL (de levels.json ou o fallback)
 var _levels: Dictionary = {}         # nível(int) -> config (data/floors/levels.json)
 var _default_level: Dictionary = {}  # fallback para níveis ainda não desenhados (floor_default.json)
@@ -72,6 +72,18 @@ const TOTAL_LEVELS := 60
 const BOSS_EVERY := 4          # níveis 4, 8, …, 60 são de boss
 const DEFAULT_BOSS := "bss_ogre"   # boss padrão dos níveis de boss (até levels.json definir outro)
 const CHEST_ROOM_W := 480.0    # sala do baú (fechada), acessada por uma porta ao fim do nível
+
+# --- Vila de tutorial (fora da dungeon; roda uma vez antes do nível 1) ---
+const TUTORIAL_LENGTH := 1920.0
+# [x no corredor, texto da placa]. Ensinam as teclas reais (game_manager._setup_input_actions).
+const _TUTORIAL_SIGNS := [
+	[230.0, "MOVER\nA  /  D"],
+	[520.0, "PULAR\nESPACO / W"],
+	[880.0, "ATACAR\nJ  /  K\nno boneco ->"],
+	[1240.0, "ESQUIVAR\nSHIFT / L\n(gasta stamina)"],
+	[1560.0, "Parado, a stamina\nregenera. Sem ela,\nnao ataca nem esquiva."],
+	[1820.0, "ENTRADA DA\nDUNGEON ->"],
+]
 
 func _ready() -> void:
 	randomize()
@@ -152,7 +164,12 @@ func _ready() -> void:
 		_apply_debug_start()
 		_show_debug_legend()
 
-	_start_floor()
+	# Começa na vila de tutorial (fora da dungeon); a porta ao fim leva ao nível 1.
+	# Se o debug pular direto para um andar (DEBUG_START_FLOOR > 1), entra na dungeon.
+	if _run.current_floor <= 1:
+		_start_tutorial()
+	else:
+		_start_floor()
 
 ## (Re)constrói o cenário do nível num container próprio (_env), liberando o anterior.
 ## Corredor longo (waves) ou sala fechada do boss diferem só na largura e no tom do fundo.
@@ -262,6 +279,94 @@ func _reset_player_to_start() -> void:
 	_player_view.global_position = Vector2(80, GROUND_Y - 40)
 	_player_view.velocity = Vector2.ZERO
 	_camera.global_position.x = _player_view.global_position.x
+
+# ---------------------------------------------------------------------------
+# Vila de tutorial (fora da dungeon). Área tranquila de 1920 onde o player aprende os
+# controles básicos por placas ao longo do caminho + um boneco de treino, com a porta de
+# entrada da dungeon ao fim. Roda uma vez no começo (antes do nível 1). Sem inimigos hostis.
+# ---------------------------------------------------------------------------
+
+func _start_tutorial() -> void:
+	_phase = "tutorial"
+	_current_boss_id = ""
+	_boss_view = null
+	_build_environment(TUTORIAL_LENGTH, false)
+	_decorate_village()
+	_reset_player_to_start()
+	for s in _TUTORIAL_SIGNS:
+		_spawn_sign(float(s[0]), String(s[1]))
+	_spawn_training_dummy(980.0)
+	_spawn_door(_arena_width - 40.0, Palette.ACCENT)
+	_msg.text = "Vila — aprenda os controles e vá até a porta da Dungeon ->"
+
+## Placa de madeira com instrução (texto em world-space, rola com a câmera). Filha do _env.
+func _spawn_sign(x: float, text: String) -> void:
+	var post_node := Node2D.new()
+	post_node.position = Vector2(x, GROUND_Y)
+	post_node.z_index = -3                       # à frente do chão, atrás das entidades
+	var post := ColorRect.new()
+	post.color = Color(0.30, 0.20, 0.11)
+	post.size = Vector2(4, 40)
+	post.position = Vector2(-2, -40)
+	post_node.add_child(post)
+	var board := ColorRect.new()
+	board.color = Color(0.60, 0.45, 0.25)
+	board.size = Vector2(104, 46)
+	board.position = Vector2(-52, -86)
+	post_node.add_child(board)
+	var lbl := Label.new()
+	lbl.text = text
+	lbl.add_theme_font_size_override("font_size", 8)
+	lbl.add_theme_color_override("font_color", Color(0.12, 0.07, 0.03))
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.size = Vector2(104, 46)
+	lbl.position = Vector2(-52, -86)
+	post_node.add_child(lbl)
+	_env.add_child(post_node)
+
+## Boneco de treino: esqueleto blindado passivo (dormant) pra praticar o ataque. Some se
+## derrotado. Não dá XP (tier "minion") nem participa da lógica de sala.
+func _spawn_training_dummy(x: float) -> void:
+	var base := _enemy_repo.get_by_id("enm_skeleton_armored")
+	if base.is_empty():
+		return
+	var enemy := EnemyFactory.build(base, 1)
+	var view := EnemyView.new()
+	view.set_meta("tier", "minion")
+	view.dormant = true
+	_add_view(view, enemy, Vector2(x, GROUND_Y - 40.0))
+
+## Casinhas simples ao fundo, só pra dar cara de vila (placeholder, sem arte).
+func _decorate_village() -> void:
+	for hx in [140.0, 700.0, 1120.0, 1500.0]:
+		var house := Node2D.new()
+		house.position = Vector2(hx, GROUND_Y)
+		house.z_index = -6                       # atrás do chão/entidades, à frente do fundo de bioma
+		var wall := ColorRect.new()
+		wall.color = Color(0.28, 0.26, 0.34)
+		wall.size = Vector2(70, 60)
+		wall.position = Vector2(-35, -60)
+		house.add_child(wall)
+		var roof := Polygon2D.new()
+		roof.color = Color(0.20, 0.16, 0.24)
+		roof.polygon = PackedVector2Array([Vector2(-42, -60), Vector2(42, -60), Vector2(0, -92)])
+		house.add_child(roof)
+		var win := ColorRect.new()
+		win.color = Color(0.85, 0.72, 0.35)
+		win.size = Vector2(14, 14)
+		win.position = Vector2(-7, -44)
+		house.add_child(win)
+		_env.add_child(house)
+
+## Entra na dungeon: limpa o boneco de treino e começa o nível 1.
+func _begin_dungeon() -> void:
+	for v in _enemies.duplicate():
+		if is_instance_valid(v):
+			v.queue_free()
+	_enemies.clear()
+	_run.current_floor = 1
+	_start_floor()
 
 ## Início de um nível da dungeon. Cada nível é de UM tipo (data-driven, levels.json):
 ##   "boss" → arena fechada, direto no chefe.
@@ -550,6 +655,13 @@ func _process(_delta: float) -> void:
 	# Nível 1: reavalia os gatilhos de posição dos heavies (sair da exclusão / passar dos spawns).
 	if _phase == "room":
 		_update_heavy_chain()
+
+	# Vila de tutorial: chegar na porta ao fim entra na dungeon (nível 1).
+	if _phase == "tutorial":
+		if is_instance_valid(_player_view) and is_instance_valid(_door) \
+				and absf(_player_view.global_position.x - _door_x) <= DOOR_REACH:
+			_transition(_begin_dungeon)
+		return
 
 	# Sala do baú: chegar perto do baú o abre (uma vez).
 	if _phase == "chest_room":

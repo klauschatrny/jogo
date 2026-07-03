@@ -40,9 +40,10 @@ func _ready() -> void:
 	_stam_bar.size = Vector2(BAR_WIDTH, STAM_H)
 	add_child(_stam_bar)
 
+	# Nível ao LADO da barra (barra de HP fica limpa, sem número de vida).
 	_label = Label.new()
-	_label.position = Vector2(16, 14)
-	_label.add_theme_font_size_override("font_size", 11)   # HP/Nível na barra (base 640×360)
+	_label.position = Vector2(12 + BAR_WIDTH + 6, 13)
+	_label.add_theme_font_size_override("font_size", 11)
 	add_child(_label)
 
 	_refresh()
@@ -60,6 +61,6 @@ func _refresh() -> void:
 		return
 	var ratio := clampf(float(_player.stats.current_hp) / float(maxi(_player.stats.max_hp, 1)), 0.0, 1.0)
 	_bar.size.x = BAR_WIDTH * ratio
-	_label.text = "HP %d/%d    Nv %d" % [_player.stats.current_hp, _player.stats.max_hp, _player.level]
+	_label.text = "Nv %d" % _player.level
 	if _stam_bar != null:
 		_stam_bar.size.x = BAR_WIDTH * (_player.stamina.ratio() if _player.stamina != null else 0.0)
