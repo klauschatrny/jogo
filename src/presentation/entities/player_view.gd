@@ -13,9 +13,8 @@ const SPRITE_ID := "player"      # arte: assets/sprites/player/player.png + data
 const GRAVITY := 1400.0
 const JUMP_VELOCITY := -460.0
 const DODGE_SPEED := 430.0
-const DODGE_TIME := 0.20          # duração do dash (com i-frames) — tempo, não escala
-const DODGE_COOLDOWN := 0.5
-const AFTERIMAGE_STEP := 0.035   # intervalo entre ecos do rastro do dash
+const DODGE_TIME := 0.20          # dash + i-frames: invencibilidade de 200 ms a partir do frame 0
+const DODGE_COOLDOWN := 0.5       # tempo mínimo entre uma esquiva e a próxima
 const POGO_BOUNCE := -380.0      # impulso pra cima ao acertar um golpe pra baixo no ar
 const COMBO_GRACE := 0.28        # folga sobre o cooldown do golpe para encadear o combo
 const COMBO_MAX := 3             # combo de 3 golpes (0, 1, 2=finisher)
@@ -31,7 +30,6 @@ var _attack_cd := 0.0
 var _dodge_time := 0.0              # >0 enquanto esquiva (concede i-frames)
 var _dodge_cd := 0.0
 var _dodge_dir := Vector2.RIGHT    # direção do dash (input atual, ou facing)
-var _afterimage_acc := 0.0
 var _combo := 0                    # passo atual do combo (0..COMBO_MAX-1)
 var _combo_timer := 0.0            # tempo restante para encadear o próximo golpe
 var _contact_cd := 0.0             # cooldown do hit por colisão (>0 = imune a colisão)
@@ -123,12 +121,11 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y += GRAVITY * delta
 
-	# Esquiva: dash na direção escolhida, mantém a gravidade, ignora dano (i-frames),
-	# deixa um rastro de ecos.
+	# Esquiva: dash na direção escolhida, mantém a gravidade, ignora dano (i-frames = DODGE_TIME,
+	# 200 ms a partir do frame 0). A anim do rolamento segue além disso, travando o ataque via _anim_lock.
 	if _dodge_time > 0.0:
 		_dodge_time -= delta
 		velocity.x = _dodge_dir.x * DODGE_SPEED
-		_emit_afterimages(delta)
 		_flip(_dodge_dir)
 		_play_anim("dodge")
 		move_and_slide()
@@ -152,7 +149,8 @@ func _physics_process(delta: float) -> void:
 	_flip(_facing)
 	_update_locomotion(ix)
 
-	if Input.is_action_pressed("attack") and _attack_cd <= 0.0 and _has_stamina():
+	# Não pode atacar enquanto a animação do rolamento (ou de outro golpe) estiver travada (_anim_lock).
+	if Input.is_action_pressed("attack") and _attack_cd <= 0.0 and _anim_lock <= 0.0 and _has_stamina():
 		_attack()
 		_spend_stamina(_attack_cost)
 
@@ -161,14 +159,16 @@ func _start_dodge(ix: float) -> void:
 	_dodge_time = DODGE_TIME
 	_dodge_cd = DODGE_COOLDOWN
 	_dodge_dir = (Vector2.RIGHT if ix > 0.0 else Vector2.LEFT) if ix != 0.0 else _facing
-	_afterimage_acc = 0.0
 
-## Solta ecos translúcidos em intervalos fixos durante o dash (rastro de velocidade).
-func _emit_afterimages(delta: float) -> void:
-	_afterimage_acc += delta
-	if _afterimage_acc >= AFTERIMAGE_STEP:
-		_afterimage_acc -= AFTERIMAGE_STEP
-		Juice.afterimage(get_parent(), global_position, Vector2(box_w, box_h), BASE_COLOR)
+	# A anim de rolamento costuma ser mais longa que o dash (i-frames). Reinicia do frame 0 e
+	# trava a locomoção pela DURAÇÃO da animação (frames ÷ fps), pra o roll tocar inteiro em vez
+	# de estalar de volta pra idle no meio quando o dash acaba. Atacar/esquivar de novo corta.
+	if _sprite != null and _sprite.sprite_frames != null and _sprite.sprite_frames.has_animation("dodge"):
+		_sprite.play("dodge")
+		_sprite.frame = 0
+		var fc := _sprite.sprite_frames.get_frame_count("dodge")
+		var spd := _sprite.sprite_frames.get_animation_speed("dodge")
+		_anim_lock = float(fc) / maxf(spd, 0.1)
 
 ## Vira o sprite conforme a direção (no-op sem sprite).
 func _flip(dir: Vector2) -> void:
