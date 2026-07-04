@@ -14,7 +14,7 @@ const GRAVITY := 1400.0
 const JUMP_VELOCITY := -460.0
 const DODGE_SPEED := 430.0
 const DODGE_TIME := 0.20          # dash + i-frames: invencibilidade de 200 ms a partir do frame 0
-const DODGE_COOLDOWN := 0.5       # tempo mínimo entre uma esquiva e a próxima
+const DODGE_COOLDOWN := 0.4       # tempo mínimo entre uma esquiva e a próxima
 const POGO_BOUNCE := -380.0      # impulso pra cima ao acertar um golpe pra baixo no ar
 const COMBO_GRACE := 0.28        # folga sobre o cooldown do golpe para encadear o combo
 const COMBO_MAX := 3             # combo de 3 golpes (0, 1, 2=finisher)
@@ -29,6 +29,7 @@ var _attack_dir := Vector2.RIGHT    # direção do golpe atual (facing, ou DOWN 
 var _attack_cd := 0.0
 var _dodge_time := 0.0              # >0 enquanto esquiva (concede i-frames)
 var _dodge_cd := 0.0
+var _dodge_buffered := false       # intenção de esquiva apertada durante o cooldown (1 comando só)
 var _dodge_dir := Vector2.RIGHT    # direção do dash (input atual, ou facing)
 var _combo := 0                    # passo atual do combo (0..COMBO_MAX-1)
 var _combo_timer := 0.0            # tempo restante para encadear o próximo golpe
@@ -114,6 +115,12 @@ func _physics_process(delta: float) -> void:
 	if _combo_timer <= 0.0:
 		_combo = 0                    # combo expira fora da janela
 
+	# Buffer de esquiva: se o jogador apertar DENTRO do cooldown (inclusive durante o dash em
+	# curso, antes do early-return abaixo), guarda a intenção — um único comando. Ela dispara
+	# sozinha assim que o cooldown liberar (mais abaixo). Cliques repetidos não empilham.
+	if Input.is_action_just_pressed("dodge") and _dodge_cd > 0.0:
+		_dodge_buffered = true
+
 	# Dano por COLISÃO: encostar num inimigo (fora dos i-frames) fere, empurra e pisca de branco.
 	_check_contact_damage()
 
@@ -139,7 +146,11 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("jump") and is_on_floor():
 		velocity.y = JUMP_VELOCITY
 
-	if Input.is_action_just_pressed("dodge") and _dodge_cd <= 0.0 and _has_stamina():
+	# Dispara a esquiva: por clique imediato (fora do cooldown) OU pelo comando guardado no
+	# buffer, assim que o cooldown liberar e houver stamina. Consome o buffer aqui — pra
+	# encadear outra, é preciso apertar de novo durante o cooldown desta.
+	if (_dodge_buffered or Input.is_action_just_pressed("dodge")) and _dodge_cd <= 0.0 and _has_stamina():
+		_dodge_buffered = false
 		_start_dodge(ix)
 		_spend_stamina(_dodge_cost)
 

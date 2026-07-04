@@ -3,7 +3,7 @@
   "hitbox": [8, 26],
   "scale": 2,
   "animations": {
-    "idle":  { "row": 0, "frames": 9, "fps": 8 },
-    "dodge": { "row": 1, "frames": 13, "fps": 20, "loop": false }
+    "idle":  { "row": 0, "frames": 11, "fps": 12 },
+    "dodge": { "row": 1, "frames": 13, "fps": 24, "loop": false }
   }
 }
