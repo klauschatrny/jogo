@@ -137,7 +137,7 @@ func _ready() -> void:
 	weapons.load_all()
 	var weapon := weapons.get_weapon("wpn_sword_mourning")
 	if weapon == null:
-		weapon = Weapon.from_dict({"base_damage": 15, "weapon_growth": 1.12, "attack_speed": 1.5, "attack_range": 55})
+		weapon = Weapon.from_dict({"base_damage": 15, "weapon_growth": 1.12, "attack_speed": 1.5, "attack_range": 76})
 
 	var aug_repo := AugmentRepository.new()
 	aug_repo.load_all()

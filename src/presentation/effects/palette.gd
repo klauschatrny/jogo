@@ -21,5 +21,4 @@ const PLAYER_HP := Color("d9575b")   # barra de HP do jogador (vermelho)
 const ACCENT := Color("f6d143")      # destaque/ouro (vitória, artefato)
 const TEXT := Color("f4f4f4")        # texto claro
 
-const SLASH := Color("fff7c2")       # arco de corte (branco-amarelado)
 const HIT_SPARK := Color("ffcd75")   # partículas de impacto
