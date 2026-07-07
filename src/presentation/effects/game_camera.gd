@@ -7,11 +7,15 @@ const DECAY := 1.6                         # quão rápido o trauma some (por se
 const MAX_OFFSET := Vector2(9.0, 7.0)     # deslocamento máximo do tremor (px) (base 640×360)
 const MAX_ROLL := 0.04                     # rotação máxima do tremor (rad)
 const FOLLOW_LERP := 8.0                   # suavidade do follow horizontal
+const LOOK_AHEAD := 72.0                    # avanço da câmera à frente do player (px, base 640×360)
+const LOOK_AHEAD_LERP := 2.4               # suavidade com que o avanço cresce/inverte de lado
+const LOOK_MIN_SPEED := 8.0                # velocidade mínima p/ empurrar (evita jitter parado)
 const SCREEN_H := 360.0                    # altura do viewport base 640×360
 
 var _trauma := 0.0
 var follow_target: Node2D                  # segue este nó no eixo X (o PlayerView)
 var _base_y := SCREEN_H * 0.5              # Y fixo: corredor é plano, câmera só anda em X
+var _look := 0.0                           # avanço horizontal atual, já suavizado
 
 func add_trauma(amount: float) -> void:
 	_trauma = clampf(_trauma + amount, 0.0, 1.0)
@@ -25,10 +29,18 @@ func setup_corridor(length: float) -> void:
 	limit_bottom = int(SCREEN_H)
 
 func _process(delta: float) -> void:
-	# Follow horizontal suave; Y travado. Os limit_* clampam a vista nas bordas do corredor.
+	# Follow horizontal suave, empurrado à frente do player na direção do movimento.
+	# O look-ahead corrige o "atraso" da suavização, mantendo à vista o que vem pela frente.
+	# Y travado. Os limit_* clampam a vista nas bordas do corredor.
 	if follow_target != null and is_instance_valid(follow_target):
+		var vx := 0.0
+		if follow_target is CharacterBody2D:
+			vx = (follow_target as CharacterBody2D).velocity.x
+		var want := signf(vx) * LOOK_AHEAD if absf(vx) > LOOK_MIN_SPEED else 0.0
+		_look = lerpf(_look, want, 1.0 - exp(-LOOK_AHEAD_LERP * delta))
+		var target_x := follow_target.global_position.x + _look
 		var t := 1.0 - exp(-FOLLOW_LERP * delta)
-		global_position.x = lerpf(global_position.x, follow_target.global_position.x, t)
+		global_position.x = lerpf(global_position.x, target_x, t)
 		global_position.y = _base_y
 
 	if _trauma <= 0.0:
