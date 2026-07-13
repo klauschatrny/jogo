@@ -1,91 +1,112 @@
-## Fundo ambiental por bioma (Leva 4): céu em gradiente + duas camadas de silhuetas com
-## parallax horizontal manual. Fica num CanvasLayer ATRÁS do mundo (layer negativa). O
-## parallax é manual (a câmera é controlada por nós) — robusto e sem o acoplamento vertical
-## do ParallaxBackground. Placeholder procedural: troca-se por arte real depois.
+## Fundo ambiental (parallax) por bioma. Fica num CanvasLayer ATRÁS do mundo (layer negativa),
+## em espaço de TELA — a câmera trava o Y, então o scroll horizontal manual basta e evita o
+## acoplamento vertical do ParallaxBackground.
+##
+## As camadas são DATA-DRIVEN (data/biomes.json): uma lista ordenada de FUNDO → FRENTE, cada uma
+## com `tex` (png), `speed` (fração do movimento da câmera: 0 = fixa, 1 = colada no mundo) e
+## `drift` (px/s de deslocamento próprio, p/ nuvens ao vento). Cada camada é um tile emendável
+## repetido na horizontal; o comprimento do nível é irrelevante.
+##
+## Sem lista de camadas (ou sem os PNGs), cai no placeholder procedural: gradiente + silhuetas
+## de ColorRect. Nada quebra.
 class_name BiomeBackground
 extends CanvasLayer
 
 const VIEW := Vector2(640.0, 360.0)
 const HORIZON := 300.0          # linha do chão (GROUND_Y) em coordenadas de tela
-const PATTERN := 640.0          # largura do padrão que se repete
-const TILE_SCALE := 2.0         # arte de fundo desenhada em texel 2 (mesmo dos personagens)
+const PROC_PATTERN := 640.0     # largura do padrão que se repete (placeholder procedural)
 
-var _layers: Array = []         # [{ node, scale }] para o scroll manual
+# [{ node, scale, pattern, drift, offset }] — estado do scroll manual, por camada.
+var _layers: Array = []
 
 func _init() -> void:
 	layer = -10                  # bem atrás do mundo (layer 0) e da UI (layers positivas)
 
-## (Re)constrói o fundo para um bioma. dim escurece tudo (usado na sala do boss).
-func apply(biome: Dictionary, dim := 0.0) -> void:
+## (Re)constrói o fundo. `specs` é a lista de camadas (fundo → frente); se vazia, o bioma cai no
+## placeholder procedural. `dim` escurece tudo (usado na sala do boss).
+func apply(biome: Dictionary, dim := 0.0, specs: Array = []) -> void:
 	for c in get_children():
 		c.queue_free()
 	_layers.clear()
 
-	# Céu: textura (assets/bg/<id>/sky.png) ou gradiente procedural.
-	var sky := _tex_path(biome, "sky")
-	if sky != "" and ResourceLoader.exists(sky):
-		_add_sky_texture(sky, dim)
-	else:
-		_add_sky(_col(biome, "bg_top", "15161f").darkened(dim), _col(biome, "bg_bottom", "23271f").darkened(dim))
+	if not specs.is_empty():
+		var built := 0
+		for spec in specs:
+			if typeof(spec) == TYPE_DICTIONARY and _add_parallax_layer(spec, dim):
+				built += 1
+		if built > 0:
+			return                # arte carregada: pronto
 
-	# Duas camadas de silhueta com parallax: cada uma usa far.png/mid.png se houver, senão
-	# cai nos blocos procedurais. far rola mais devagar (mais distante) que mid.
-	_add_layer(biome, "far", 0.2, dim, _col(biome, "far", "2b3a30").darkened(dim), 5, 80.0, 173.0, 67.0, 120.0)
-	_add_layer(biome, "mid", 0.45, dim, _col(biome, "mid", "3c4d3e").darkened(dim), 7, 53.0, 120.0, 50.0, 93.0)
+	_add_procedural(biome, dim)   # sem arte (ou PNGs ausentes): placeholder
 
-## Chamado todo frame com a posição X da câmera para deslocar as camadas (parallax).
+## Chamado todo frame com a posição X da câmera: desloca as camadas (parallax).
 func update_scroll(camera_x: float) -> void:
 	for l in _layers:
+		l["camera_x"] = camera_x
+	_reposition()
+
+## Deriva própria das camadas com `drift` (nuvens ao vento): avança mesmo com o player parado.
+func _process(delta: float) -> void:
+	var moved := false
+	for l in _layers:
+		var drift: float = l["drift"]
+		if drift != 0.0:
+			l["offset"] = fposmod(l["offset"] + drift * delta, l["pattern"])
+			moved = true
+	if moved:
+		_reposition()
+
+func _reposition() -> void:
+	for l in _layers:
 		var node: Node2D = l["node"]
-		var s: float = l["scale"]
-		node.position.x = -fposmod(camera_x * s, PATTERN)
+		var total: float = l["camera_x"] * float(l["scale"]) + float(l["offset"])
+		node.position.x = -fposmod(total, l["pattern"])
 
-func _col(b: Dictionary, key: String, def: String) -> Color:
-	return Color(String(b.get(key, def)))
-
-## Caminho da arte de um pedaço do bioma (ou "" se o bioma não tem id).
-func _tex_path(b: Dictionary, name: String) -> String:
-	var id := String(b.get("id", ""))
-	return "" if id == "" else "res://assets/bg/%s/%s.png" % [id, name]
-
-## Uma camada de silhueta: usa a textura (parallax em tile) se existir, senão os blocos procedurais.
-func _add_layer(b: Dictionary, name: String, scale: float, dim: float, color: Color,
-		count: int, hmin: float, hmax: float, wmin: float, wmax: float) -> void:
-	var path := _tex_path(b, name)
-	if path != "" and ResourceLoader.exists(path):
-		_add_texture_layer(path, scale, dim)
-	else:
-		_add_silhouettes(scale, color, count, hmin, hmax, wmin, wmax)
-
-## Céu por textura: 320×180 (texel 2) esticado para a tela 640×360, estático (sem scroll).
-func _add_sky_texture(path: String, dim: float) -> void:
-	var tr := TextureRect.new()
-	tr.texture = load(path)
-	tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	tr.stretch_mode = TextureRect.STRETCH_SCALE
-	tr.size = VIEW
-	tr.modulate = Color(1, 1, 1).darkened(dim)
-	add_child(tr)
-
-## Camada de parallax por textura: tira transparente (320×Hpx, texel 2) repetida em duas cópias
-## lado a lado (largura = PATTERN) para o scroll ser contínuo. A base encosta no horizonte.
-func _add_texture_layer(path: String, scale: float, dim: float) -> void:
+## Uma camada de arte: o tile é repetido em cópias lado a lado (o bastante p/ cobrir a tela em
+## qualquer deslocamento) e desenhado 1:1, no topo da tela. Devolve false se o PNG não existir.
+func _add_parallax_layer(spec: Dictionary, dim: float) -> bool:
+	var path := String(spec.get("tex", ""))
+	if path == "" or not ResourceLoader.exists(path):
+		return false
 	var tex := load(path) as Texture2D
 	if tex == null:
-		return
+		return false
+
+	var pattern := float(tex.get_width())
+	if pattern <= 0.0:
+		return false
 	var node := Node2D.new()
 	add_child(node)
-	var h := tex.get_height() * TILE_SCALE
-	for copy in 2:
+	# O nó desliza em [-pattern, 0]; cópias suficientes p/ cobrir a viewport em qualquer offset.
+	var copies := int(ceil(VIEW.x / pattern)) + 1
+	for i in copies:
 		var tr := TextureRect.new()
 		tr.texture = tex
 		tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		tr.stretch_mode = TextureRect.STRETCH_SCALE     # estica a largura para PATTERN (×2 se nativo=320)
-		tr.size = Vector2(PATTERN, h)
-		tr.position = Vector2(PATTERN * copy, HORIZON - h)
+		tr.stretch_mode = TextureRect.STRETCH_KEEP        # 1:1, sem esticar (texel da arte)
+		tr.size = tex.get_size()
+		tr.position = Vector2(pattern * i, 0.0)
 		tr.modulate = Color(1, 1, 1).darkened(dim)
 		node.add_child(tr)
-	_layers.append({ "node": node, "scale": scale })
+
+	_layers.append({
+		"node": node,
+		"scale": float(spec.get("speed", 0.0)),
+		"drift": float(spec.get("drift", 0.0)),
+		"pattern": pattern,
+		"offset": 0.0,
+		"camera_x": 0.0,
+	})
+	return true
+
+## Placeholder procedural (sem arte): céu em gradiente + duas camadas de silhuetas de blocos.
+func _add_procedural(biome: Dictionary, dim: float) -> void:
+	_add_sky(_col(biome, "bg_top", "15161f").darkened(dim), _col(biome, "bg_bottom", "23271f").darkened(dim))
+	_add_silhouettes(0.2, _col(biome, "far", "2b3a30").darkened(dim), 5, 80.0, 173.0, 67.0, 120.0)
+	_add_silhouettes(0.45, _col(biome, "mid", "3c4d3e").darkened(dim), 7, 53.0, 120.0, 50.0, 93.0)
+
+func _col(b: Dictionary, key: String, def: String) -> Color:
+	return Color(String(b.get(key, def)))
 
 func _add_sky(top: Color, bottom: Color) -> void:
 	var grad := Gradient.new()
@@ -110,14 +131,21 @@ func _add_silhouettes(scale: float, color: Color, count: int, hmin: float, hmax:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(scale * 100000) + count   # determinístico por camada
 	for copy in 2:
-		var base_x := PATTERN * copy
+		var base_x := PROC_PATTERN * copy
 		for i in count:
 			var w := rng.randf_range(wmin, wmax)
 			var h := rng.randf_range(hmin, hmax)
-			var x := base_x + (PATTERN / count) * i + rng.randf_range(-17.0, 17.0)
+			var x := base_x + (PROC_PATTERN / count) * i + rng.randf_range(-17.0, 17.0)
 			var rect := ColorRect.new()
 			rect.color = color
 			rect.size = Vector2(w, h)
 			rect.position = Vector2(x, HORIZON - h)
 			node.add_child(rect)
-	_layers.append({ "node": node, "scale": scale })
+	_layers.append({
+		"node": node,
+		"scale": scale,
+		"drift": 0.0,
+		"pattern": PROC_PATTERN,
+		"offset": 0.0,
+		"camera_x": 0.0,
+	})

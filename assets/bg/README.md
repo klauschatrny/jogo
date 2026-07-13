@@ -1,41 +1,57 @@
-# Cenário — fundo (parallax) + terreno por bioma
+# Cenário — fundo (parallax) + terreno
 
-Arte de ambiente por bioma. **Sem o PNG, a camada cai no placeholder procedural** (gradiente +
-silhuetas de `ColorRect` / chão de cor sólida) — nada quebra. Solte os arquivos e eles aparecem.
+Arte de ambiente. **Sem os PNGs, o fundo cai no placeholder procedural** (gradiente + silhuetas de
+`ColorRect`) — nada quebra. Solte os arquivos e eles aparecem.
 
-## Onde fica (um conjunto por bioma)
+## Parallax: N camadas, definidas em `data/biomes.json`
+
+O fundo é uma **lista ordenada de camadas** (de trás para a frente) declarada em
+`parallax_default` (`data/biomes.json`). Cada entrada:
+
+```json
+{ "tex": "res://assets/bg/default/layer3.png", "speed": 0.28, "drift": 0.0 }
+```
+
+- **`speed`** — fração do movimento da câmera. `0` = fixa (céu), `1` = colada no mundo.
+  Quanto **mais perto do player**, **maior** a speed. É isso que cria a sensação de profundidade.
+- **`drift`** — px/s de deslocamento próprio, contínuo, mesmo com o player parado (vento nas nuvens).
+  `0` = só se move com a câmera.
+
+Um bioma pode ter seu **próprio** conjunto pondo uma chave `"parallax"` no seu objeto em
+`biomes.json` (mesmo formato); sem ela, usa o `parallax_default`.
+
+### Conjunto atual (`assets/bg/default/`, floresta — usado em todos os biomas por enquanto)
+
+| Arquivo | Conteúdo | speed | drift |
+|---|---|---|---|
+| `layer6.png` | céu (opaco, estático) | 0.00 | — |
+| `layer5.png` | nuvens distantes | 0.10 | 3 px/s |
+| `layer4.png` | nuvens próximas | 0.16 | 6 px/s |
+| `layer3.png` | árvores distantes | 0.28 | — |
+| `layer2.png` | árvores médias | 0.40 | — |
+| `layer1.png` | árvores próximas (a mais à frente) | 0.55 | — |
+
+## Como desenhar uma camada
+
+- **Tamanho:** altura **360** (a tela inteira); largura **≥ 640**, de preferência **1280**
+  (= 2 telas, dá mais variedade antes de repetir). Desenhada **1:1** — o texel é o do seu arquivo,
+  não há ampliação. O comprimento do nível é irrelevante: o tile repete sozinho.
+- **Emendável (seamless):** a coluna de pixels da **borda esquerda** tem que casar com a da
+  **borda direita**, senão aparece uma costura quando o tile repete.
+- **Transparência:** só a camada mais ao fundo (o céu) é opaca. Todas as outras precisam de
+  **fundo transparente** — o que ficar vazio deixa a camada de trás aparecer.
+- Camadas da frente podem ir até a base do canvas: o terreno do nível é desenhado **por cima**
+  (mundo), então não fica buraco.
+
+## Terreno (separado do parallax)
 
 ```
-assets/bg/<bioma>/sky.png       ← céu / fundo distante
-assets/bg/<bioma>/far.png       ← silhueta distante (parallax lento)
-assets/bg/<bioma>/mid.png       ← silhueta média   (parallax mais rápido)
-assets/bg/<bioma>/ground.png    ← terreno (tile horizontal)
+assets/bg/<bioma>/ground.png    ← tile do chão, repetido na horizontal
 ```
 
-Biomas (`<bioma>` = id, 10 andares cada): `ossuary`, `swamp`, `forge`, `crypt`, `shadow`.
-Pode começar com **um** bioma (ex.: `ossuary`) e só ele usa arte; o resto segue procedural.
+Biomas: `ossuary`, `swamp`, `forge`, `crypt`, `shadow`. Nativo **64 × 32**, ampliado **×2** no jogo
+(texel 2, igual aos personagens); topo = linha do chão. Precisa emendar na horizontal. Abaixo dele
+há um chão de cor sólida de reserva, então nunca sobra buraco. A **colisão** do chão é um
+`StaticBody2D` separado do desenho.
 
-## Dimensões (texel 2 — mesmo "tamanho de pixel" dos personagens)
-
-Desenhe no tamanho **nativo**; o jogo amplia **×2** com filtro nearest (pixel nítido).
-
-| Arquivo | Nativo (desenhe) | No jogo (×2) | Repetição | Observações |
-|---|---|---|---|---|
-| `sky.png`    | **320 × 180** | 640 × 360 | estático (sem scroll) | cobre a tela inteira; pode ser gradiente/paisagem |
-| `far.png`    | **320 × 120** | 640 × 240 | horizontal **sem emenda** | **fundo transparente**; base encosta no horizonte |
-| `mid.png`    | **320 × 120** | 640 × 240 | horizontal **sem emenda** | **fundo transparente**; mais perto que `far` |
-| `ground.png` | **64 × 32**   | 128 × 64 | horizontal **sem emenda** | topo = linha do chão; ~30px de arte ficam visíveis |
-
-## Regras
-
-- **Sem emenda (seamless):** a coluna de pixels da **borda esquerda** tem que casar com a da
-  **borda direita** — senão aparece uma costura quando o tile repete.
-- **`far`/`mid` transparentes:** desenhe só a silhueta; o que ficar transparente deixa o céu
-  aparecer. A **base do desenho** (parte de baixo do canvas) é encostada na linha do chão.
-- **Largura das silhuetas = 320 nativo** (vira 640 = um "padrão" de parallax). Se fugir disso,
-  a largura é esticada para 640 e pode distorcer um pouco.
-- **`ground` repete na horizontal** ao longo do corredor (que é longo); a altura é 1 tile só.
-  Abaixo dele há um chão de cor sólida de reserva, então nunca sobra buraco.
-- **Tom por andar:** a sala do boss escurece tudo automaticamente (não precisa de arte separada).
-- O **céu** é opcional: sem `sky.png`, fica o gradiente procedural por bioma (cores no
-  `data/biomes.json`).
+A sala do boss escurece tudo automaticamente (não precisa de arte separada).

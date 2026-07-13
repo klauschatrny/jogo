@@ -48,6 +48,7 @@ var _crt: CrtOverlay
 var _camera: GameCamera
 var _bg: BiomeBackground        # fundo ambiental (parallax) por bioma
 var _biomes: Array = []         # paletas de bioma (data/biomes.json)
+var _parallax_default: Array = []   # camadas de parallax padrão (usadas por biomas sem arte própria)
 var _corridor_length := 1920.0  # base 640×360 (3 telas de largura)
 var _arena_width := 1920.0      # largura do ambiente atual (corredor ou sala do boss)
 var _env: Node2D               # container do cenário atual (reconstruído por andar/sala)
@@ -100,6 +101,7 @@ func _ready() -> void:
 
 	var bcfg = JsonLoader.load_file("res://data/biomes.json")
 	_biomes = (bcfg.get("biomes", []) if typeof(bcfg) == TYPE_DICTIONARY else [])
+	_parallax_default = (bcfg.get("parallax_default", []) if typeof(bcfg) == TYPE_DICTIONARY else [])
 
 	# Fundo ambiental (parallax) atrás de tudo; o conteúdo é definido por bioma em _build_environment.
 	_bg = BiomeBackground.new()
@@ -186,7 +188,9 @@ func _build_environment(width: float, is_boss_room: bool) -> void:
 	var biome := _biome_for_floor(_run.current_floor)
 	var dim := 0.22 if is_boss_room else 0.0
 	if _bg != null:
-		_bg.apply(biome, dim)
+		# O bioma pode ter camadas próprias ("parallax"); senão usa o conjunto padrão.
+		var specs: Array = biome.get("parallax", _parallax_default)
+		_bg.apply(biome, dim, specs)
 	var ground_col := Color(String(biome.get("ground", "3b3f54"))).darkened(dim)
 	var edge_col := Color(String(biome.get("ground_edge", "29283b"))).darkened(dim)
 
@@ -647,8 +651,11 @@ func _open_exit_door() -> void:
 
 func _process(_delta: float) -> void:
 	# Parallax do fundo segue a câmera (todo frame, em qualquer fase).
+	# get_screen_center_position() = centro da VISTA de fato, com os limit_* já aplicados.
+	# global_position NÃO é travado pelos limites (só a vista é): usá-lo faria o fundo rolar
+	# nas bordas do nível enquanto o mundo está parado, dessincronizando o parallax.
 	if _bg != null and _camera != null:
-		_bg.update_scroll(_camera.global_position.x)
+		_bg.update_scroll(_camera.get_screen_center_position().x)
 
 	_update_boss_bar()
 
