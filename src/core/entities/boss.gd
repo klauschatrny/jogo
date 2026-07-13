@@ -8,6 +8,9 @@ var phases: Array = []                  # Array[BossPhase]
 var can_summon_ghost: bool = false
 var ghost_summon_threshold: float = 0.6
 var intro_dialogue: String = ""
+var rage_sfx: String = ""               # id do som da fúria em data/audio.json. "" = mudo
+var tired_sfx: String = ""              # id do som do stun pós-investida. "" = mudo
+var steps_sfx: String = ""              # id do som dos passos (enquanto anda). "" = mudo
 var _summoned: bool = false
 
 static func from_dict(d: Dictionary) -> Boss:
@@ -16,6 +19,9 @@ static func from_dict(d: Dictionary) -> Boss:
 	b.can_summon_ghost = bool(d.get("can_summon_ghost", false))
 	b.ghost_summon_threshold = float(d.get("ghost_summon_threshold", 0.6))
 	b.intro_dialogue = String(d.get("intro_dialogue", ""))
+	b.rage_sfx = String(d.get("rage_sfx", ""))
+	b.tired_sfx = String(d.get("tired_sfx", ""))
+	b.steps_sfx = String(d.get("steps_sfx", ""))
 	var phs: Array = d.get("phases", [])
 	for pd in phs:
 		b.phases.append(BossPhase.from_dict(pd))

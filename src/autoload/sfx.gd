@@ -17,7 +17,8 @@ var _defs: Dictionary = {}   # id -> { "streams": [AudioStream], "volume_db": fl
 var _cycle: Dictionary = {}  # id -> índice da PRÓXIMA variação do rodízio
 var _voices: Array = []      # AudioStreamPlayer reutilizáveis (sons curtos)
 var _next := 0
-var _loops: Dictionary = {}  # id -> AudioStreamPlayer dedicado (sons contínuos)
+var _loops: Dictionary = {}      # id -> AudioStreamPlayer dedicado (sons contínuos, cortáveis)
+var _sustained: Dictionary = {}  # id -> AudioStreamPlayer dedicado (sustain: nunca corta no meio)
 
 func _ready() -> void:
 	var cfg: Variant = JsonLoader.load_file(CONFIG)
@@ -39,6 +40,8 @@ func _ready() -> void:
 			"streams": streams,
 			"volume_db": float(def.get("volume_db", 0.0)),
 			"impact_at": float(def.get("impact_at", 0.0)),
+			"step_every": float(def.get("step_every", 0.0)),
+			"first_step": float(def.get("first_step", 0.0)),
 		}
 		_cycle[id] = 0
 
@@ -87,6 +90,70 @@ func loop(id: String) -> void:
 	p.stream = def["streams"][0]
 	p.volume_db = float(def["volume_db"])
 	p.play()
+
+## Ciclo de passadas que NUNCA é cortado no meio de um passo. Chame todo frame com `active` = a
+## condição vale (ex.: "o ogro está andando").
+##
+## O clipe é um CICLO em loop: uma passada a cada `step_every` segundos, a primeira em `first_step`
+## (audio.json). Enquanto `active`, ele roda em loop. Quando deixa de valer, o som NÃO para na hora
+## nem é cortado: segue até um ponto de SILÊNCIO — um triz antes da próxima passada — e só aí para.
+## Assim a passada em curso soa inteira e nenhuma passada extra nasce. A espera é de no máximo um
+## `step_every`, quase todo ele silêncio. Voltar a andar antes disso cancela a parada (sem emenda).
+##
+## Diferença para loop(): loop() é cortável em qualquer ponto (loop_stop() para onde estiver).
+const STOP_MARGIN := 0.06    # para este tanto ANTES da próxima passada (folga p/ não a iniciar)
+
+func sustain(id: String, active: bool) -> void:
+	if id == "" or not _defs.has(id):
+		return
+	var st: Dictionary = _sustained.get(id, {})
+	if st.is_empty():
+		if not active:
+			return                        # nada tocando e nada a fazer: não cria o player à toa
+		var p := AudioStreamPlayer.new()
+		p.name = "Sustain_%s" % id
+		add_child(p)
+		st = { "player": p, "stop_at": -1.0 }
+		_sustained[id] = st
+
+	var player: AudioStreamPlayer = st["player"]
+	var def: Dictionary = _defs[id]
+	if active:
+		st["stop_at"] = -1.0              # voltou a andar: cancela qualquer parada agendada
+		if not player.playing:
+			player.stream = def["streams"][0]
+			player.volume_db = float(def["volume_db"])
+			player.play()
+		return
+
+	# Parou de andar: agenda a parada no próximo ponto de silêncio (uma vez só).
+	if player.playing and float(st["stop_at"]) < 0.0:
+		st["stop_at"] = _quiet_point(def, player.get_playback_position())
+
+## Vigia as paradas agendadas: para o ciclo exatamente no ponto de silêncio calculado.
+func _process(_delta: float) -> void:
+	for id in _sustained:
+		var st: Dictionary = _sustained[id]
+		var stop_at := float(st["stop_at"])
+		if stop_at < 0.0:
+			continue
+		var player: AudioStreamPlayer = st["player"]
+		if not player.playing or player.get_playback_position() >= stop_at:
+			player.stop()
+			st["stop_at"] = -1.0
+
+## Próximo instante do clipe em que dá para cortar sem picotar uma passada: um triz antes da
+## passada seguinte. Sem grade (`step_every` = 0), corta no fim do clipe (que é silêncio).
+func _quiet_point(def: Dictionary, pos: float) -> float:
+	var every := float(def["step_every"])
+	var length: float = (def["streams"][0] as AudioStream).get_length()
+	if every <= 0.0:
+		return length
+	var first := float(def["first_step"])
+	# Índice da próxima passada depois da posição atual (com a margem já descontada).
+	var k := floori((pos + STOP_MARGIN - first) / every) + 1
+	var next_step := first + float(k) * every
+	return minf(next_step - STOP_MARGIN, length)
 
 ## Duração (s) de uma variação de `id` — útil para sincronizar uma cutscene com o som.
 ## 0.0 se o id não existe.

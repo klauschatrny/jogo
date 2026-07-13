@@ -10,6 +10,9 @@
   "attack_cooldown": 0.8,
   "ai_profile": "boss_phased",
   "landing_sfx": "ogre_landing",
+  "rage_sfx": "ogre_rage",
+  "tired_sfx": "ogre_tired",
+  "steps_sfx": "ogre_steps",
   "abilities": ["abil_ground_slam"],
   "phases": [
     { "hp_threshold": 0.5, "on_enter": ["enrage"], "atk_mult": 1.3 }

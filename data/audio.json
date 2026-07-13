@@ -29,6 +29,24 @@
       ],
       "volume_db": -12.0
     },
+    "ogre_rage": {
+      "_comment": "Grito do ogro ao entrar em fúria — o windup da investida, a 50/35/15% de vida (data/bosses/ogre.json -> rage_sfx).",
+      "streams": ["res://assets/audio/sfx/ogre_rage.mp3"],
+      "volume_db": -12.0
+    },
+    "ogre_steps": {
+      "_comment": "Ciclo de caminhada do ogro (data/bosses/ogre.json -> steps_sfx). MEDIDO no clipe de 4,97 s: 5 passadas, uma a cada 1,00 s, a 1ª em 0,12 s. Tocado com Sfx.sustain, que usa essa grade para só cortar o loop num ponto de SILÊNCIO — nunca no meio de uma passada. Se o arquivo for reexportado com outra cadência, corrija step_every/first_step.",
+      "streams": ["res://assets/audio/sfx/ogre_steps.mp3"],
+      "volume_db": -14.0,
+      "loop": true,
+      "step_every": 1.0,
+      "first_step": 0.12
+    },
+    "ogre_tired": {
+      "_comment": "Respiração ofegante do ogro no stun que segue a investida (2 s parado). data/bosses/ogre.json -> tired_sfx.",
+      "streams": ["res://assets/audio/sfx/ogre_tired.mp3"],
+      "volume_db": 0.0
+    },
     "ogre_landing": {
       "_comment": "Impacto do ogro ao cair na arena, na cutscene de entrada (data/bosses/ogre.json -> landing_sfx). impact_at = instante DENTRO do clipe em que o baque soa: a cutscene toca o som adiantado para que os pés dele toquem o chão exatamente nesse ponto.",
       "streams": ["res://assets/audio/sfx/ogre_landing.mp3"],

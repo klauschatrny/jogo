@@ -5,7 +5,7 @@
 ##  - > 560px: aproxima.
 ## Nas zonas exclusivas ele SEMPRE usa a habilidade daquela zona; só sorteia na zona comum.
 ## O golpe melee PODE andar em direção ao player durante o windup; a baderna e as rochas ficam
-## paradas. Entre QUALQUER habilidade normal há um cooldown global de 2s — durante ele o ogro
+## paradas. Entre QUALQUER habilidade normal há um cooldown global de 1s — durante ele o ogro
 ## anda em direção ao player (só para para castar quando o cooldown zera). Cada instância de dano
 ## recebida DURANTE o cooldown corta 0.4s dele (quanto mais apanha, mais rápido revida); dano fora
 ## do cooldown não conta. Detalhes:
@@ -15,7 +15,7 @@
 ## Habilidade ESPECIAL: ao cruzar 50%/35%/15% de vida ele entra em fúria e faz uma INVESTIDA
 ## ÚNICA — no windup rastreia o lado do player e TRAVA a direção a 200 ms do fim; corre cegamente
 ## (200% da vel. do player) e causa dano UMA vez quando a hitbox toca a do player, SEM parar por
-## isso (atravessa); depois fica imóvel e cansado por 2s (encerra ao bater na parede ou por timeout).
+## isso (atravessa); depois fica imóvel e cansado por 3s (encerra ao bater na parede ou por timeout).
 class_name OgreView
 extends BossView
 
@@ -24,9 +24,9 @@ const CHARGE_SPEED_MULT := 2.0          # 200% da velocidade do player
 const LOCK_AT_REMAINING := 0.2          # trava a direção quando faltam 200 ms de windup
 const CHARGE_DAMAGE := 50
 const CHARGE_MAX_TIME := 2.0            # segurança: encerra a investida
-const TIRED_TIME := 2.0
+const TIRED_TIME := 3.0                 # stun após a investida (a respiração ofegante dura o mesmo)
 
-const ABILITY_GCD := 2.0                 # cooldown global entre QUALQUER cast de habilidade normal
+const ABILITY_GCD := 1.0                 # cooldown global entre QUALQUER cast de habilidade normal
 const GCD_HIT_REDUCTION := 0.4           # cada dano recebido corta isto do cooldown atual
 
 const ROCK_COUNT := 3                    # arremesso de rochas: quantidade
@@ -61,22 +61,36 @@ var _bad_left := 0
 var _bad_side := 1.0
 var _gcd := 0.0                         # cooldown global: bloqueia novo cast por ABILITY_GCD
 var _rock_cd := 0.0                     # cooldown próprio das rochas (ROCK_CD)
+var _walking := false                   # anda NESTE frame? (só p/ o som dos passos — ver _process)
+var _rage_pending := false              # limiar cruzado durante outra habilidade: fúria a cobrar
 
 ## Após cada dano: fases do BossView (enrage/summon) + checa os limiares da investida.
 func _on_after_damage() -> void:
 	super._on_after_damage()
 	if _gcd > 0.0:                                # só encurta se HÁ cooldown ativo; dano fora dele não conta
 		_gcd = maxf(0.0, _gcd - GCD_HIT_REDUCTION)   # apanhar acelera o próximo golpe
-	if _special != "" or data == null:
+	if data == null:
 		return
 	var ratio := float(data.stats.current_hp) / float(maxi(data.stats.max_hp, 1))
-	if _next_threshold < THRESHOLDS.size() and ratio <= float(THRESHOLDS[_next_threshold]):
-		_next_threshold += 1
-		while _next_threshold < THRESHOLDS.size() and ratio <= float(THRESHOLDS[_next_threshold]):
-			_next_threshold += 1   # um golpe grande pode cruzar vários limiares de uma vez
+	if _next_threshold >= THRESHOLDS.size() or ratio > float(THRESHOLDS[_next_threshold]):
+		return
+	while _next_threshold < THRESHOLDS.size() and ratio <= float(THRESHOLDS[_next_threshold]):
+		_next_threshold += 1   # um golpe grande pode cruzar vários limiares de uma vez → UMA fúria
+
+	# Cruzar o limiar NO MEIO de outra habilidade (ou de uma fúria em curso) não anula a fúria: ela
+	# fica DEVENDO e entra assim que ele se liberta. Antes era descartada aqui — mas a fase "enrage"
+	# do BossView (o tom vermelho) já tinha disparado no super e nunca mais se repete, então o ogro
+	# ficava vermelho para sempre sem nunca investir nem gritar.
+	if _special == "":
 		_start_special()
+	else:
+		_rage_pending = true
 
 func _physics_process(delta: float) -> void:
+	# Passos: parte-se de "não está andando" e só quem ANDA neste frame reafirma (em _update_sprite).
+	# Assim um estado novo que não mexa no sprite (a baderna é um) nunca deixa o som de passos preso.
+	_walking = false
+
 	# Dormente (cutscene de entrada): nenhuma habilidade, nem as de distância — o super trata
 	# o estado passivo (só gravidade/recuo). Sem isto o ogro arremessaria rochas na cutscene.
 	if dormant:
@@ -108,6 +122,8 @@ func _start_special() -> void:
 	_windup = 0.0                 # cancela qualquer windup normal em curso
 	_show_warn()
 	modulate = Color(1.6, 0.5, 0.5)   # enraivecido (vermelho forte)
+	if data is Boss:
+		Sfx.play((data as Boss).rage_sfx)   # o grito da fúria (id no JSON do boss; "" = mudo)
 
 ## Windup: parado, encarando; segue o lado do player até faltarem 200 ms, aí TRAVA a direção.
 func _tick_windup(delta: float) -> void:
@@ -157,6 +173,8 @@ func _begin_tired() -> void:
 	velocity.x = 0.0
 	modulate = Color(0.7, 0.7, 0.95)   # cansado (apagado/azulado)
 	Juice.burst(get_parent(), global_position, Palette.BOSS, 12, 110.0)
+	if data is Boss:
+		Sfx.play((data as Boss).tired_sfx)   # respiração ofegante (id no JSON do boss; "" = mudo)
 
 ## Imóvel e cansado; ao fim, volta ao normal (com um tom enraivecido persistente).
 func _tick_tired(delta: float) -> void:
@@ -171,6 +189,7 @@ func _tick_tired(delta: float) -> void:
 		_attack_cd = attack_interval        # reinicia o cooldown do ataque normal
 		_gcd = ABILITY_GCD                   # cooldown global antes da próxima habilidade
 		modulate = Color(1.25, 0.8, 0.8)     # segue com aparência enraivecida
+		_flush_rage()   # apanhou tanto durante a investida que cruzou o próximo limiar → outra fúria
 
 ## Player em MÉDIA distância (zona de rochas): fica parado, encara e arremessa quando o cooldown
 ## zera. Retorna true se tratou o frame (nem perto p/ melee, nem longe p/ aproximar).
@@ -239,6 +258,14 @@ func _end_normal_ability() -> void:
 	_special = ""
 	_attack_cd = attack_interval   # reinicia o cooldown do ataque normal
 	_gcd = ABILITY_GCD             # cooldown global antes da próxima habilidade
+	_flush_rage()                  # fúria que ficou devendo entra agora
+
+## Cobra a fúria adiada (limiar cruzado no meio de outra habilidade). O cooldown global NÃO a
+## segura: a investida é a reação dele a ter apanhado demais, não uma habilidade da rotação.
+func _flush_rage() -> void:
+	if _rage_pending and _special == "":
+		_rage_pending = false
+		_start_special()
 
 ## --- Arremesso de rochas: parado, 3 rochas na direção do player (windup 1s, depois 0.9s entre) ---
 func _start_rocks() -> void:
@@ -318,6 +345,26 @@ func _baderna_hit(side: float) -> void:
 				target.apply_enemy_hit(data.stats)
 	_spawn_attack_fx(side)
 	Juice.hit_stop(get_tree(), 0.03)
+
+## Passos: pegam carona no MESMO `moving` que escolhe a animação de andar — assim tocam em toda
+## situação em que ele anda (perseguindo, ou avançando durante o windup do melee). Só REGISTRA a
+## intenção; quem fala com o áudio é o _process, para o som não depender de este método ser chamado.
+## A investida (charge) fica de fora: é corrida, não caminhada.
+func _update_sprite(dx: float, moving: bool) -> void:
+	super._update_sprite(dx, moving)
+	_walking = moving and _special != "charge" and is_on_floor()
+
+## O áudio dos passos é decidido aqui, TODO frame — mesmo nos estados que não tocam no sprite
+## (a baderna). `Sfx.sustain` nunca corta uma passada no meio: ao parar, ela soa até o fim.
+func _process(_delta: float) -> void:
+	Sfx.sustain(_steps_sfx(), _walking)
+
+## Ao sair da cena (morte do boss, troca de nível): cala os passos, senão o loop ficaria preso.
+func _exit_tree() -> void:
+	Sfx.sustain(_steps_sfx(), false)
+
+func _steps_sfx() -> String:
+	return (data as Boss).steps_sfx if data is Boss else ""
 
 ## Direção que o ogro encara (fallback quando não há alvo p/ mirar).
 func _facing() -> float:
