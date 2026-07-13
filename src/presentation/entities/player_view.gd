@@ -22,12 +22,15 @@ const COMBO_HIT_CD := 0.2        # gap ALÉM da anim completa, entre os golpes D
 const COMBO_SEQ_CD := 1.0        # gap ALÉM da anim completa, após o 3º golpe, antes da próxima sequência
 const FINISHER_KNOCKBACK := 2.4  # o 3º golpe empurra bem mais
 const ATTACK_CONTACT_FRAME := 2  # quadro da anim de ataque em que a lâmina conecta (impacto)
+const DODGE_SFX := "player_dodge"          # rolamento
+const FOOTSTEPS_SFX := "player_footsteps"  # ciclo de passos em loop enquanto corre no chão
 const HIT_HEIGHT := 56.0         # altura do retângulo de dano; o comprimento vem do attack_range da arma
 const CONTACT_CD := 1.0          # imunidade entre hits por COLISÃO sequenciais
 const CONTACT_KNOCKBACK := 520.0 # empurrão horizontal ao encostar num inimigo (base 640×360)
 
 var data: Player                    # entidade Core
 var god_mode := false               # debug: ignora dano recebido
+var frozen := false                 # cutscene: sem input, sem ataque, sem dano por colisão
 var _facing := Vector2.RIGHT        # no lateral só importa o eixo X (RIGHT/LEFT)
 var _attack_dir := Vector2.RIGHT    # direção do golpe atual (facing, ou DOWN no ar)
 var _attack_cd := 0.0
@@ -112,6 +115,18 @@ func _build() -> void:
 func _physics_process(delta: float) -> void:
 	if data == null:
 		return
+
+	# Congelado (cutscene, ex.: entrada do boss): ignora input, ataque e dano por colisão.
+	# Só a gravidade continua, para não flutuar caso seja congelado no ar.
+	if frozen:
+		velocity.x = 0.0
+		if not is_on_floor():
+			velocity.y += GRAVITY * delta
+		move_and_slide()
+		_play_anim("idle")
+		_update_footsteps(0.0)
+		return
+
 	_attack_cd = maxf(0.0, _attack_cd - delta)
 	_dodge_cd = maxf(0.0, _dodge_cd - delta)
 	_anim_lock = maxf(0.0, _anim_lock - delta)
@@ -150,6 +165,7 @@ func _physics_process(delta: float) -> void:
 		_flip(_dodge_dir)
 		_play_anim("dodge")
 		move_and_slide()
+		_update_footsteps(0.0)   # rolamento não são passos
 		return
 
 	var ix := Input.get_axis("move_left", "move_right")
@@ -178,6 +194,7 @@ func _physics_process(delta: float) -> void:
 
 	_flip(_facing)
 	_update_locomotion(ix)
+	_update_footsteps(move_x)
 
 	# Não pode atacar durante a trava de anim (o próprio ataque ou o rolamento). O cooldown do combo
 	# (dur+gap) já é maior que a animação, então isto não atrasa a sequência — só garante que a anim
@@ -188,6 +205,7 @@ func _physics_process(delta: float) -> void:
 
 ## Inicia o dash da esquiva: direção = input atual (permite esquivar pra trás), ou o facing.
 func _start_dodge(ix: float) -> void:
+	Sfx.play(DODGE_SFX)
 	_dodge_time = DODGE_TIME
 	_dodge_cd = DODGE_COOLDOWN
 	_hit_pending = false            # a esquiva cancela o golpe: nenhum dano pendente vaza pro roll
@@ -212,6 +230,14 @@ func _flip(dir: Vector2) -> void:
 
 func _play_anim(anim: String) -> void:
 	SpriteLoader.play_safe(_sprite, anim)
+
+## Passos: o ciclo toca em loop enquanto ele corre NO CHÃO por vontade própria. Para ao parar,
+## pular, rolar, ficar travado no ataque ou ser empurrado (o knockback não entra em move_x).
+func _update_footsteps(move_x: float) -> void:
+	if is_on_floor() and absf(move_x) > 1.0:
+		Sfx.loop(FOOTSTEPS_SFX)
+	else:
+		Sfx.loop_stop(FOOTSTEPS_SFX)
 
 ## Escolhe a animação de locomoção (pulo/corrida/parado), salvo durante o ataque (_anim_lock).
 func _update_locomotion(ix: float) -> void:

@@ -7,6 +7,7 @@
   "attack_range": 32,
   "attack_style": "thrust",
   "ai_profile": "aggressive",
+  "attack_sfx": "skeleton_attack",
   "abilities": ["abil_basic_slash"],
   "loot": { "gold_min": 12, "gold_max": 24, "xp": 40 },
   "spawn_floors": [1, 50],

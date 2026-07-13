@@ -9,6 +9,7 @@
   "windup": 0.8,
   "attack_cooldown": 0.8,
   "ai_profile": "boss_phased",
+  "landing_sfx": "ogre_landing",
   "abilities": ["abil_ground_slam"],
   "phases": [
     { "hp_threshold": 0.5, "on_enter": ["enrage"], "atk_mult": 1.3 }

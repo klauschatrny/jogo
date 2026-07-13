@@ -24,6 +24,8 @@ config/features=PackedStringArray("4.7", "GL Compatibility")
 BalanceConfig="*res://src/services/balance_config.gd"
 EventBus="*res://src/services/event_bus.gd"
 RNGService="*res://src/services/rng_service.gd"
+Music="*res://src/autoload/music.gd"
+Sfx="*res://src/autoload/sfx.gd"
 GameManager="*res://src/autoload/game_manager.gd"
 
 [display]

@@ -41,6 +41,7 @@
     "cards_per_reward": 3
   },
   "nemesis": {
+    "ENABLED": false,
     "NEMESIS_COEFF": 0.65,
     "GHOST_HP_CAP": 2.0,
     "GHOST_SUMMON_THRESHOLD": 0.60,

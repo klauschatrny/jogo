@@ -22,12 +22,22 @@ mitigation via `defense_curve`), keyboard-only `PlayerView` (move + melee), `Ene
 (ADD<PCT_ADD<MULT), weighted `AugmentPool`, `Boss`/`BossPhase` (phased), `RunState`/`FloorManager`,
 and the playable `floor_scene` (waves → boss → card reward → next floor) with `CardSelect`.
 
+**Scope right now**: the playable dungeon is **2 hand-authored levels** — level 1 (Necromancer's
+skeleton room) and level 2 (Ogre boss arena) — plus the tutorial village. `data/floors/levels.json`
+is the whole content list and `TOTAL_LEVELS` in `floor_scene.gd` must match it; there is **no
+fallback level and no procedural repetition** (a missing level ends the run with a warning). The
+old 50-floor tower (`TowerManager`, `data/floors/tower.json`, the 5 great-boss + King JSONs) is
+**no longer wired into gameplay** — it still exists and is still unit-tested, awaiting the redesign.
+
 **Phase 4 (A Torre Completa & Nemesis System) is done**: `TowerManager` + `data/floors/tower.json`
 (50 floors, great bosses at 10/20/30/40/50, King at 51), 5 `GREAT_BOSS` + 1 `KING` boss JSONs,
 the Nemesis system — `GhostData`/`GhostRepository` (persists to `user://saves/ghosts.json`),
 `GhostFactory`/`NemesisRules` (5 rules: nerf, anti-impossible HP cap, anti-irrelevant ELITE floor,
 augment inheritance by tier, summon eligibility) — boss summons the echo at 60% HP, catharsis
 (heal + Vengeance buff + guaranteed Relic+ reward), `GhostView`, and death/victory `EndScreen`s.
+**The Nemesis system is currently switched OFF in gameplay** (`nemesis.ENABLED = false` in
+`data/balance.json`): no echo is recorded on death or summoned by bosses. The code and its tests
+are untouched — flip the flag to bring it back.
 131 tests pass. **Next up is Phase 5 (Balanceamento, Juice & Polimento)** — see roadmap below.
 
 Stack: **Godot 4 + GDScript** (§0.1). Input actions (`move_*`, `attack`) are registered in code by
@@ -132,7 +142,10 @@ godot --headless --script res://tests/test_runner.gd
 ## Conventions established in Phase 1
 
 - **Autoloads** (configured in `project.godot`, order matters): `BalanceConfig`, `EventBus`,
-  `RNGService` load first; `GameManager` (bootstrap) loads last and depends on them.
+  `RNGService` load first; `GameManager` (bootstrap) loads last and depends on them. `Music`
+  (one track at a time) and `Sfx` (pooled one-shots + loops, with per-id variation lists) read
+  `data/audio.json` — audio paths, volumes, and *which entity has which sound* are data, never
+  hardcoded (see `assets/audio/README.md`).
 - `GameState` uses `state_name` (not `name`, which collides with `Node`/`Object` members).
 - All randomness goes through `RNGService` (seeded). `balance.json` is plain JSON — **no comments**
   (Godot's JSON parser rejects them), despite the JSONC examples in the GDD appendix.

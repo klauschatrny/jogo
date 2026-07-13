@@ -77,6 +77,11 @@ func _on_after_damage() -> void:
 		_start_special()
 
 func _physics_process(delta: float) -> void:
+	# Dormente (cutscene de entrada): nenhuma habilidade, nem as de distância — o super trata
+	# o estado passivo (só gravidade/recuo). Sem isto o ogro arremessaria rochas na cutscene.
+	if dormant:
+		super._physics_process(delta)
+		return
 	_rock_cd = maxf(0.0, _rock_cd - delta)   # cooldown das rochas corre em qualquer estado
 	if _special == "":
 		_gcd = maxf(0.0, _gcd - delta)   # cooldown global entre habilidades

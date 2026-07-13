@@ -18,6 +18,12 @@ export_presets.cfg
 # inteira ficou fora do git da Fase 1 até a 4).
 /data_*/
 
+# Áudio-fonte (mp3 originais, ~33 MB): pesados demais para o histórico do Git. A arte-fonte
+# visual (assets/Design/Parallax, PNGs pequenos) SEGUE versionada — só o áudio fica de fora.
+# O que o jogo de fato usa é copiado para assets/audio/ e ESSE é versionado. Mantenha um
+# backup dos originais fora do repo: eles não estão no Git.
+assets/Design/Audio/
+
 # Editor / OS
 .DS_Store
 *.swp

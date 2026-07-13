@@ -223,6 +223,10 @@ func _resolve_attack(dx: float) -> void:
 			target.apply_enemy_hit(data.stats)
 	_play_attack_anim()
 	_spawn_attack_fx(dx)
+	# Som do golpe (id no JSON do inimigo; vazio = mudo). Sem variação explícita, o Sfx faz o
+	# rodízio das variações — golpes seguidos não repetem o mesmo som.
+	if data != null:
+		Sfx.play(data.attack_sfx)
 
 ## "!" vermelho acima da cabeça (feito com ColorRects — nítido no low-res). Só durante o windup.
 func _show_warn() -> void:

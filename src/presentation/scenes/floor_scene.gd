@@ -6,20 +6,18 @@ extends Node2D
 
 # --- DEBUG (desligue pondo DEBUG = false antes de buildar de verdade) ---
 const DEBUG := true
-const DEBUG_START_FLOOR := 0   # 0 = normal; ex.: 10 começa no 1º great boss
+const DEBUG_START_FLOOR := 0   # 0 = normal (tutorial); 2 = pula direto para a arena do Ogro
 const DEBUG_START_LEVEL := 0   # 0 = normal; nível inicial do jogador
 
 var _run: RunState
-var _tower: TowerManager
 var _player_view: PlayerView
 var _enemies: Array = []
 var _hud: Hud
 var _msg: Label
 var _layer: CanvasLayer
-var _phase := "room"           # tutorial | room | to_chest_door | transition | boss | chest_room | reward | to_exit_door | dead | victory
-var _floor_config: Dictionary = {}   # config do nível ATUAL (de levels.json ou o fallback)
+var _phase := "room"           # tutorial | room | to_chest_door | transition | boss_intro | boss | chest_room | reward | to_exit_door | dead | victory
+var _floor_config: Dictionary = {}   # config do nível ATUAL (de levels.json)
 var _levels: Dictionary = {}         # nível(int) -> config (data/floors/levels.json)
-var _default_level: Dictionary = {}  # fallback para níveis ainda não desenhados (floor_default.json)
 
 # --- Sala (regida pelo Necromante) ---
 # O Necromante (classe "elite") nasce no fim da sala, estático e ranged. Enquanto vive, cada
@@ -35,10 +33,17 @@ var _dead_pool: Array = []      # tiers de esqueletos eliminados aguardando rein
 var _respawn_running := false   # o loop de cast de respawn está ativo?
 var _current_boss_id := ""
 var _boss_view: EnemyView
+var _intro_token := 0           # invalida cutscenes de entrada antigas ainda no ar (ver _boss_intro)
+var _boss_landing_sfx := ""     # som do impacto na cutscene de entrada ("landing_sfx" no JSON do boss)
 var _boss_bar: BossHealthBar    # barra de vida grande no rodapé (Dark Souls)
 var _ghost_to_summon: GhostData
 var _ghost_summoned := false
 var _ghost_beaten_this_floor := false
+# Nemesis (Fantasma) ligado? Vem de "nemesis"/"ENABLED" no balance.json — hoje FALSE: o eco não
+# é gravado na morte nem invocado pelo boss, e a catarse não acontece. O sistema inteiro
+# (GhostData/GhostRepository/GhostFactory/NemesisRules + GhostView) segue no lugar, intacto:
+# religar é trocar a flag para true.
+var _nemesis_on := false
 
 # repositórios carregados uma vez
 var _enemy_repo: EnemyRepository
@@ -68,10 +73,19 @@ const BOSS_ROOM_W := 640.0     # sala do boss = uma tela fechada (base 640×360)
 const DOOR_REACH := 30.0       # distância para "entrar" na porta / abrir o baú (base 640×360)
 const FADE_TIME := 0.35
 
-# --- Dungeon (60 níveis; cada 4º é um boss → 15 bosses) ---
-const TOTAL_LEVELS := 60
-const BOSS_EVERY := 4          # níveis 4, 8, …, 60 são de boss
-const DEFAULT_BOSS := "bss_ogre"   # boss padrão dos níveis de boss (até levels.json definir outro)
+# --- Cutscene de entrada do boss (ver _begin_boss_intro) ---
+const BOSS_MUSIC := "boss"           # id da faixa em data/audio.json (só toca na sala do boss)
+const BOSS_MUSIC_DELAY := 1.5        # a trilha não entra junto com a sala: espera este tanto
+const BOSS_INTRO_PAUSE := 0.7        # respiro na sala vazia antes de ele aparecer
+const BOSS_INTRO_DROP := 300.0       # altura (px) de onde ele despenca — nasce fora da tela
+const BOSS_INTRO_FALL_MAX := 3.0     # segurança: tempo máximo esperando o impacto no chão
+const BOSS_INTRO_ROAR_MIN := 1.4     # mínimo encarando o player depois de pousar (boss sem som)
+
+# --- Dungeon ---
+# Todo nível é desenhado à mão em data/floors/levels.json; não há mais geração/repetição
+# automática. Hoje são 2: 1 = sala do Necromante (esqueletos), 2 = arena do Ogro. Limpar o
+# último conclui a run. Ao criar um nível novo, descreva-o no JSON e some 1 aqui.
+const TOTAL_LEVELS := 2
 const CHEST_ROOM_W := 480.0    # sala do baú (fechada), acessada por uma porta ao fim do nível
 
 # --- Vila de tutorial (fora da dungeon; roda uma vez antes do nível 1) ---
@@ -89,10 +103,7 @@ const _TUTORIAL_SIGNS := [
 func _ready() -> void:
 	randomize()
 
-	# Config por-nível da dungeon. levels.json = níveis desenhados (level 1 = sala do Necromante,
-	# level 2 = boss ogro, …); floor_default.json = fallback dos níveis ainda não definidos.
-	var cfg = JsonLoader.load_file("res://data/floors/floor_default.json")
-	_default_level = cfg if typeof(cfg) == TYPE_DICTIONARY else {}
+	# Config por-nível da dungeon (levels.json): 1 = sala do Necromante, 2 = arena do Ogro.
 	var lcfg = JsonLoader.load_file("res://data/floors/levels.json")
 	if typeof(lcfg) == TYPE_DICTIONARY:
 		var lv: Dictionary = lcfg.get("levels", {})
@@ -148,9 +159,7 @@ func _ready() -> void:
 	_boss_repo = BossRepository.new()
 	_boss_repo.load_all()
 	_ghost_repo = GhostRepository.new()
-
-	var tcfg = JsonLoader.load_file("res://data/floors/tower.json")
-	_tower = TowerManager.from_config(tcfg if typeof(tcfg) == TYPE_DICTIONARY else {})
+	_nemesis_on = bool(BalanceConfig.nemesis.get("ENABLED", false))
 
 	_run = RunState.start_new("Kael", weapon, aug_repo.all_augments(), randi())
 	_player_view = PlayerView.new()
@@ -276,12 +285,14 @@ func _spawn_door(x: float, accent: Color) -> void:
 	_door = d
 	_door_x = x
 
-## Recoloca o player no início do nível e gruda a câmera nele (sem pan da transição).
+## Recoloca o player no início do nível, devolve o controle a ele (caso uma cutscene o tenha
+## congelado) e gruda a câmera nele (sem pan da transição).
 func _reset_player_to_start() -> void:
 	if not is_instance_valid(_player_view):
 		return
 	_player_view.global_position = Vector2(80, GROUND_Y - 40)
 	_player_view.velocity = Vector2.ZERO
+	_player_view.frozen = false
 	_camera.global_position.x = _player_view.global_position.x
 
 # ---------------------------------------------------------------------------
@@ -372,32 +383,28 @@ func _begin_dungeon() -> void:
 	_run.current_floor = 1
 	_start_floor()
 
-## Início de um nível da dungeon. Cada nível é de UM tipo (data-driven, levels.json):
+## Início de um nível da dungeon. Cada nível é desenhado à mão em levels.json e é de UM tipo:
 ##   "boss" → arena fechada, direto no chefe.
 ##   "room" → sala/corredor a limpar (ex.: sala do Necromante). Sem chefe.
-## Níveis não desenhados caem no fallback (floor_default.json = sala do Necromante).
+## Passar do último nível existente encerra a run (vitória).
 func _start_floor() -> void:
 	var floor := _run.current_floor
 	_ghost_beaten_this_floor = false
 	_floor_config = _levels.get(floor, {})
 	var ltype := String(_floor_config.get("type", ""))
 	if ltype == "":
-		# Nível não desenhado em levels.json: regra da dungeon — cada BOSS_EVERY-ésimo é de boss;
-		# os demais caem no fallback de sala (floor_default = sala do Necromante).
-		if floor % BOSS_EVERY == 0:
-			ltype = "boss"
-		else:
-			_floor_config = _default_level
-			ltype = "room"
-
-	if ltype == "boss":
-		_current_boss_id = String(_floor_config.get("boss_id", DEFAULT_BOSS))
-		_build_environment(BOSS_ROOM_W, true)
-		_reset_player_to_start()
-		_phase = "boss"
-		_spawn_boss()
+		push_warning("[floor_scene] nível %d não existe em levels.json — encerrando a run" % floor)
+		_on_victory()
 		return
 
+	if ltype == "boss":
+		_current_boss_id = String(_floor_config.get("boss_id", ""))
+		_build_environment(BOSS_ROOM_W, true)
+		_reset_player_to_start()
+		_begin_boss_intro()   # música + cutscene de entrada; o combate começa depois dela
+		return
+
+	Music.stop()          # fora da sala do boss não há trilha (por ora)
 	_current_boss_id = ""
 	_boss_view = null
 	_corridor_length = float(_floor_config.get("corridor_length", _corridor_length))
@@ -696,32 +703,139 @@ func _transition(on_black: Callable) -> void:
 	tw.tween_callback(on_black)
 	tw.tween_property(_fade, "modulate:a", 0.0, FADE_TIME)
 
-func _spawn_boss() -> void:
+# ---------------------------------------------------------------------------
+# Entrada do boss (cutscene). Com o player congelado: a trilha do chefe entra ao pisar na sala →
+# o boss DESPENCA na arena (impacto: tremor, poeira e hit-stop) → encara o player → fade out/in.
+# Só depois do fade-in ele age, a barra do rodapé aparece e o combate começa de fato.
+# ---------------------------------------------------------------------------
+
+func _begin_boss_intro() -> void:
+	_phase = "boss_intro"
+	_boss_view = null
+	# O som do impacto é conhecido ANTES do boss nascer: a cutscene o toca adiantado (ver _boss_intro).
+	_boss_landing_sfx = String(_boss_repo.get_by_id(_current_boss_id).get("landing_sfx", ""))
+	if is_instance_valid(_player_view):
+		_player_view.frozen = true
+	_msg.text = "Nível %d — algo desperta na escuridão..." % _run.current_floor
+	_intro_token += 1
+	_start_boss_music(_intro_token)   # entra atrasada, em paralelo à cutscene
+	_boss_intro(_intro_token)
+
+## A trilha é da SALA (fica até a luta acabar), mas não sobe no mesmo instante em que se pisa nela:
+## espera BOSS_MUSIC_DELAY. Corrotina à parte, para não atrapalhar o compasso da cutscene.
+func _start_boss_music(token: int) -> void:
+	if BOSS_MUSIC_DELAY > 0.0:
+		await get_tree().create_timer(BOSS_MUSIC_DELAY).timeout
+		if not _intro_valid(token):
+			return   # a run saiu da sala antes de a música entrar
+	Music.play(BOSS_MUSIC)
+
+## A sequência em si (corrotina). `token` invalida uma intro antiga que ainda esteja no ar —
+## o debug pode trocar de nível no meio dela, e duas intros vivas spawnariam dois bosses.
+func _boss_intro(token: int) -> void:
+	await get_tree().create_timer(BOSS_INTRO_PAUSE).timeout   # respiro na sala vazia
+	if not _intro_valid(token):
+		return
+
+	# O clipe do impacto tem o baque no meio dele (impact_at), não no início. Ele começa a tocar
+	# ADIANTADO, ainda com a sala vazia: o trecho antes do baque vira o suspense da queda, e o
+	# baque soa no instante exato em que os pés do boss batem no chão.
+	Sfx.play(_boss_landing_sfx)
+	var lead := maxf(0.0, Sfx.impact_at(_boss_landing_sfx) - _boss_fall_time())
+	if lead > 0.0:
+		await get_tree().create_timer(lead).timeout
+		if not _intro_valid(token):
+			return
+
+	_spawn_boss(_boss_spawn_pos() - Vector2(0.0, BOSS_INTRO_DROP))   # nasce acima da tela
+	if not is_instance_valid(_boss_view):
+		_abort_boss_intro()          # boss ausente no JSON: devolve o controle, não trava a run
+		return
+	_boss_view.dormant = true        # passivo: a gravidade o traz até o chão
+
+	# Espera o impacto — com teto de tempo, para a cena nunca travar se ele não pousar.
+	var falling := 0.0
+	while is_instance_valid(_boss_view) and not _boss_view.is_on_floor() and falling < BOSS_INTRO_FALL_MAX:
+		falling += get_physics_process_delta_time()
+		await get_tree().physics_frame
+	if not _intro_valid(token) or not is_instance_valid(_boss_view):
+		return
+	_boss_landing_fx()
+
+	await get_tree().create_timer(_boss_roar_time()).timeout   # ele encara o player
+	if not _intro_valid(token):
+		return
+	_transition(_begin_boss_fight)   # fade out → põe todos em posição → fade in → luta
+
+## Queda livre de BOSS_INTRO_DROP px sob a gravidade das entidades: t = √(2h/g). Determinística
+## (sem arrasto), então dá para saber de antemão QUANDO ele vai tocar o chão — é o que permite
+## disparar o som adiantado e cravar o baque no pouso.
+func _boss_fall_time() -> float:
+	return sqrt(2.0 * BOSS_INTRO_DROP / EnemyView.GRAVITY)
+
+## Quanto tempo o boss encara o player depois de pousar: o que sobra do clipe DEPOIS do baque,
+## menos o fade — assim a cutscene fecha exatamente quando o som acaba. Boss sem som (ou com um
+## som curto demais) cai no mínimo.
+func _boss_roar_time() -> float:
+	var after_impact := Sfx.length(_boss_landing_sfx) - Sfx.impact_at(_boss_landing_sfx)
+	return maxf(BOSS_INTRO_ROAR_MIN, after_impact - FADE_TIME)
+
+func _intro_valid(token: int) -> bool:
+	return _phase == "boss_intro" and token == _intro_token
+
+## Impacto do pouso: tremor forte, estilhaços, poeira do chão e um hit-stop curto (peso).
+## O som NÃO entra aqui — ele já está tocando desde antes, cravado para bater neste instante.
+func _boss_landing_fx() -> void:
+	var at := _boss_view.global_position + Vector2(0.0, _boss_view.box_h * 0.5)
+	_camera.add_trauma(1.0)
+	Juice.burst(self, at, Palette.BOSS, 24, 200.0)
+	Juice.burst(self, at, Color(0.72, 0.66, 0.58), 18, 120.0)   # poeira
+	Juice.hit_stop(get_tree(), 0.08, 0.05)
+
+## Fim da cutscene, sob a tela preta: todos em posição de luta e o boss liberado.
+func _begin_boss_fight() -> void:
 	_phase = "boss"
+	_reset_player_to_start()          # também descongela o player
+	if is_instance_valid(_boss_view):
+		_boss_view.global_position = _boss_spawn_pos()
+		_boss_view.velocity = Vector2.ZERO
+		_boss_view.dormant = false
+		_msg.text = _boss_title(String(_boss_view.data.name))
+
+## Boss inexistente no JSON: sai da cutscene sem travar a run (o nível é dado como limpo).
+func _abort_boss_intro() -> void:
+	_phase = "boss"
+	if is_instance_valid(_player_view):
+		_player_view.frozen = false
+	_on_floor_cleared()               # já corta a música (ver o topo dele)
+
+func _boss_title(boss_name: String) -> String:
+	return "Nível %d — CHEFE: %s" % [_run.current_floor, boss_name]
+
+## Cria o boss do nível em `at`. Quem chama decide se ele já age (a cutscene o deixa dormente).
+## Também resolve o eco do Nemesis, que o próprio boss invoca ao cruzar o limiar de HP.
+func _spawn_boss(at: Vector2) -> void:
 	var floor := _run.current_floor
 	var base := _boss_repo.get_by_id(_current_boss_id)
 	if base.is_empty():
 		push_warning("[floor_scene] boss '%s' não encontrado no andar %d" % [_current_boss_id, floor])
-		_on_floor_cleared()
 		return
 	var boss := EnemyFactory.build_boss(base, floor)
 
 	# Nemesis: este boss invocará o eco se há um fantasma ancorado neste andar (Regra 5).
+	# Com o sistema desligado, _ghost_to_summon fica nulo e o sinal do boss vira no-op.
 	_ghost_summoned = false
-	var g := _ghost_repo.load_active()
-	_ghost_to_summon = g if NemesisRules.should_summon(g, floor) else null
-
-	if floor >= TOTAL_LEVELS:
-		_msg.text = "Nível %d — O REI DA DUNGEON!" % floor
-	else:
-		_msg.text = "Nível %d — CHEFE: %s" % [floor, boss.name]
+	_ghost_to_summon = null
+	if _nemesis_on:
+		var g := _ghost_repo.load_active()
+		_ghost_to_summon = g if NemesisRules.should_summon(g, floor) else null
 
 	var bv: BossView = OgreView.new() if _current_boss_id == "bss_ogre" else BossView.new()
 	bv.summon_ghost.connect(_on_summon_ghost)
 	_boss_view = bv
 	if _boss_bar != null:
 		_boss_bar.setup(boss.name)                     # nome no rodapé; a barra aparece via _process
-	_add_view(bv, boss, _boss_spawn_pos())             # entra pela direita, no chão
+	_add_view(bv, boss, at)
 
 func _on_summon_ghost() -> void:
 	if _ghost_to_summon == null or _ghost_summoned:
@@ -776,6 +890,8 @@ func _clear_remaining_ghost() -> void:
 			v.queue_free()
 
 func _on_floor_cleared() -> void:
+	if _phase == "boss":
+		Music.stop()   # a trilha é da sala do boss: acabou a luta, ela se despede (fade do audio.json)
 	# Vencer o último nível conclui a dungeon.
 	if _run.current_floor >= TOTAL_LEVELS:
 		_on_victory()
@@ -853,21 +969,25 @@ func _next_floor() -> void:
 
 func _on_player_died(_p: Player) -> void:
 	_phase = "dead"
-	# Cria/sobrescreve o fantasma: você sempre enfrenta seu fracasso mais recente (§1.4.4).
-	var coeff := float(BalanceConfig.nemesis.get("NEMESIS_COEFF", 0.65))
-	_ghost_repo.record_death(_run.player.snapshot(), _run.current_floor, _run.player.run_id, coeff)
-	_show_end_screen("VOCÊ MORREU", [
+	Music.stop(1.5)
+	var lines := [
 		"Tombou no nível %d de %d" % [_run.current_floor, TOTAL_LEVELS],
 		"Nível %d" % _run.player.level,
-		"Um Eco seu ficou para trás...",
-	], Palette.ENEMY)
+	]
+	if _nemesis_on:
+		# Cria/sobrescreve o fantasma: você sempre enfrenta seu fracasso mais recente (§1.4.4).
+		var coeff := float(BalanceConfig.nemesis.get("NEMESIS_COEFF", 0.65))
+		_ghost_repo.record_death(_run.player.snapshot(), _run.current_floor, _run.player.run_id, coeff)
+		lines.append("Um Eco seu ficou para trás...")
+	_show_end_screen("VOCÊ MORREU", lines, Palette.ENEMY)
 
 func _on_victory() -> void:
 	_phase = "victory"
+	Music.stop()
 	_show_end_screen("VITÓRIA!", [
-		"Você conquistou a Torre da Vingança",
+		"Você limpou os %d níveis da dungeon" % TOTAL_LEVELS,
 		"Nível %d" % _run.player.level,
-		"O Rei caiu. A vingança está completa.",
+		"O resto da dungeon ainda está por vir...",
 	], Palette.ACCENT)
 
 func _show_end_screen(title: String, lines: Array, accent: Color) -> void:
@@ -933,7 +1053,9 @@ func _apply_debug_start() -> void:
 
 func _show_debug_legend() -> void:
 	var l := Label.new()
-	l.text = "[DEBUG]  K matar  |  M +1 andar  |  B +10  |  L +nivel  |  P 2x dano arma  |  H curar  |  G invocar eco  |  I god mode"
+	l.text = "[DEBUG]  K matar  |  M +1 nivel  |  L +nivel do player  |  P 2x dano arma  |  H curar  |  I god mode"
+	if _nemesis_on:
+		l.text += "  |  G invocar eco"
 	l.position = Vector2(8, 342)
 	l.add_theme_font_size_override("font_size", 10)
 	l.add_theme_color_override("font_color", Color(1, 1, 0.4))
@@ -945,7 +1067,6 @@ func _debug_input(event: InputEvent) -> void:
 	match (event as InputEventKey).physical_keycode:
 		KEY_K: _debug_kill_enemies()
 		KEY_M: _debug_skip_floors(1)
-		KEY_B: _debug_skip_floors(10)
 		KEY_L: _debug_level_up()
 		KEY_H: _run.player.heal(_run.player.stats.max_hp)
 		KEY_G: _debug_spawn_ghost()
@@ -983,6 +1104,8 @@ func _debug_level_up() -> void:
 	_msg.text = "[DEBUG] Nível %d" % _run.player.level
 
 func _debug_spawn_ghost() -> void:
+	if not _nemesis_on:
+		return   # Nemesis desligado (balance.json): nada a invocar
 	# Grava um eco do estado ATUAL ancorado neste andar e o invoca na hora (não precisa morrer).
 	var coeff := float(BalanceConfig.nemesis.get("NEMESIS_COEFF", 0.65))
 	_ghost_repo.record_death(_run.player.snapshot(), _run.current_floor, _run.player.run_id, coeff)
