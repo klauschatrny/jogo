@@ -6,6 +6,8 @@
   "base_stats": { "max_hp": 40, "attack": 8, "defense": 2, "move_speed": 80 },
   "ai_profile": "aggressive",
   "attack_sfx": "skeleton_attack",
+  "hurt_sfx": "skeleton_hurt",
+  "death_sfx": "skeleton_death",
   "abilities": ["abil_basic_slash"],
   "loot": { "gold_min": 4, "gold_max": 10, "xp": 12 },
   "spawn_floors": [1, 15],

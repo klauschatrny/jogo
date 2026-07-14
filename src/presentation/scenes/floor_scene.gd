@@ -51,9 +51,9 @@ var _boss_repo: BossRepository
 var _ghost_repo: GhostRepository
 var _crt: CrtOverlay
 var _camera: GameCamera
-var _bg: BiomeBackground        # fundo ambiental (parallax) por bioma
-var _biomes: Array = []         # paletas de bioma (data/biomes.json)
-var _parallax_default: Array = []   # camadas de parallax padrão (usadas por biomas sem arte própria)
+var _options_layer: CanvasLayer   # painel de Opções (ESC): pausa o jogo enquanto está aberto
+var _bg: SceneryBackground      # fundo do cenário (parallax)
+var _scenery: Dictionary = {}   # cenário do jogo (data/environment.json): parallax + chão
 var _corridor_length := 1920.0  # base 640×360 (3 telas de largura)
 var _arena_width := 1920.0      # largura do ambiente atual (corredor ou sala do boss)
 var _env: Node2D               # container do cenário atual (reconstruído por andar/sala)
@@ -110,12 +110,11 @@ func _ready() -> void:
 		for k in lv:
 			_levels[int(k)] = lv[k]   # chaves JSON vêm como String
 
-	var bcfg = JsonLoader.load_file("res://data/biomes.json")
-	_biomes = (bcfg.get("biomes", []) if typeof(bcfg) == TYPE_DICTIONARY else [])
-	_parallax_default = (bcfg.get("parallax_default", []) if typeof(bcfg) == TYPE_DICTIONARY else [])
+	var ecfg = JsonLoader.load_file("res://data/environment.json")
+	_scenery = ecfg if typeof(ecfg) == TYPE_DICTIONARY else {}
 
-	# Fundo ambiental (parallax) atrás de tudo; o conteúdo é definido por bioma em _build_environment.
-	_bg = BiomeBackground.new()
+	# Fundo (parallax) atrás de tudo; _build_environment o (re)constrói a cada cenário.
+	_bg = SceneryBackground.new()
 	add_child(_bg)
 
 	# Câmera que segue o player no eixo X, presa às bordas do nível; permite screen shake.
@@ -193,15 +192,13 @@ func _build_environment(width: float, is_boss_room: bool) -> void:
 	_env = Node2D.new()
 	add_child(_env)
 
-	# Bioma atual define o fundo (parallax) e as cores do chão. Sala do boss = mais escura.
-	var biome := _biome_for_floor(_run.current_floor)
+	# Cenário (environment.json): fundo em parallax + terreno. Sala do boss = mais escura.
 	var dim := 0.22 if is_boss_room else 0.0
+	var ground_cfg: Dictionary = _scenery.get("ground", {})
 	if _bg != null:
-		# O bioma pode ter camadas próprias ("parallax"); senão usa o conjunto padrão.
-		var specs: Array = biome.get("parallax", _parallax_default)
-		_bg.apply(biome, dim, specs)
-	var ground_col := Color(String(biome.get("ground", "3b3f54"))).darkened(dim)
-	var edge_col := Color(String(biome.get("ground_edge", "29283b"))).darkened(dim)
+		_bg.apply(_scenery.get("parallax", []), _scenery.get("fallback", {}), dim)
+	var fill_col := Color(String(ground_cfg.get("fill", "2e1f2c"))).darkened(dim)
+	var edge_col := Color(String(ground_cfg.get("edge", "6bb053"))).darkened(dim)
 
 	var body := StaticBody2D.new()
 	body.collision_layer = 4
@@ -222,17 +219,17 @@ func _build_environment(width: float, is_boss_room: bool) -> void:
 	_env.add_child(body)
 
 	# Chão sólido (backing): sempre presente, cobre qualquer vão sob a textura/tremor da câmera.
+	# É a cor da BASE do tile (a terra), então a emenda entre um e outro não aparece.
 	var fill := ColorRect.new()
-	fill.color = ground_col
+	fill.color = fill_col
 	fill.position = Vector2(-40, GROUND_Y)
 	fill.size = Vector2(width + 80, 440 - (GROUND_Y + 40))
 	fill.z_index = -6
 	_env.add_child(fill)
 
-	# Terreno: textura em tile (assets/bg/<id>/ground.png) sobre o backing, ou a linha de
-	# borda procedural se não houver arte.
-	var ground_png := "res://assets/bg/%s/ground.png" % String(biome.get("id", ""))
-	if String(biome.get("id", "")) != "" and ResourceLoader.exists(ground_png):
+	# Terreno: o tile do chão repetido na horizontal sobre o backing; sem arte, uma linha de borda.
+	var ground_png := String(ground_cfg.get("tex", ""))
+	if ground_png != "" and ResourceLoader.exists(ground_png):
 		var gtex := load(ground_png) as Texture2D
 		var ground := TextureRect.new()
 		ground.texture = gtex
@@ -995,6 +992,27 @@ func _show_end_screen(title: String, lines: Array, accent: Color) -> void:
 	es.setup(title, lines, accent)
 	_layer.add_child(es)
 
+## ESC no meio da run: PAUSA o jogo e abre as Opções. O painel roda com a árvore pausada e, ao
+## fechar, despausa. A música segue tocando na pausa (o autoload Music é PROCESS_MODE_ALWAYS), o
+## que é bom: dá para ajustar o volume dela e ouvir o efeito na hora.
+func _open_options() -> void:
+	if _options_layer != null:
+		return                        # já aberto (o painel trata o ESC de fechar)
+	_options_layer = CanvasLayer.new()
+	_options_layer.layer = 96         # acima do HUD e do fade, abaixo do CRT (100)
+	_options_layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(_options_layer)
+	var panel := OptionsPanel.new()
+	panel.closed.connect(_close_options)
+	_options_layer.add_child(panel)
+	get_tree().paused = true
+
+func _close_options() -> void:
+	get_tree().paused = false
+	if _options_layer != null:
+		_options_layer.queue_free()
+		_options_layer = null
+
 ## Posição inicial ESPALHADA pelo nível (não na porta). Zona de exclusão dos 180px iniciais;
 ## se second_half, restringe à metade direita do corredor (usado pelos elites).
 func _scatter_pos(second_half: bool) -> Vector2:
@@ -1003,13 +1021,6 @@ func _scatter_pos(second_half: bool) -> Vector2:
 		min_x = maxf(min_x, _arena_width * 0.5)
 	var max_x := maxf(min_x, _arena_width - 48.0)      # margem antes da parede direita
 	return Vector2(randf_range(min_x, max_x), GROUND_Y - 40.0)
-
-## Bioma do andar: 10 andares por zona (1–10, 11–20, …), preso ao último.
-func _biome_for_floor(floor: int) -> Dictionary:
-	if _biomes.is_empty():
-		return {}
-	var idx := clampi((floor - 1) / 10, 0, _biomes.size() - 1)
-	return _biomes[idx]
 
 ## Boss aparece no lado direito da sala do boss (arena fechada).
 func _boss_spawn_pos() -> Vector2:
@@ -1027,6 +1038,10 @@ func _update_boss_bar() -> void:
 		_boss_bar.visible = false
 
 func _unhandled_input(event: InputEvent) -> void:
+	# ESC pausa e abre as Opções (volume). Fechar o painel despausa — ver _open_options.
+	if event.is_action_pressed("ui_cancel"):
+		_open_options()
+		return
 	# F9 alterna o overlay CRT (disponível sempre, não só em debug).
 	if event is InputEventKey and event.pressed and not event.echo \
 			and (event as InputEventKey).physical_keycode == KEY_F9:

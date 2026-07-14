@@ -1,30 +1,30 @@
-## Fundo ambiental (parallax) por bioma. Fica num CanvasLayer ATRÁS do mundo (layer negativa),
-## em espaço de TELA — a câmera trava o Y, então o scroll horizontal manual basta e evita o
-## acoplamento vertical do ParallaxBackground.
+## Fundo do cenário (parallax). Fica num CanvasLayer ATRÁS do mundo (layer negativa), em espaço de
+## TELA — a câmera trava o Y, então o scroll horizontal manual basta e evita o acoplamento vertical
+## do ParallaxBackground.
 ##
-## As camadas são DATA-DRIVEN (data/biomes.json): uma lista ordenada de FUNDO → FRENTE, cada uma
-## com `tex` (png), `speed` (fração do movimento da câmera: 0 = fixa, 1 = colada no mundo) e
-## `drift` (px/s de deslocamento próprio, p/ nuvens ao vento). Cada camada é um tile emendável
-## repetido na horizontal; o comprimento do nível é irrelevante.
+## As camadas são DATA-DRIVEN (data/environment.json → "parallax"): uma lista ordenada de FUNDO →
+## FRENTE, cada uma com `tex` (png), `speed` (fração do movimento da câmera: 0 = fixa, 1 = colada no
+## mundo) e `drift` (px/s de deslocamento próprio, p/ nuvens ao vento). Cada camada é um tile
+## emendável repetido na horizontal; o comprimento do nível é irrelevante.
 ##
-## Sem lista de camadas (ou sem os PNGs), cai no placeholder procedural: gradiente + silhuetas
-## de ColorRect. Nada quebra.
-class_name BiomeBackground
+## Sem lista de camadas (ou sem os PNGs), cai no placeholder procedural: gradiente + silhuetas de
+## ColorRect, com as cores de "fallback". Nada quebra.
+class_name SceneryBackground
 extends CanvasLayer
 
 const VIEW := Vector2(640.0, 360.0)
 const HORIZON := 300.0          # linha do chão (GROUND_Y) em coordenadas de tela
 const PROC_PATTERN := 640.0     # largura do padrão que se repete (placeholder procedural)
 
-# [{ node, scale, pattern, drift, offset }] — estado do scroll manual, por camada.
+# [{ node, scale, pattern, drift, offset, camera_x }] — estado do scroll manual, por camada.
 var _layers: Array = []
 
 func _init() -> void:
 	layer = -10                  # bem atrás do mundo (layer 0) e da UI (layers positivas)
 
-## (Re)constrói o fundo. `specs` é a lista de camadas (fundo → frente); se vazia, o bioma cai no
-## placeholder procedural. `dim` escurece tudo (usado na sala do boss).
-func apply(biome: Dictionary, dim := 0.0, specs: Array = []) -> void:
+## (Re)constrói o fundo. `specs` = as camadas (fundo → frente); vazio cai no placeholder procedural,
+## que usa as cores de `fallback`. `dim` escurece tudo (usado na sala do boss).
+func apply(specs: Array, fallback: Dictionary, dim := 0.0) -> void:
 	for c in get_children():
 		c.queue_free()
 	_layers.clear()
@@ -37,7 +37,7 @@ func apply(biome: Dictionary, dim := 0.0, specs: Array = []) -> void:
 		if built > 0:
 			return                # arte carregada: pronto
 
-	_add_procedural(biome, dim)   # sem arte (ou PNGs ausentes): placeholder
+	_add_procedural(fallback, dim)   # sem arte (ou PNGs ausentes): placeholder
 
 ## Chamado todo frame com a posição X da câmera: desloca as camadas (parallax).
 func update_scroll(camera_x: float) -> void:
@@ -100,13 +100,13 @@ func _add_parallax_layer(spec: Dictionary, dim: float) -> bool:
 	return true
 
 ## Placeholder procedural (sem arte): céu em gradiente + duas camadas de silhuetas de blocos.
-func _add_procedural(biome: Dictionary, dim: float) -> void:
-	_add_sky(_col(biome, "bg_top", "15161f").darkened(dim), _col(biome, "bg_bottom", "23271f").darkened(dim))
-	_add_silhouettes(0.2, _col(biome, "far", "2b3a30").darkened(dim), 5, 80.0, 173.0, 67.0, 120.0)
-	_add_silhouettes(0.45, _col(biome, "mid", "3c4d3e").darkened(dim), 7, 53.0, 120.0, 50.0, 93.0)
+func _add_procedural(fallback: Dictionary, dim: float) -> void:
+	_add_sky(_col(fallback, "bg_top", "15161f").darkened(dim), _col(fallback, "bg_bottom", "23271f").darkened(dim))
+	_add_silhouettes(0.2, _col(fallback, "far", "2b3a30").darkened(dim), 5, 80.0, 173.0, 67.0, 120.0)
+	_add_silhouettes(0.45, _col(fallback, "mid", "3c4d3e").darkened(dim), 7, 53.0, 120.0, 50.0, 93.0)
 
-func _col(b: Dictionary, key: String, def: String) -> Color:
-	return Color(String(b.get(key, def)))
+func _col(d: Dictionary, key: String, def: String) -> Color:
+	return Color(String(d.get(key, def)))
 
 func _add_sky(top: Color, bottom: Color) -> void:
 	var grad := Gradient.new()

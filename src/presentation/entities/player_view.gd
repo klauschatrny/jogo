@@ -22,6 +22,7 @@ const COMBO_HIT_CD := 0.2        # gap ALÉM da anim completa, entre os golpes D
 const COMBO_SEQ_CD := 1.0        # gap ALÉM da anim completa, após o 3º golpe, antes da próxima sequência
 const FINISHER_KNOCKBACK := 2.4  # o 3º golpe empurra bem mais
 const ATTACK_CONTACT_FRAME := 2  # quadro da anim de ataque em que a lâmina conecta (impacto)
+const ATTACK_SFX := "player_attack"        # 3 sons = os 3 passos do combo, na ordem (ver _attack)
 const DODGE_SFX := "player_dodge"          # rolamento
 const FOOTSTEPS_SFX := "player_footsteps"  # ciclo de passos em loop enquanto corre no chão
 const HIT_HEIGHT := 56.0         # altura do retângulo de dano; o comprimento vem do attack_range da arma
@@ -231,13 +232,11 @@ func _flip(dir: Vector2) -> void:
 func _play_anim(anim: String) -> void:
 	SpriteLoader.play_safe(_sprite, anim)
 
-## Passos: o ciclo toca em loop enquanto ele corre NO CHÃO por vontade própria. Para ao parar,
-## pular, rolar, ficar travado no ataque ou ser empurrado (o knockback não entra em move_x).
+## Passos: o ciclo toca enquanto ele corre NO CHÃO por vontade própria. Cessa ao parar, pular,
+## rolar, ficar travado no ataque ou ser empurrado (o knockback não entra em move_x). `Sfx.sustain`
+## nunca corta uma passada no meio: ao parar, ela soa inteira antes de o ciclo se calar.
 func _update_footsteps(move_x: float) -> void:
-	if is_on_floor() and absf(move_x) > 1.0:
-		Sfx.loop(FOOTSTEPS_SFX)
-	else:
-		Sfx.loop_stop(FOOTSTEPS_SFX)
+	Sfx.sustain(FOOTSTEPS_SFX, is_on_floor() and absf(move_x) > 1.0)
 
 ## Escolhe a animação de locomoção (pulo/corrida/parado), salvo durante o ataque (_anim_lock).
 func _update_locomotion(ix: float) -> void:
@@ -257,6 +256,10 @@ func _attack() -> void:
 	var step := _combo
 	var is_last := step >= COMBO_MAX - 1
 	_combo = (step + 1) % COMBO_MAX
+
+	# Som do golpe: a variação É o passo do combo — os 3 sons saem em sequência (1º, 2º, 3º) e a
+	# sequência recomeça. Parar deixa o combo expirar (_combo_timer) e o próximo golpe volta ao 1º.
+	Sfx.play(ATTACK_SFX, step)
 
 	# Anim de ataque (reinicia do frame 0). O player fica PARADO no lugar pela duração da animação
 	# (frames ÷ fps): trava a locomoção (_anim_lock) e o movimento (_attack_move_lock) juntos, terminando

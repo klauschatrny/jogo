@@ -20,6 +20,7 @@ func _ready() -> void:
 		_tracks = (cfg as Dictionary).get("music", {})
 	_player = AudioStreamPlayer.new()
 	_player.name = "Stream"
+	_player.bus = AudioSettings.MUSIC_BUS   # o jogador regula esta categoria nas Opções
 	add_child(_player)
 
 ## Toca a faixa `id` de audio.json. Se já for a que está tocando, não faz nada (não reinicia).

@@ -1,0 +1,24 @@
+{
+  "_comment": "Cenário do jogo — UM só (a ideia de vários biomas foi abandonada). 'parallax' = camadas do fundo, em ordem FUNDO -> FRENTE: speed = fração do movimento da câmera (0 = fixa, 1 = colada no mundo; mais perto do player = maior), drift = px/s de deslocamento próprio (vento). 'ground' = o terreno, desenhado no mundo por cima do parallax. Sem os PNGs, cai no placeholder procedural (as cores de 'fallback').",
+  "parallax": [
+    { "tex": "res://assets/bg/default/layer6.png", "speed": 0.00, "drift": 0.0 },
+    { "tex": "res://assets/bg/default/layer5.png", "speed": 0.10, "drift": 3.0 },
+    { "tex": "res://assets/bg/default/layer4.png", "speed": 0.16, "drift": 6.0 },
+    { "tex": "res://assets/bg/default/layer3.png", "speed": 0.28, "drift": 0.0 },
+    { "tex": "res://assets/bg/default/layer2.png", "speed": 0.40, "drift": 0.0 },
+    { "tex": "res://assets/bg/default/layer1.png", "speed": 0.55, "drift": 0.0 }
+  ],
+  "ground": {
+    "_comment": "tile 64x32 repetido na horizontal, ampliado x2 no jogo (texel 2). 'fill' = cor sólida sob o tile: é a cor da BASE dele (terra), então a emenda some. 'edge' só aparece se o PNG sumir.",
+    "tex": "res://assets/bg/ground/grassground.png",
+    "fill": "2e1f2c",
+    "edge": "6bb053"
+  },
+  "fallback": {
+    "_comment": "Placeholder procedural, usado só se a arte do parallax faltar: céu em gradiente + duas fileiras de silhuetas.",
+    "bg_top": "15161f",
+    "bg_bottom": "23271f",
+    "far": "2b3a30",
+    "mid": "3c4d3e"
+  }
+}

@@ -8,6 +8,8 @@
   "attack_style": "thrust",
   "ai_profile": "aggressive",
   "attack_sfx": "skeleton_attack",
+  "hurt_sfx": "skeleton_hurt",
+  "death_sfx": "skeleton_death",
   "abilities": ["abil_basic_slash"],
   "loot": { "gold_min": 12, "gold_max": 24, "xp": 40 },
   "spawn_floors": [1, 50],

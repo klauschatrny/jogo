@@ -255,6 +255,9 @@ func _hide_warn() -> void:
 
 func apply_damage(amount: int, knockback_mult := 1.0) -> void:
 	data.stats.current_hp -= amount
+	# Golpe fatal tem som próprio (o grito de morte); os demais, o de dano. Ids no JSON da
+	# entidade; sem eles, silêncio.
+	Sfx.play(data.death_sfx if data.stats.current_hp <= 0 else data.hurt_sfx)
 	_refresh_hp_bar()
 	if _sprite != null:
 		Juice.flash_modulate(_sprite)

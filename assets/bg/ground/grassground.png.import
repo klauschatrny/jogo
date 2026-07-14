@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://psnaqjjkhbo6"
-path="res://.godot/imported/ground.png-fee62affa1d646c5bd0774010769e22d.ctex"
+uid="uid://ybnb1dl6hdk3"
+path="res://.godot/imported/grassground.png-a26e9a992adeb8f38520e7f2595ab13a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/bg/ossuary/ground.png"
-dest_files=["res://.godot/imported/ground.png-fee62affa1d646c5bd0774010769e22d.ctex"]
+source_file="res://assets/bg/ground/grassground.png"
+dest_files=["res://.godot/imported/grassground.png-a26e9a992adeb8f38520e7f2595ab13a.ctex"]
 
 [params]
 

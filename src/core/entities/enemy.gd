@@ -17,6 +17,8 @@ var attack_style: String = ""       # estilo do efeito melee: "slash" | "thrust"
 var windup: float = -1.0            # tempo de windup do golpe melee (s). < 0 = a view usa seu padrão
 var attack_cooldown: float = -1.0   # intervalo entre golpes melee (s). < 0 = a view usa seu padrão
 var attack_sfx: String = ""         # id do som do golpe em data/audio.json. "" = golpe silencioso
+var hurt_sfx: String = ""           # id do som ao levar dano (e sobreviver). "" = mudo
+var death_sfx: String = ""          # id do som do golpe FATAL. "" = mudo
 
 static func from_dict(d: Dictionary) -> Enemy:
 	var e := Enemy.new()
@@ -40,4 +42,6 @@ func _populate(d: Dictionary) -> void:
 	windup = float(d.get("windup", -1.0))
 	attack_cooldown = float(d.get("attack_cooldown", -1.0))
 	attack_sfx = String(d.get("attack_sfx", ""))
+	hurt_sfx = String(d.get("hurt_sfx", ""))
+	death_sfx = String(d.get("death_sfx", ""))
 	stats = StatBlock.from_dict(d.get("base_stats", {}))

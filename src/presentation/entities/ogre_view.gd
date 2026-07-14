@@ -24,6 +24,7 @@ const CHARGE_SPEED_MULT := 2.0          # 200% da velocidade do player
 const LOCK_AT_REMAINING := 0.2          # trava a direção quando faltam 200 ms de windup
 const CHARGE_DAMAGE := 50
 const CHARGE_MAX_TIME := 2.0            # segurança: encerra a investida
+const CHARGE_STEP_EVERY := 0.26         # cadência das passadas CORRENDO (andando é 1 por segundo)
 const TIRED_TIME := 3.0                 # stun após a investida (a respiração ofegante dura o mesmo)
 
 const ABILITY_GCD := 1.0                 # cooldown global entre QUALQUER cast de habilidade normal
@@ -62,6 +63,8 @@ var _bad_side := 1.0
 var _gcd := 0.0                         # cooldown global: bloqueia novo cast por ABILITY_GCD
 var _rock_cd := 0.0                     # cooldown próprio das rochas (ROCK_CD)
 var _walking := false                   # anda NESTE frame? (só p/ o som dos passos — ver _process)
+var _charge_step_t := 0.0               # tempo até a próxima passada da corrida
+var _charge_step_i := 0                 # qual passada do ciclo (rodízio: não repete a mesma)
 var _rage_pending := false              # limiar cruzado durante outra habilidade: fúria a cobrar
 
 ## Após cada dano: fases do BossView (enrage/summon) + checa os limiares da investida.
@@ -148,6 +151,7 @@ func _begin_charge() -> void:
 	_charge_time = 0.0
 	_charge_hit = false
 	_charge_speed = CHARGE_SPEED_MULT * _player_move_speed()
+	_charge_step_t = 0.0     # a 1ª passada sai já no primeiro frame da corrida
 
 ## Corre cegamente na direção travada; causa dano (50) UMA vez quando a hitbox toca a do player,
 ## mas SEM parar por isso — segue atravessando. Só encerra ao bater na parede ou no tempo máximo.
@@ -158,13 +162,21 @@ func _tick_charge(delta: float) -> void:
 	move_and_slide()
 	_update_sprite(_charge_dir, true)
 	_charge_time += delta
+	_tick_charge_steps(delta)
 	if not _charge_hit and _overlaps_player():
 		_charge_hit = true
 		if target.has_method("apply_flat_damage"):
 			target.apply_flat_damage(CHARGE_DAMAGE)
 		_spawn_attack_fx(_charge_dir)
 		Juice.hit_stop(get_tree(), 0.05)
-	if is_on_wall() or _charge_time >= CHARGE_MAX_TIME:
+	# A investida acaba de dois jeitos: se espatifando na PAREDE (tem som e tremor) ou esgotando o
+	# tempo no vazio (não bateu em nada — nada de som de impacto).
+	if is_on_wall():
+		Sfx.play((data as Boss).wall_hit_sfx if data is Boss else "")
+		Juice.burst(get_parent(), global_position, Palette.BOSS, 16, 150.0)
+		Juice.hit_stop(get_tree(), 0.06)
+		_begin_tired()
+	elif _charge_time >= CHARGE_MAX_TIME:
 		_begin_tired()
 
 func _begin_tired() -> void:
@@ -354,8 +366,19 @@ func _update_sprite(dx: float, moving: bool) -> void:
 	super._update_sprite(dx, moving)
 	_walking = moving and _special != "charge" and is_on_floor()
 
-## O áudio dos passos é decidido aqui, TODO frame — mesmo nos estados que não tocam no sprite
-## (a baderna). `Sfx.sustain` nunca corta uma passada no meio: ao parar, ela soa até o fim.
+## Passadas da CORRIDA: som PRÓPRIO (charge_steps_sfx), mais encorpado que o da caminhada, recortado
+## e tocado numa cadência maior. O rodízio pelo índice alterna as batidas do clipe.
+func _tick_charge_steps(delta: float) -> void:
+	_charge_step_t -= delta
+	if _charge_step_t > 0.0:
+		return
+	_charge_step_t = CHARGE_STEP_EVERY
+	Sfx.play_step(_charge_steps_sfx(), _charge_step_i)
+	_charge_step_i += 1
+
+## O áudio dos passos ANDANDO é decidido aqui, TODO frame — mesmo nos estados que não tocam no
+## sprite (a baderna). `Sfx.sustain` nunca corta uma passada no meio: ao parar, ela soa até o fim.
+## A corrida não passa por aqui (tem cadência própria — ver _tick_charge_steps).
 func _process(_delta: float) -> void:
 	Sfx.sustain(_steps_sfx(), _walking)
 
@@ -365,6 +388,9 @@ func _exit_tree() -> void:
 
 func _steps_sfx() -> String:
 	return (data as Boss).steps_sfx if data is Boss else ""
+
+func _charge_steps_sfx() -> String:
+	return (data as Boss).charge_steps_sfx if data is Boss else ""
 
 ## Direção que o ogro encara (fallback quando não há alvo p/ mirar).
 func _facing() -> float:
