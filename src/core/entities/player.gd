@@ -11,15 +11,23 @@ extends RefCounted
 var id: String = ""
 var name: String = ""
 var level: int = 1
-var experience: int = 0
-var xp_to_next: int = 100
+## Almas: a moeda ÚNICA. Vêm direto do inimigo morto e compram níveis na fogueira. Morrer as
+## derruba TODAS — elas ficam no Eco, no lugar onde você caiu, e só voltam se você o vencer.
+## É o que dá peso à morte: sem isto, morrer só custa tempo.
+var souls: int = 0
 var stats: StatBlock
 var stamina: Stamina                # recurso de ações (ataque/esquiva), estilo Dark Souls
 var weapon: Weapon
-var augments: Array = []            # Array[Augment]
+var augments: Array = []            # Array[Augment] — desligado do jogo (ver CLAUDE.md)
 var gold: int = 0
 var current_floor: int = 1
 var run_id: String = ""
+
+# --- Atributos (soulslike) ---
+# Subir de nível NÃO dá stat nenhuma sozinho: dá pontos, e os pontos só viram poder quando o
+# jogador os gasta na fogueira, no atributo que ele escolher.
+var attributes: Dictionary = {}     # id -> valor (vigor, resistência, força...)
+var attribute_points: int = 0       # pontos por gastar
 
 static func create_new(player_name: String, chosen_weapon: Weapon) -> Player:
 	var p := Player.new()
@@ -28,17 +36,48 @@ static func create_new(player_name: String, chosen_weapon: Weapon) -> Player:
 	p.name = player_name
 	p.weapon = chosen_weapon
 	p.level = 1
-	p.recalculate_stats()
+	p.attributes = Attributes.defaults()
 	p.stamina = Stamina.from_config(BalanceConfig.stamina)
-	p.xp_to_next = int(Leveling.xp_to_next(1))
+	p.recalculate_stats()             # depois da stamina: recalculate_stats também a redimensiona
 	return p
 
-## Stats BASE no nível atual, antes dos augments. max_hp/attack escalam linearmente (§1.2.2);
-## os demais são os defaults do jogador (do GDD §2.2.1).
+## Derruba TODAS as almas (morte). Devolve quantas caíram — quem chama as entrega ao Eco.
+func lose_souls() -> int:
+	var caidas := souls
+	souls = 0
+	if caidas > 0:
+		EventBus.souls_lost.emit(caidas)
+	return caidas
+
+func gain_souls(amount: int) -> void:
+	if amount <= 0:
+		return
+	souls += amount
+	EventBus.souls_gained.emit(amount, souls)
+
+## Sobe UM ponto no atributo, se houver ponto para gastar. O HP ganho na hora vem junto (subir
+## Vigor com a vida no fim cura de fato — como na fogueira de Dark Souls). Retorna false se não
+## havia ponto ou o atributo não existe.
+func spend_point(id: String) -> bool:
+	if attribute_points <= 0 or not attributes.has(id):
+		return false
+	attribute_points -= 1
+	attributes[id] = int(attributes[id]) + 1
+	var hp_antes := stats.max_hp
+	recalculate_stats()
+	stats.current_hp = min(stats.current_hp + maxi(0, stats.max_hp - hp_antes), stats.max_hp)
+	EventBus.attribute_raised.emit(id, int(attributes[id]))
+	return true
+
+func attribute(id: String) -> int:
+	return int(attributes.get(id, Attributes.start_of(id)))
+
+## Stats BASE, antes dos augments. A base é fixa (player_scaling); o que faz o jogador crescer
+## são os ATRIBUTOS — o nível, sozinho, não move nenhum número.
 func base_block() -> StatBlock:
 	var b := StatBlock.new()
-	b.max_hp = int(Scaling.player_max_hp(level))
-	b.attack = int(Scaling.player_atk(level))
+	b.max_hp = int(Scaling.player_base_hp() + Attributes.bonus(attributes, "max_hp"))
+	b.attack = int(Scaling.player_base_atk() + Attributes.bonus(attributes, "attack"))
 	b.defense = 0
 	b.crit_chance = 0.05
 	b.crit_damage = 1.5
@@ -51,6 +90,8 @@ func base_block() -> StatBlock:
 	return b
 
 ## Recalcula os stats efetivos (base + augments), preservando o HP atual (clampado ao novo máximo).
+## A stamina também é redimensionada: o teto dela vem da Resistência, então gastar um ponto ali
+## precisa alargar a barra na hora.
 func recalculate_stats() -> void:
 	var keep := stats.current_hp if stats != null else -1
 	stats = StatResolver.resolve(base_block(), augments)
@@ -58,6 +99,18 @@ func recalculate_stats() -> void:
 		stats.current_hp = stats.max_hp
 	else:
 		stats.current_hp = min(keep, stats.max_hp)
+	_resize_stamina()
+
+## Teto da stamina = base do balance.json + o que a Resistência somou. O que já estava na barra é
+## preservado; ganhar teto novo entrega a sobra de imediato (subir Resistência enche o que cresceu).
+func _resize_stamina() -> void:
+	if stamina == null:
+		return
+	var novo_max := float(BalanceConfig.stamina.get("MAX", 100.0)) \
+		+ Attributes.bonus(attributes, "stamina_max")
+	var ganho := novo_max - stamina.maximum
+	stamina.maximum = novo_max
+	stamina.current = clampf(stamina.current + maxf(ganho, 0.0), 0.0, novo_max)
 
 func add_augment(aug: Augment) -> void:
 	augments.append(aug)

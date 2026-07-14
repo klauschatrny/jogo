@@ -47,7 +47,6 @@ func _median_player(floor: int) -> Player:
 	var w := Weapon.from_dict(_weapon_repo.get_by_id("wpn_sword_mourning"))
 	var p := Player.create_new("Mediano", w)
 	p.level = floor
-	p.xp_to_next = int(Leveling.xp_to_next(floor))
 	for _i in (1 + int(floor * WEAPON_UP_PER_FLOOR)) - 1:
 		w.upgrade()
 	for i in int(floor * AUG_PER_FLOOR):

@@ -22,8 +22,8 @@
     "ATK_PER_LEVEL": 2,
     "BASE_WDMG": 15,
     "WEAPON_GROWTH": 1.12,
-    "XP_BASE": 100,
-    "XP_GROWTH": 1.15
+    "SOULS_BASE": 100,
+    "SOULS_GROWTH": 1.15
   },
   "defense_curve": {
     "DEFENSE_K": 100
@@ -35,13 +35,24 @@
     "ATTACK_COST": 20,
     "DODGE_COST": 30
   },
+  "attributes": {
+    "_comment": "Progressao soulslike: subir de nivel NAO da stat nenhuma sozinho — da PONTOS, que o jogador gasta em atributos na fogueira. 'start' e o valor inicial de cada atributo; 'gain' e o que UM ponto acrescenta. Os valores de partida sao calibrados para bater com a base do player_scaling/stamina (vigor 10 = 120 de vida, forca 10 = 5 de ataque, resistencia 10 = 100 de stamina), entao mexer em 'start' desloca a base inteira.",
+    "POINTS_PER_LEVEL": 1,
+    "LIST": [
+      { "id": "vigor", "name": "VIGOR", "desc": "vida maxima", "start": 10, "gain": { "max_hp": 9 } },
+      { "id": "endurance", "name": "RESISTENCIA", "desc": "stamina", "start": 10, "gain": { "stamina_max": 6 } },
+      { "id": "strength", "name": "FORCA", "desc": "dano dos golpes", "start": 10, "gain": { "attack": 2 } }
+    ]
+  },
   "augments": {
+    "_comment": "DESLIGADO do jogo: o bau e as cartas sairam, e a progressao virou pontos de atributo (acima). O codigo (Augment/AugmentPool/StatResolver) e os testes seguem de pe, aguardando decisao — ver CLAUDE.md.",
     "tier_weights": { "FRAGMENT": 100, "RELIC": 30, "ARTIFACT": 6 },
     "LUCK_RARITY_FACTOR": { "FRAGMENT": 0.0, "RELIC": 0.02, "ARTIFACT": 0.05 },
     "cards_per_reward": 3
   },
   "nemesis": {
-    "ENABLED": false,
+    "_comment": "O Eco (marca de sangue). LIGADO. Ele nao e mais um espectro de outra run invocado pelo chefe: e ONDE VOCE CAIU nesta run, guardando as almas que voce tinha no bolso. NUNCA nasce numa arena de chefe (nao ha como voltar la sem enfrentar o chefe): morrer no chefe o deposita na porta do nivel anterior. Venca-o e as almas voltam; morra de novo antes disso e ele e substituido — as antigas se perdem. GHOST_SUMMON_THRESHOLD nao e mais usado (o chefe nao invoca nada).",
+    "ENABLED": true,
     "NEMESIS_COEFF": 0.65,
     "GHOST_HP_CAP": 2.0,
     "GHOST_SUMMON_THRESHOLD": 0.60,

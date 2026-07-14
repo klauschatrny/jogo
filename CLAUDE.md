@@ -2,11 +2,94 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Genre pivot in progress: roguelike → soulslike
+
+The GDD (`TDV_Arquitetura.md`) describes a **roguelike**; the game is being steered toward a
+**soulslike**, and where the two disagree, *this file wins*. The decision came from noticing the
+game already was one: stamina gates every attack and dodge, the dodge roll has i-frames, the Ogre
+has a telegraphed charge with a 3-second punish window (a tell you only learn by dying to it), the
+levels are hand-authored with no procgen, and the 50-floor tower + Nemesis were both switched off.
+
+**Done so far — bonfires (checkpoints).** Death no longer ends the run: `_on_player_died` shows a
+"VOCÊ MORREU" banner, fades to black, and `RunState.respawn()` puts the player back at the last
+bonfire he rested at, with HP and stamina full, while the world is rebuilt around him. He keeps
+level/augments/weapon and loses only the ground he'd walked. State lives in `RunState`
+(`checkpoint_floor`/`checkpoint_x`, `lit_bonfires`, `cleared_floors`, `bosses_seen`, `deaths`) —
+never in the scene, which is torn down and remade on every death. `BonfireView` only draws and
+signals. Rest with **E/F** (`interact`).
+
+There is exactly **one bonfire, in the chest/augment room** (`CHEST_FIRE_X` in
+`_enter_chest_room`) — the refuge you reach after clearing a level: chest, augment, rest. Levels
+themselves have none, so `_can_rest()` only allows `chest_room`/`to_exit_door`.
+
+**Respawn has exactly two outcomes, never a third:** the bonfire you last rested at, or the start
+of the game (the village). *Never where you fell* — reappearing in the boss arena that just killed
+you would make death free. `RunState.respawn()` enforces it (`checkpoint_floor` or `START_FLOOR`).
+Consequently the chest room is **re-enterable**: a cleared floor's exit door leads back into it
+(`to_chest_door`, not straight to the next level), because otherwise someone who died without
+resting could never reach the only bonfire in the game again. On those return trips the chest is
+already looted (`RunState.chest_taken`) — the augment is granted once — so only the fire and the
+onward door remain.
+
+**Respawn ordering is load-bearing.** Put the player in place *before* spawning hazards
+(`_reset_player_to_start` then `_spawn_hazards`): an `Area2D` created on top of the corpse is born
+already overlapping it, and its overlap list is only rebuilt on the next *physics* step — so the
+pit would kill the freshly-respawned player from across the map, in an idle frame, starting a
+second death on top of the first. `HazardView._dentro_do_poco()` re-checks the player's actual
+position for the same reason; never trust `get_overlapping_bodies()` alone across a teleport.
+
+Three consequences worth knowing before you touch `floor_scene`:
+- `_clear_entities()` **must** run at the start of `_start_floor`/`_start_tutorial`/
+  `_enter_chest_room`. Respawning rebuilds the level *in the same scene*, so without it the
+  previous life's enemies stay alive and the new ones pile on top.
+- A **cleared** floor (`RunState.is_cleared`) is not repopulated if you walk back through it.
+- A boss's entrance cutscene runs **once** (`RunState.boss_seen`); retries go straight to
+  `_begin_boss_retry()`.
+
+**Done — attribute points replace the chest and the augment cards.** Levelling up no longer moves
+a single stat: it grants **points** (`Player.attribute_points`), and points only become power when
+the player sits at the bonfire and spends them (`Player.spend_point`, `AttributePanel`). The
+attributes themselves are data (`balance.json → attributes`): each declares what one point adds to
+which stats, so adding one is a JSON edit. `Player.base_block()` is now a fixed base
+(`Scaling.player_base_hp/atk`) plus attribute bonuses — `Scaling.player_max_hp(level)` survives only
+for `sim_balance`'s "median player" model. The reward chest is gone and the room it lived in is now
+just the **fire room** (`_enter_fire_room`, `FIRE_ROOM_W`/`FIRE_X`); nothing is collected there, so
+it needs no "already visited" state and its onward door is always open. `Augment`/`AugmentPool`/
+`StatResolver`/`CardSelect` still compile and are still tested, but nothing in gameplay calls them
+(same treatment as Nemesis and the tower).
+
+**Doors**: a door in an area you've already beaten is always open. Only doors gated by a *mechanism*
+start closed — today that's exactly one: the Necromancer's room opens when he dies.
+
+**Done — souls and the Echo (the bloodstain).** `Player.souls` is the only currency. Every kill
+pays straight into the pocket (`"souls"` in each enemy's `loot`) — including the skeletons the
+Necromancer keeps reviving, which used to be XP-blocked to stop farming. Farming polices itself now,
+because **souls in the pocket are risk**: they buy nothing until spent, and dying drops *all* of
+them. Levels are no longer automatic — they're **bought** at the bonfire (`Leveling.level_cost`,
+`SOULS_BASE`/`SOULS_GROWTH`), and each level grants an attribute point. `AttributePanel` folds both
+steps into one keypress: raise an attribute and, if no point is banked, the level is purchased on
+the spot.
+
+On death, `RunState.drop_echo()` leaves a **single** `GhostData` holding every soul you carried,
+built from a snapshot of you (`GhostFactory` → nerfed ELITE with "echo" AI, now tinted **red**).
+Beat it and `recover_echo()` pays the souls back; **die again first and it is replaced — the old
+souls are gone forever.** No souls, no echo (an empty one would be a pointless fight). The boss no
+longer summons anything: `_echo_spot()` guarantees the echo **never lands in a boss arena** (you'd
+have to beat the boss to recover the souls it took from you) — a death at the boss deposits it at
+the **exit door of the previous level**, so the run-back walks straight through it.
+`GhostRepository`'s disk persistence is unused: the echo lives in the run, not across runs.
+
+**Still roguelike, still to convert**: the geometric per-floor enemy scaling — a soulslike
+hand-tunes fixed stats per area.
+
 ## Project status: Phase 4 implemented (Phases 1–4 done)
 
-The canonical spec is **`TDV_Arquitetura.md`** — a full GDD + software architecture for *A Torre da
-Vingança* (Tower of Vengeance), a 2D retro roguelike. Read it before writing code; each section is
-self-contained and meant to be pasted as prompt context when implementing the corresponding phase.
+The game is called **Fair Despair**. `TDV_Arquitetura.md` is the original GDD + software
+architecture, written when it was a roguelike named *A Torre da Vingança* (Tower of Vengeance) —
+hence the `TDV_` prefix and the old name still scattered through the design docs, the bestiary and
+the unwired 50-floor tower content. **The architecture in it still holds; the genre and the name do
+not.** Read it before writing code; each section is self-contained and meant to be pasted as prompt
+context when implementing the corresponding phase.
 
 **Phase 1 (Fundação & Esqueleto) is done**: `project.godot` with autoloads, `data/balance.json` +
 `BalanceConfig`, `EventBus`, seeded `RNGService`, stack-based `StateMachine`/`GameState`/`MainMenuState`,
@@ -25,7 +108,20 @@ and the playable `floor_scene` (waves → boss → card reward → next floor) w
 **Scope right now**: the playable dungeon is **2 hand-authored levels** — level 1 (Necromancer's
 skeleton room) and level 2 (Ogre boss arena) — plus the tutorial village. `data/floors/levels.json`
 is the whole content list and `TOTAL_LEVELS` in `floor_scene.gd` must match it; there is **no
-fallback level and no procedural repetition** (a missing level ends the run with a warning). The
+fallback level and no procedural repetition** (a missing level ends the run with a warning).
+**Environmental hazards** (`HazardView` + `data/hazards.json`) are the first non-combat content:
+what a hazard *is* lives in `hazards.json`, where it *sits* in each level's `"hazards"` array.
+A spike pit is *terrain*: `_build_environment` reads the level's hazard list and lays the floor as
+slabs with a gap at each pit plus a deeper solid slab closing its bottom. **Falling in kills
+instantly** (`instakill`) via `PlayerView.kill()`, which deliberately **ignores the dodge i-frames**
+— a pit is crossed by *jumping*, not by rolling through it. (Rolling *across* the gap is legitimate
+traversal: the dash covers ~86px, wider than a 56px pit. What the i-frames must not do is save you
+once you're already inside.) A hazard without `instakill` falls back to the normal
+`apply_flat_damage` path, so non-lethal traps stay possible. Enemies don't jump, so
+`EnemyView._ledge_ahead()` stops them at the rim (`LEDGE_DEPTH` must stay smaller than any pit's
+`depth`) and `_off_pit()` keeps spawns out of the hole — without those two, a skeleton falls in and
+is stuck forever. Right now the only pit is the tutorial one, which teaches the rule where it costs
+20 seconds; the Necromancer's room has none. The
 old 50-floor tower (`TowerManager`, `data/floors/tower.json`, the 5 great-boss + King JSONs) is
 **no longer wired into gameplay** — it still exists and is still unit-tested, awaiting the redesign.
 

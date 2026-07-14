@@ -12,6 +12,13 @@ var nemesis_coeff: float = 0.65
 var defeated: bool = false
 var player_snapshot: Dictionary = {}
 
+# --- Marca de sangue (o Eco como ele funciona HOJE) ---
+# O Eco não é mais um espectro de outra run invocado pelo boss: é ONDE VOCÊ CAIU, nesta run, com
+# as almas que você tinha no bolso. Ele espera lá. Vencê-lo devolve as almas; morrer de novo antes
+# disso o substitui, e as antigas se perdem para sempre.
+var souls: int = 0          # as almas que ele guarda
+var death_x: float = 0.0    # onde exatamente ele espera, dentro do nível
+
 ## Cria um GhostData a partir de um snapshot do jogador (Player.snapshot()) no momento da morte.
 static func from_snapshot(snapshot: Dictionary, p_death_floor: int,
 		p_origin_run_id: String, p_nemesis_coeff: float) -> GhostData:
@@ -33,6 +40,8 @@ static func from_dict(d: Dictionary) -> GhostData:
 	g.timestamp = String(d.get("timestamp", ""))
 	g.nemesis_coeff = float(d.get("nemesis_coeff", 0.65))
 	g.defeated = bool(d.get("defeated", false))
+	g.souls = int(d.get("souls", 0))
+	g.death_x = float(d.get("death_x", 0.0))
 	var snap: Dictionary = d.get("player_snapshot", {})
 	g.player_snapshot = snap.duplicate(true)
 	return g
@@ -45,6 +54,8 @@ func to_dict() -> Dictionary:
 		"timestamp": timestamp,
 		"nemesis_coeff": nemesis_coeff,
 		"defeated": defeated,
+		"souls": souls,
+		"death_x": death_x,
 		"player_snapshot": player_snapshot.duplicate(true),
 	}
 

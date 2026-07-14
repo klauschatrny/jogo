@@ -23,5 +23,5 @@
   "can_summon_ghost": true,
   "ghost_summon_threshold": 0.6,
   "intro_dialogue": "Carne nova para esmagar.",
-  "loot": { "gold_min": 50, "gold_max": 90, "xp": 150, "guaranteed_drop_tier": "RELIC" }
+  "loot": { "gold_min": 50, "gold_max": 90, "souls": 150, "guaranteed_drop_tier": "RELIC" }
 }

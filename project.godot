@@ -14,8 +14,8 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 [application]
 
-config/name="A Torre da Vingança"
-config/description="Roguelike de ação 2D retrô com sistema Nemesis (Fantasma)."
+config/name="Fair Despair"
+config/description="Soulslike de ação 2D retrô: fogueiras, stamina e chefes que se aprendem morrendo."
 run/main_scene="res://src/presentation/scenes/main_menu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 

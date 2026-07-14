@@ -380,6 +380,16 @@ func apply_flat_damage(amount: int) -> bool:
 	_shake(0.25)
 	return true
 
+## Morte INSTANTÂNEA — cair num poço. Ao contrário de todo o resto do dano, ignora os i-frames da
+## esquiva: rolar não salva ninguém de um buraco (você já está lá dentro; a esquiva não é um pulo).
+## O god mode (debug) continua valendo. Retorna true se matou.
+func kill() -> bool:
+	if god_mode or data == null or not data.is_alive():
+		return false
+	data.take_damage(data.stats.current_hp)   # zera a vida → EventBus.player_died
+	_shake(0.6)
+	return true
+
 ## Tremor de tela via a câmera ativa (GameCamera). Sem câmera, é no-op.
 func _shake(amount: float) -> void:
 	var cam := get_viewport().get_camera_2d()

@@ -1,0 +1,15 @@
+{
+  "_comment": "Armadilhas de cenário: poços de espinhos abertos no chão. Aqui fica o QUE cada uma é; ONDE ela fica é por nível, em data/floors/levels.json (\"hazards\": [ { \"id\": ..., \"x\": ... } ]). instakill = cair MATA na hora, ignorando os i-frames da esquiva (buraco não se atravessa rolando, se atravessa pulando) — o god mode ainda protege. depth = fundura do buraco (só aparência e leitura: dele ninguém sai). tex = arte opcional dos espinhos (PNG lado a lado, colado no fundo); sem ela, desenha lâminas com 'color'. pit = cor do interior. Uma armadilha SEM instakill cai no caminho de dano comum e usa 'damage', 'tick' e 'pop' — a porta fica aberta para armadilhas não-letais.",
+  "hazards": {
+    "spikes": {
+      "instakill": true,
+      "width": 56,
+      "depth": 44,
+      "spike_w": 7,
+      "color": "9fb4c7",
+      "pit": "140d18",
+      "sfx": "",
+      "tex": ""
+    }
+  }
+}

@@ -25,7 +25,20 @@ static func rank_mult(rank: String, key: String) -> float:
 	var rm: Dictionary = BalanceConfig.rank_multipliers.get(rank, {})
 	return float(rm.get(key, 1.0))
 
-# --- Curva do jogador (linear de base, §1.2.2) ---
+# --- Base do jogador ---
+# É daqui que ele PARTE. O crescimento não vem mais do nível: vem dos ATRIBUTOS, gastos na
+# fogueira (ver Attributes). Estes dois valores casam com o atributo no seu ponto de partida —
+# vigor 10 = 120 de vida, força 10 = 5 de ataque.
+
+static func player_base_hp() -> float:
+	return float(BalanceConfig.player_scaling.get("BASE_PHP", 120))
+
+static func player_base_atk() -> float:
+	return float(BalanceConfig.player_scaling.get("BASE_PATK", 5))
+
+# --- Curva linear antiga do jogador (§1.2.2) ---
+# NÃO alimenta mais o Player: ele cresce por atributos. Seguem aqui porque o simulador de
+# balanceamento (tests/balance_sim.gd) ainda modela o "jogador mediano" por nível.
 
 static func player_max_hp(level: int) -> float:
 	var ps: Dictionary = BalanceConfig.player_scaling

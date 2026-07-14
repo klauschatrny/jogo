@@ -14,7 +14,7 @@
       "_comment": "UM arquivo, DUAS variações: a 2ª é o mesmo golpe num tom mais grave (pitch). A variação é o passo do combo (3 golpes), então a sequência sai tom normal, grave, normal. Parar deixa o combo expirar e o próximo golpe volta ao 1º. Um 3º valor em 'pitch' (ou um 2º stream) daria ao finisher um som próprio.",
       "streams": ["res://assets/audio/sfx/player_attack1.mp3"],
       "pitch": [1.0, 0.92],
-      "volume_db": -10.0
+      "volume_db": -12.0
     },
     "player_dodge": {
       "_comment": "Rolamento. Há uma 2ª variação desenhada (esquiva2) ainda fora do jogo: para testá-la, some o stream dela aqui — o rodízio passa a alternar sozinho.",
@@ -46,7 +46,7 @@
     "skeleton_death": {
       "_comment": "Grito de morte: só no golpe FATAL (data/enemies/*.json -> death_sfx).",
       "streams": ["res://assets/audio/sfx/skeleton_death.mp3"],
-      "volume_db": -10.0
+      "volume_db": -12.0
     },
     "ogre_rage": {
       "_comment": "Grito do ogro ao entrar em fúria — o windup da investida, a 50/35/15% de vida (data/bosses/ogre.json -> rage_sfx).",

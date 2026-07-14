@@ -1,22 +1,27 @@
-# A Torre da Vingança (Tower of Vengeance)
+# Fair Despair
 
-Roguelike de ação 2D retrô, com permadeath significativo, builds aleatórias por **Augments** e um
-sistema **Nemesis** (Fantasma): onde você morre, deixa um eco que o boss daquele andar invoca na sua
-próxima run.
+Soulslike de ação 2D retrô, side-scroller. Stamina limita cada golpe e cada esquiva, os chefes têm
+padrões que só se aprendem morrendo, e a morte não encerra nada: você levanta na última fogueira e
+volta para tentar de novo.
 
 **Stack:** Godot 4 + GDScript.
 
 ## Documentação
 
-- **[`TDV_Arquitetura.md`](TDV_Arquitetura.md)** — GDD + arquitetura de software (documento canônico).
-- **[`CLAUDE.md`](CLAUDE.md)** — guia para sessões de implementação assistida.
+- **[`CLAUDE.md`](CLAUDE.md)** — estado real do projeto e guia de implementação. **Manda.**
+- **[`TDV_Arquitetura.md`](TDV_Arquitetura.md)** — GDD + arquitetura originais. Ainda descrevem um
+  *roguelike* (o nome antigo era "A Torre da Vingança"): a arquitetura segue valendo, o gênero não.
+  Onde os dois divergem, vale o `CLAUDE.md`.
 
 ## Status
 
-Pré-implementação. Nenhum código ainda — apenas os documentos de planejamento acima.
+Jogável. Vila de tutorial → sala do Necromante → arena do Ogro, com fogueiras, augments e
+armadilhas de cenário. A conversão de roguelike para soulslike está em curso: as fogueiras já
+existem; faltam as almas caídas no corpo e os upgrades escolhidos no lugar das cartas aleatórias.
 
-Próximos passos seguem o roadmap de 5 fases em `TDV_Arquitetura.md` §2.4, começando pela Fase 1
-(estrutura de pastas, `BalanceConfig`, `EventBus`, `RNGService`, máquina de estados, loaders de JSON).
+```bash
+godot --headless --script res://tests/test_runner.gd   # suíte de testes (sai 0 se passar)
+```
 
 ## Princípios de arquitetura (não-negociáveis)
 

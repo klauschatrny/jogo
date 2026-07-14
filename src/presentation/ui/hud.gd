@@ -11,6 +11,7 @@ var _player: Player
 var _bar: ColorRect
 var _label: Label
 var _stam_bar: ColorRect
+var _souls: Label
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -46,6 +47,14 @@ func _ready() -> void:
 	_label.add_theme_font_size_override("font_size", 11)
 	add_child(_label)
 
+	# Almas: a moeda. Precisa estar SEMPRE visível — é o que você perde ao morrer, e não dá para
+	# decidir se vale a pena avançar ou voltar à fogueira sem ver quanto está em jogo.
+	_souls = Label.new()
+	_souls.position = Vector2(12, STAM_Y + STAM_H + 4)
+	_souls.add_theme_font_size_override("font_size", 11)
+	_souls.add_theme_color_override("font_color", Palette.ACCENT)
+	add_child(_souls)
+
 	_refresh()
 
 func set_player(p: Player) -> void:
@@ -64,3 +73,5 @@ func _refresh() -> void:
 	_label.text = "Nv %d" % _player.level
 	if _stam_bar != null:
 		_stam_bar.size.x = BAR_WIDTH * (_player.stamina.ratio() if _player.stamina != null else 0.0)
+	if _souls != null:
+		_souls.text = "%d almas" % _player.souls

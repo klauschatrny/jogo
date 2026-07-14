@@ -11,7 +11,7 @@
   "hurt_sfx": "skeleton_hurt",
   "death_sfx": "skeleton_death",
   "abilities": ["abil_basic_slash"],
-  "loot": { "gold_min": 12, "gold_max": 24, "xp": 40 },
+  "loot": { "gold_min": 12, "gold_max": 24, "souls": 40 },
   "spawn_floors": [1, 50],
   "sprite": "enm_skeleton_heavy"
 }

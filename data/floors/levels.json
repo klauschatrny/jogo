@@ -1,5 +1,5 @@
 {
-  "_comment": "Config por-nível da dungeon. Todo nível é ÚNICO e precisa estar listado aqui — não há fallback nem repetição automática. TOTAL_LEVELS (floor_scene.gd) tem de bater com a quantidade de níveis deste arquivo. type = 'room' (sala a limpar) ou 'boss' (arena fechada). Para acrescentar um nível: descreva-o aqui e some 1 em TOTAL_LEVELS.",
+  "_comment": "Config por-nível da dungeon. Todo nível é ÚNICO e precisa estar listado aqui — não há fallback nem repetição automática. TOTAL_LEVELS (floor_scene.gd) tem de bater com a quantidade de níveis deste arquivo. type = 'room' (sala a limpar) ou 'boss' (arena fechada). Para acrescentar um nível: descreva-o aqui e some 1 em TOTAL_LEVELS. 'hazards' (opcional) = armadilhas de cenário: 'id' vem do catálogo em data/hazards.json, 'x' é a posição no corredor e 'width' (opcional) estica o buraco. Cair num poço MATA — use com parcimônia, e nunca onde a horda empurra o jogador para trás sem que ele veja o chão. A FOGUEIRA não se declara aqui: existe uma só, na sala do baú de cada nível (ver floor_scene._enter_chest_room).",
   "levels": {
     "1": {
       "type": "room",

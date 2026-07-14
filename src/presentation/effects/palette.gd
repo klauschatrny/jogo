@@ -12,7 +12,7 @@ const GROUND_EDGE := Color("29283b") # linha de topo do chão
 const PLAYER := Color("41a6f6")      # jogador (azul)
 const ENEMY := Color("d9575b")       # inimigo comum (vermelho)
 const BOSS := Color("a868d6")        # boss (roxo)
-const GHOST := Color("73eff7")       # eco/fantasma (ciano)
+const GHOST := Color("e43b44")       # eco / marca de sangue (vermelho; era ciano)
 
 const HP_FILL := Color("6abe30")     # barra de HP (verde)
 const HP_BACK := Color(0, 0, 0, 0.6) # fundo da barra

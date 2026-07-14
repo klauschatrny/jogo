@@ -4,40 +4,64 @@ func _player() -> Player:
 	var w := Weapon.from_dict({"base_damage": 15})
 	return Player.create_new("X", w)
 
-func test_xp_to_next_curva() -> void:
-	assert_almost(Leveling.xp_to_next(1), 100.0)        # XP_BASE
-	assert_almost(Leveling.xp_to_next(2), 100.0 * 1.15)
+func test_custo_do_nivel_cresce() -> void:
+	assert_eq(Leveling.level_cost(1), 100)              # SOULS_BASE
+	assert_eq(Leveling.level_cost(2), int(100 * 1.15))  # * SOULS_GROWTH
+	assert_true(Leveling.level_cost(5) > Leveling.level_cost(4))
 
-func test_add_xp_sem_subir() -> void:
+func test_almas_entram_no_bolso() -> void:
 	var p := _player()
-	var levels := Leveling.add_xp(p, 50)
-	assert_eq(levels, 0)
+	assert_eq(p.souls, 0)
+	p.gain_souls(80)
+	p.gain_souls(40)
+	assert_eq(p.souls, 120)
+	assert_eq(p.level, 1, "almas NÃO sobem de nível sozinhas — nível se compra na fogueira")
+
+func test_sem_almas_nao_compra_nivel() -> void:
+	var p := _player()
+	p.gain_souls(Leveling.level_cost(1) - 1)
+	assert_false(Leveling.can_level_up(p))
+	assert_false(Leveling.level_up(p))
 	assert_eq(p.level, 1)
-	assert_eq(p.experience, 50)
+	assert_eq(p.attribute_points, 0)
 
-func test_add_xp_sobe_um_nivel() -> void:
+func test_comprar_nivel_gasta_almas_e_da_ponto() -> void:
 	var p := _player()
-	var levels := Leveling.add_xp(p, 100)
-	assert_eq(levels, 1)
+	var custo := Leveling.level_cost(1)
+	p.gain_souls(custo + 30)
+	assert_true(Leveling.can_level_up(p))
+	assert_true(Leveling.level_up(p))
 	assert_eq(p.level, 2)
-	assert_eq(p.experience, 0)
+	assert_eq(p.souls, 30, "as almas gastas saem do bolso")
+	assert_eq(p.attribute_points, Attributes.points_per_level())
 
-func test_level_up_aumenta_max_hp() -> void:
+## A regra do gênero: o nível comprado ainda não move stat nenhuma. O PONTO é que move.
+func test_comprar_nivel_nao_muda_stat_nenhuma() -> void:
 	var p := _player()
-	assert_eq(p.stats.max_hp, 120)
-	Leveling.add_xp(p, 100)
-	assert_eq(p.stats.max_hp, 134)  # +HP_PER_LEVEL
-	assert_eq(p.stats.attack, 7)    # +ATK_PER_LEVEL
+	var hp := p.stats.max_hp
+	var atk := p.stats.attack
+	p.gain_souls(Leveling.level_cost(1))
+	Leveling.level_up(p)
+	assert_eq(p.stats.max_hp, hp)
+	assert_eq(p.stats.attack, atk)
+	assert_true(p.spend_point("vigor"))
+	assert_true(p.stats.max_hp > hp, "só o ponto gasto vira poder")
 
-func test_level_up_cura_o_hp_ganho() -> void:
+func test_morrer_derruba_todas_as_almas() -> void:
 	var p := _player()
-	p.take_damage(20)               # 100/120
-	Leveling.add_xp(p, 100)         # sobe p/ 134 de max, +14 de cura
-	assert_eq(p.stats.current_hp, 114)
+	p.gain_souls(250)
+	var caidas := p.lose_souls()
+	assert_eq(caidas, 250)
+	assert_eq(p.souls, 0, "morrer esvazia o bolso — elas vão para o Eco")
 
-func test_add_xp_multiplos_niveis() -> void:
+func test_o_que_ja_foi_gasto_nao_se_perde() -> void:
 	var p := _player()
-	# 100 (lvl1->2) + 115 (lvl2->3) = 215 sobe 2 níveis
-	var levels := Leveling.add_xp(p, 215)
-	assert_eq(levels, 2)
-	assert_eq(p.level, 3)
+	p.gain_souls(Leveling.level_cost(1) + 50)
+	Leveling.level_up(p)
+	p.spend_point("vigor")
+	var hp := p.stats.max_hp
+	var lvl := p.level
+	p.lose_souls()                       # morre
+	assert_eq(p.souls, 0)
+	assert_eq(p.level, lvl, "o nível comprado é seu para sempre")
+	assert_eq(p.stats.max_hp, hp, "e o atributo subido também")

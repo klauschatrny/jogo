@@ -1,28 +1,33 @@
-## Sistema de XP e level-up (§1.2.2). Core puro. O XP necessário cresce geometricamente;
-## as stats base do jogador (max_hp, attack) crescem linearmente via Scaling.
+## Progressão soulslike. Core puro.
+##
+## Não existe mais XP que sobe de nível sozinho. O que os inimigos largam são ALMAS, e almas são
+## MOEDA: elas ficam paradas no seu bolso até você sentar na fogueira e COMPRAR um nível. Cada
+## nível comprado entrega pontos de atributo (Attributes.points_per_level), e os pontos é que
+## viram poder.
+##
+## Essa distinção é o que faz a morte doer: as almas que você ainda não gastou vão todas para o
+## Eco, no lugar onde você caiu. Farmar deixa de ser de graça — enquanto o dinheiro está no bolso,
+## ele é risco; só depois de gasto ele é seu.
 class_name Leveling
 extends RefCounted
 
-## XP necessário para sair do nível informado: XP_BASE * XP_GROWTH^(level-1).
-static func xp_to_next(level: int) -> float:
+## Almas para comprar o PRÓXIMO nível: SOULS_BASE * SOULS_GROWTH^(level-1).
+static func level_cost(level: int) -> int:
 	var ps: Dictionary = BalanceConfig.player_scaling
-	return float(ps.get("XP_BASE", 100)) * pow(float(ps.get("XP_GROWTH", 1.15)), maxi(level, 1) - 1)
+	return int(float(ps.get("SOULS_BASE", 100)) \
+		* pow(float(ps.get("SOULS_GROWTH", 1.15)), maxi(level, 1) - 1))
 
-## Concede XP ao jogador, sobe de nível quantas vezes for preciso, e cura o HP ganho a
-## cada nível. Retorna quantos níveis subiu. Emite eventos no EventBus.
-static func add_xp(player: Player, amount: int) -> int:
-	var levels_gained := 0
-	player.experience += max(amount, 0)
-	EventBus.xp_gained.emit(amount)
-	while player.experience >= player.xp_to_next:
-		player.experience -= player.xp_to_next
-		var old_max := player.stats.max_hp
-		player.level += 1
-		player.xp_to_next = int(xp_to_next(player.level))
-		player.recalculate_stats()
-		# ganha o HP novo do nível (sem ultrapassar o novo máximo)
-		var delta := player.stats.max_hp - old_max
-		player.stats.current_hp = min(player.stats.current_hp + delta, player.stats.max_hp)
-		levels_gained += 1
-		EventBus.level_up.emit(player.level)
-	return levels_gained
+static func can_level_up(player: Player) -> bool:
+	return player.souls >= level_cost(player.level)
+
+## Compra UM nível, se houver almas. O nível não dá stat nenhuma: dá pontos de atributo, que o
+## jogador gasta onde quiser (ainda na fogueira). Retorna false se faltaram almas.
+static func level_up(player: Player) -> bool:
+	var custo := level_cost(player.level)
+	if player.souls < custo:
+		return false
+	player.souls -= custo
+	player.level += 1
+	player.attribute_points += Attributes.points_per_level()
+	EventBus.level_up.emit(player.level)
+	return true

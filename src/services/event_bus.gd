@@ -7,12 +7,21 @@ signal player_died(player)
 signal player_damaged(player, amount)
 signal weapon_upgraded(weapon)
 
-# --- Progressão ---
-signal xp_gained(amount)
+# --- Progressão (almas: moeda única; nível se COMPRA na fogueira) ---
+signal souls_gained(amount, total)
+signal souls_lost(amount)           # morreu: tudo foi para o Eco
+signal echo_defeated(souls_back)    # venceu o próprio Eco: as almas voltaram
 signal level_up(new_level)
 signal floor_changed(floor)
 
-# --- Recompensa ---
+# --- Fogueiras / morte (soulslike) ---
+signal checkpoint_rested(floor)     # o jogador descansou numa fogueira (vida cheia, ponto salvo)
+signal player_respawned(floor)      # morreu e voltou à última fogueira — a run NÃO acaba
+
+# --- Atributos (progressão soulslike: nível dá pontos; a fogueira os gasta) ---
+signal attribute_raised(id, new_value)
+
+# --- Recompensa (augments: DESLIGADO do jogo — ver CLAUDE.md) ---
 signal augment_offered(cards)
 signal augment_chosen(augment)
 

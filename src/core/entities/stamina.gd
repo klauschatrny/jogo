@@ -41,5 +41,11 @@ func tick(delta: float) -> void:
 		return
 	current = minf(maximum, current + regen_per_sec * delta)
 
+## Enche a barra na hora (descansar na fogueira, ressuscitar). Zera também o atraso de regen:
+## quem levanta da fogueira já pode agir.
+func refill() -> void:
+	current = maximum
+	_delay = 0.0
+
 func ratio() -> float:
 	return clampf(current / maxf(maximum, 0.001), 0.0, 1.0)

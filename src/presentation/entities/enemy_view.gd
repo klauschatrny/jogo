@@ -11,6 +11,10 @@ const ATTACK_VRANGE := 30.0        # alcance vertical: não acerta quem está ac
 const ATTACK_INTERVAL := 1.0
 const WINDUP := 0.18               # 180 ms de aviso ("!") antes do golpe conectar (janela p/ desviar)
 const GRAVITY := 1400.0            # mesma gravidade do player (side-scroller plano)
+const LEDGE_AHEAD := 12.0          # o quanto à frente dos pés ele tateia por chão (base 640×360)
+const LEDGE_DEPTH := 20.0          # o quanto abaixo dos pés ainda conta como "tem chão".
+                                   # Precisa ser MENOR que a fundura dos poços (hazards.json),
+                                   # senão o sensor enxerga o fundo do buraco e ele anda pra dentro.
 
 var data: Enemy                     # entidade Core
 var target: Node2D                  # quem perseguir (o PlayerView)
@@ -157,8 +161,14 @@ func _physics_process(delta: float) -> void:
 	var dy := target.global_position.y - global_position.y
 	var moving := false
 	if absf(dx) > attack_range:
-		velocity.x = signf(dx) * float(data.stats.move_speed) * ViewScale.WORLD
-		moving = true
+		# Beira de buraco: o inimigo não pula. Sem chão adiante ele PARA na borda, em vez de
+		# despencar no poço de espinhos e ficar preso lá para sempre. De quebra, o poço vira
+		# terreno tático: dá para separar a horda pondo um buraco no meio.
+		if is_on_floor() and _ledge_ahead(signf(dx)):
+			velocity.x = 0.0
+		else:
+			velocity.x = signf(dx) * float(data.stats.move_speed) * ViewScale.WORLD
+			moving = true
 	else:
 		velocity.x = 0.0
 		# Só ataca se o player estiver ao alcance horizontal E vertical: quem pula/pogo
@@ -172,6 +182,16 @@ func _physics_process(delta: float) -> void:
 	_knockback = _knockback.lerp(Vector2.ZERO, 0.2)   # recuo decai rápido
 	move_and_slide()
 	_update_sprite(dx, moving)
+
+## Tem um vão logo à frente? Lança um raio curto para baixo, um pouco adiante dos pés: se ele
+## não encontrar terreno (camada 4) dentro de LEDGE_DEPTH, ali começa um buraco.
+func _ledge_ahead(dir: float) -> bool:
+	if dir == 0.0:
+		return false
+	var feet := global_position.y + box_h * 0.5
+	var from := Vector2(global_position.x + dir * (box_w * 0.5 + LEDGE_AHEAD), feet - 4.0)
+	var query := PhysicsRayQueryParameters2D.create(from, from + Vector2(0.0, LEDGE_DEPTH), 4)
+	return get_world_2d().direct_space_state.intersect_ray(query).is_empty()
 
 ## Vira o sprite para o player e escolhe walk/idle (salvo durante a anim de ataque travada).
 func _update_sprite(dx: float, moving: bool) -> void:

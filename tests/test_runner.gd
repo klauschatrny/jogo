@@ -16,6 +16,7 @@ const SUITES := {
 	"CombatResolver": "res://tests/test_combat_resolver.gd",
 	"Scaling": "res://tests/test_scaling.gd",
 	"Leveling": "res://tests/test_leveling.gd",
+	"Attributes": "res://tests/test_attributes.gd",
 	"StatResolver": "res://tests/test_stat_resolver.gd",
 	"EnemyFactory": "res://tests/test_enemy_factory.gd",
 	"AugmentPool": "res://tests/test_augment_pool.gd",
