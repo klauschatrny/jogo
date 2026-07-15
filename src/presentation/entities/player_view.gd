@@ -26,8 +26,6 @@ const ATTACK_SFX := "player_attack"        # 3 sons = os 3 passos do combo, na o
 const DODGE_SFX := "player_dodge"          # rolamento
 const FOOTSTEPS_SFX := "player_footsteps"  # ciclo de passos em loop enquanto corre no chão
 const HIT_HEIGHT := 56.0         # altura do retângulo de dano; o comprimento vem do attack_range da arma
-const CONTACT_CD := 1.0          # imunidade entre hits por COLISÃO sequenciais
-const CONTACT_KNOCKBACK := 520.0 # empurrão horizontal ao encostar num inimigo (base 640×360)
 
 var data: Player                    # entidade Core
 var god_mode := false               # debug: ignora dano recebido
@@ -44,7 +42,6 @@ var _dodge_buffered := false       # intenção de esquiva apertada durante o co
 var _dodge_dir := Vector2.RIGHT    # direção do dash (input atual, ou facing)
 var _combo := 0                    # passo atual do combo (0..COMBO_MAX-1)
 var _combo_timer := 0.0            # tempo restante para encadear o próximo golpe
-var _contact_cd := 0.0             # cooldown do hit por colisão (>0 = imune a colisão)
 var _knockback := Vector2.ZERO     # empurrão horizontal (decai); somado à velocidade
 var _attack_cost := 20.0           # custo de stamina por golpe (data-driven via balance.json)
 var _dodge_cost := 30.0            # custo de stamina por esquiva
@@ -137,7 +134,6 @@ func _physics_process(delta: float) -> void:
 	_anim_lock = maxf(0.0, _anim_lock - delta)
 	_attack_move_lock = maxf(0.0, _attack_move_lock - delta)
 	_combo_timer = maxf(0.0, _combo_timer - delta)
-	_contact_cd = maxf(0.0, _contact_cd - delta)
 	if data.stamina != null:
 		data.stamina.tick(delta)      # stamina regenera (após o atraso desde o último gasto)
 	if _combo_timer <= 0.0:
@@ -155,8 +151,7 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("dodge") and _dodge_cd > 0.0:
 		_dodge_buffered = true
 
-	# Dano por COLISÃO: encostar num inimigo (fora dos i-frames) fere, empurra e pisca de branco.
-	_check_contact_damage()
+	# (Encostar num inimigo NÃO fere: o dano vem só do golpe telegrafado dele — ver EnemyView.)
 
 	# Gravidade contínua; o chão (StaticBody2D) segura o player via is_on_floor().
 	if not is_on_floor():
@@ -175,8 +170,7 @@ func _physics_process(delta: float) -> void:
 
 	# Frasco de cura (o Estus): beber TRAVA o jogador no lugar, SEM i-frames. A cura só cai no fim
 	# do gesto; um golpe no meio zera _drink_heal (via _interrupt_drink) e a carga já era — o preço
-	# de beber na hora errada. Como um hit já cancelou o gole em _check_contact_damage acima, aqui a
-	# velocidade horizontal é simplesmente zero (fica plantado).
+	# de beber na hora errada. Fica plantado (velocidade horizontal zero).
 	if _drink_time > 0.0:
 		_drink_time -= delta
 		velocity.x = 0.0
@@ -361,48 +355,6 @@ func _current_attack_dir() -> Vector2:
 	if not is_on_floor() and Input.is_action_pressed("move_down"):
 		return Vector2.DOWN
 	return _facing
-
-## Dano por COLISÃO: se a hitbox do player encostar na de QUALQUER inimigo (fora dos i-frames e do
-## cooldown de contato), toma o golpe daquele inimigo, é empurrado para longe e pisca de branco.
-## Um cooldown de CONTACT_CD segura o próximo hit por colisão.
-func _check_contact_damage() -> void:
-	if god_mode or _dodge_time > 0.0 or _contact_cd > 0.0:
-		return
-	var enemy := _overlapping_enemy()
-	if enemy == null:
-		return
-	_contact_cd = CONTACT_CD
-	_interrupt_drink()                  # levar dano no meio do gole cancela a cura
-	var dmg := CombatResolver.enemy_hit(enemy.data.stats, data)
-	data.take_damage(int(round(dmg)))
-	var dir := signf(global_position.x - enemy.global_position.x)
-	if dir == 0.0:
-		dir = -signf(_facing.x) if _facing.x != 0.0 else 1.0
-	_knockback = Vector2(dir * CONTACT_KNOCKBACK, 0.0)
-	_flash_hit()
-	_shake(0.2)
-
-## Primeiro inimigo cuja hitbox sobrepõe a do player (query de forma à camada 2). null se nenhum.
-func _overlapping_enemy() -> EnemyView:
-	var shape := RectangleShape2D.new()
-	shape.size = Vector2(box_w, box_h)
-	var query := PhysicsShapeQueryParameters2D.new()
-	query.shape = shape
-	query.transform = Transform2D(0.0, global_position)
-	query.collision_mask = 2
-	query.collide_with_bodies = true
-	for hit in get_world_2d().direct_space_state.intersect_shape(query, 8):
-		var b: Variant = hit.get("collider")
-		if b is EnemyView and b.data != null:
-			return b
-	return null
-
-## Pisca de branco (filtro 60%) na arte, ou flash no placeholder ColorRect quando não há sprite.
-func _flash_hit() -> void:
-	if _sprite != null:
-		Juice.flash_white(_sprite, 0.6)
-	else:
-		Juice.flash(_body, BASE_COLOR)
 
 ## Chamado pelo EnemyView quando o inimigo acerta o jogador.
 func apply_enemy_hit(attacker_stats: StatBlock) -> void:

@@ -1,7 +1,7 @@
 ## Ogro (boss). Habilidades NORMAIS escolhidas por DISTÂNCIA do player (dx horizontal):
-##  - ≤ 100px (zona comum baderna+melee): sorteia golpe melee (que por sua vez é golpe único OU
+##  - ≤ 140px (zona comum baderna+melee): sorteia golpe melee (que por sua vez é golpe único OU
 ##    combo de 3, 50/50 — cada golpe dá um passo à frente) ou baderna.
-##  - 100–250px: aproxima (nenhuma habilidade nessa faixa).
+##  - 140–250px: aproxima (nenhuma habilidade nessa faixa).
 ##  - 250–560px (zona de rochas): arremesso de 3 rochas (25 de dano cada); cooldown próprio de 8s.
 ##  - > 560px: aproxima.
 ## Nas zonas exclusivas ele SEMPRE usa a habilidade daquela zona; só sorteia na zona comum.
@@ -13,6 +13,7 @@
 ##  - Arremesso de rochas — windup inicial 1s e 0.9s entre os arremessos; rocha voa reta até o player.
 ##    Além do cooldown global, tem cooldown PRÓPRIO de 8s (na faixa de rochas, se em cooldown, aproxima).
 ##  - Baderna — 6 golpes alternando lados (3 direita / 3 esquerda); windup inicial 1s, 0.3s entre.
+##    É longa: tem cooldown PRÓPRIO de 6s (após uma baderna, o sorteio só dá melee até ele zerar).
 ## Habilidade ESPECIAL: ao cruzar 50%/35%/15% de vida ele entra em fúria e faz uma INVESTIDA
 ## ÚNICA — no windup rastreia o lado do player e TRAVA a direção a 200 ms do fim; corre cegamente
 ## (200% da vel. do player) e causa dano UMA vez quando a hitbox toca a do player, SEM parar por
@@ -41,6 +42,8 @@ const ROCK_CD := 8.0                     # cooldown PRÓPRIO do arremesso de roc
 const BADERNA_HITS := 6                  # 3 direita + 3 esquerda, intercalados
 const BADERNA_INITIAL_WINDUP := 1.0
 const BADERNA_BETWEEN := 0.3            # windup entre os golpes individuais
+const BADERNA_CD := 6.0                 # cooldown PRÓPRIO: após uma baderna, só melee por este tempo
+                                        # (ela é longa — sem isto, a 50/50, ocupa ~2/3 do tempo de luta)
 
 # Golpe melee: sempre dá um PASSO à frente ao conectar (avança comprometido, na direção do player).
 # Tem duas formas, sorteadas 50/50 ao iniciar: golpe ÚNICO ou COMBO de 3 (um passo em cada).
@@ -52,7 +55,7 @@ const MELEE_STEP_TIME := 0.15          # duração do passo (≈ 24px por golpe)
 const ROCK_MIN_RANGE := 250.0           # distância mínima p/ arremessar rochas
 const ROCK_RANGE := 560.0               # distância máxima da zona de rochas
 const ROCK_VRANGE := 200.0             # alcance vertical p/ arremessar (arena plana: quase irrestrito)
-const BADERNA_RANGE := 100.0            # gatilho da baderna (≤ isto entra no sorteio com o melee)
+const BADERNA_RANGE := 140.0            # gatilho da baderna (≤ isto entra no sorteio com o melee) = attack_range
 
 var _special := ""                      # "" | "windup" | "charge" | "tired" | "rocks" | "baderna" | "melee"
 var _sp_windup := 0.0
@@ -73,6 +76,7 @@ var _melee_stepping := false            # true durante o passo à frente (logo a
 var _lunge_dir := 1.0                    # direção do passo à frente do golpe
 var _gcd := 0.0                         # cooldown global: bloqueia novo cast por ABILITY_GCD
 var _rock_cd := 0.0                     # cooldown próprio das rochas (ROCK_CD)
+var _baderna_cd := 0.0                  # cooldown próprio da baderna (BADERNA_CD) — só melee enquanto ativo
 var _walking := false                   # anda NESTE frame? (só p/ o som dos passos — ver _process)
 var _charge_step_t := 0.0               # tempo até a próxima passada da corrida
 var _charge_step_i := 0                 # qual passada do ciclo (rodízio: não repete a mesma)
@@ -110,7 +114,8 @@ func _physics_process(delta: float) -> void:
 	if dormant:
 		super._physics_process(delta)
 		return
-	_rock_cd = maxf(0.0, _rock_cd - delta)   # cooldown das rochas corre em qualquer estado
+	_rock_cd = maxf(0.0, _rock_cd - delta)         # cooldowns próprios (rochas/baderna) correm em qualquer estado
+	_baderna_cd = maxf(0.0, _baderna_cd - delta)
 	if _special == "":
 		_gcd = maxf(0.0, _gcd - delta)   # cooldown global entre habilidades
 		# Seleção por DISTÂNCIA: em média distância (zona de rochas) fica parado e arremessa;
@@ -240,7 +245,9 @@ func _start_windup() -> void:
 	if _gcd > 0.0:
 		return
 	var dist := absf(target.global_position.x - global_position.x)
-	if dist <= BADERNA_RANGE and randi() % 2 == 1:
+	# Baderna só entra no sorteio se o cooldown próprio dela estiver pronto — senão é melee. Assim
+	# ela não se repete em sequência (é longa, e a 50/50 dominava o tempo de luta).
+	if dist <= BADERNA_RANGE and _baderna_cd <= 0.0 and randi() % 2 == 1:
 		_start_baderna()
 	else:
 		_start_melee()
@@ -377,6 +384,7 @@ func _tick_baderna(delta: float) -> void:
 	if _bad_left > 0:
 		_ability_timer = BADERNA_BETWEEN
 	else:
+		_baderna_cd = BADERNA_CD   # dispara o cooldown ao FIM: só melee pelos próximos BADERNA_CD s
 		_end_normal_ability()
 
 ## Um golpe da baderna num lado: acerta o player se ele estiver desse lado e ao alcance.
