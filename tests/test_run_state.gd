@@ -171,6 +171,25 @@ func test_respawn_x_ignora_fogueira_de_outro_nivel() -> void:
 	rs.current_floor = 2                     # sem passar pela fogueira do 2
 	assert_eq(rs.respawn_x(80.0), 80.0, "a fogueira do nível 1 não posiciona no nível 2")
 
+func test_portao_de_mecanismo_abre_e_persiste() -> void:
+	var rs := _run()
+	assert_false(rs.is_gate_open("gate_1"))
+	rs.open_gate("gate_1")
+	rs.open_gate("gate_1")                   # idempotente
+	assert_true(rs.is_gate_open("gate_1"))
+	assert_eq(rs.opened_gates.size(), 1)
+	assert_false(rs.is_gate_open("gate_2"), "só o portão aberto")
+
+func test_portao_aberto_sobrevive_a_morte() -> void:
+	var rs := _run()
+	rs.rest_at(1, 1680.0)
+	rs.open_gate("gate_1")
+	rs.advance_floor()                       # foi ao chefe (nível 2)
+	rs.player.take_damage(rs.player.stats.max_hp)
+	rs.respawn()
+	assert_eq(rs.current_floor, 1)
+	assert_true(rs.is_gate_open("gate_1"), "o atalho aberto continua aberto ao renascer")
+
 func test_nivel_vencido_fica_vencido() -> void:
 	var rs := _run()
 	assert_false(rs.is_cleared(1))

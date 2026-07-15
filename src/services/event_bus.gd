@@ -17,6 +17,7 @@ signal floor_changed(floor)
 # --- Fogueiras / morte (soulslike) ---
 signal checkpoint_rested(floor)     # o jogador descansou numa fogueira (vida cheia, ponto salvo)
 signal player_respawned(floor)      # morreu e voltou à última fogueira — a run NÃO acaba
+signal flask_used(charges_left)     # bebeu o frasco de cura (o Estus): uma carga a menos
 
 # --- Atributos (progressão soulslike: nível dá pontos; a fogueira os gasta) ---
 signal attribute_raised(id, new_value)

@@ -48,6 +48,9 @@ var _contact_cd := 0.0             # cooldown do hit por colisão (>0 = imune a 
 var _knockback := Vector2.ZERO     # empurrão horizontal (decai); somado à velocidade
 var _attack_cost := 20.0           # custo de stamina por golpe (data-driven via balance.json)
 var _dodge_cost := 30.0            # custo de stamina por esquiva
+var _drink_time := 0.0             # >0 enquanto bebe o frasco: parado e vulnerável (sem i-frames)
+var _drink_heal := 0               # cura pendente, aplicada ao FIM do gesto (0 se interrompido)
+var _drink_dur := 0.6              # duração do gesto de beber (data-driven; ou os frames da anim)
 var box_w := SIZE                  # hitbox efetiva (px); resolvida em _build do manifesto player.json
 var box_h := SIZE                  # (ou SIZE × SIZE se o manifesto não definir "hitbox")
 var _body: ColorRect
@@ -59,6 +62,7 @@ func setup(player: Player) -> void:
 	data = player
 	_attack_cost = float(BalanceConfig.stamina.get("ATTACK_COST", 20.0))
 	_dodge_cost = float(BalanceConfig.stamina.get("DODGE_COST", 30.0))
+	_drink_dur = float(BalanceConfig.get_value("flask", "DRINK_TIME", 0.6))
 
 func is_dodging() -> bool:
 	return _dodge_time > 0.0
@@ -169,6 +173,26 @@ func _physics_process(delta: float) -> void:
 		_update_footsteps(0.0)   # rolamento não são passos
 		return
 
+	# Frasco de cura (o Estus): beber TRAVA o jogador no lugar, SEM i-frames. A cura só cai no fim
+	# do gesto; um golpe no meio zera _drink_heal (via _interrupt_drink) e a carga já era — o preço
+	# de beber na hora errada. Como um hit já cancelou o gole em _check_contact_damage acima, aqui a
+	# velocidade horizontal é simplesmente zero (fica plantado).
+	if _drink_time > 0.0:
+		_drink_time -= delta
+		velocity.x = 0.0
+		move_and_slide()
+		_update_footsteps(0.0)
+		_play_anim("drink")
+		if _drink_time <= 0.0 and _drink_heal > 0:
+			data.heal(_drink_heal)
+			_drink_heal = 0
+		return
+
+	# Começa a beber: no chão, fora de anim travada, com carga e com vida faltando.
+	if Input.is_action_just_pressed("flask") and is_on_floor() and _anim_lock <= 0.0 and data.can_drink():
+		_start_drink()
+		return
+
 	var ix := Input.get_axis("move_left", "move_right")
 	# Durante o ataque o facing fica congelado (o golpe fica comprometido com a direção do talho),
 	# no chão OU no ar. A trava de POSIÇÃO, porém, só vale no chão: no ar mantém o controle
@@ -222,6 +246,32 @@ func _start_dodge(ix: float) -> void:
 		var fc := _sprite.sprite_frames.get_frame_count("dodge")
 		var spd := _sprite.sprite_frames.get_animation_speed("dodge")
 		_anim_lock = float(fc) / maxf(spd, 0.1)
+
+## Começa a beber o frasco: COMPROMETE a carga já (a cura só vem no fim do gesto), trava a
+## locomoção e o ataque pela duração, e reinicia a anim. Sem custo de stamina; SEM i-frames — é
+## uma aposta de que há uma janela segura. Enemies são telegrafados, então essa janela existe.
+func _start_drink() -> void:
+	var amount := data.drink_flask()
+	if amount <= 0:
+		return
+	_drink_heal = amount
+	_drink_time = _drink_dur
+	_hit_pending = false            # cancela qualquer golpe pendente
+	_combo = 0
+	if _sprite != null and _sprite.sprite_frames != null and _sprite.sprite_frames.has_animation("drink"):
+		_sprite.play("drink")
+		_sprite.frame = 0
+		var fc := _sprite.sprite_frames.get_frame_count("drink")
+		var spd := _sprite.sprite_frames.get_animation_speed("drink")
+		_drink_time = float(fc) / maxf(spd, 0.1)
+	_anim_lock = _drink_time
+	_attack_move_lock = _drink_time
+
+## Um golpe recebido no meio do gole CANCELA a cura — a carga já foi gasta. Chamado dos caminhos de
+## dano (colisão, golpe de inimigo, dano fixo): a punição por beber na hora errada.
+func _interrupt_drink() -> void:
+	_drink_time = 0.0
+	_drink_heal = 0
 
 ## Vira o sprite conforme a direção (no-op sem sprite).
 func _flip(dir: Vector2) -> void:
@@ -322,6 +372,7 @@ func _check_contact_damage() -> void:
 	if enemy == null:
 		return
 	_contact_cd = CONTACT_CD
+	_interrupt_drink()                  # levar dano no meio do gole cancela a cura
 	var dmg := CombatResolver.enemy_hit(enemy.data.stats, data)
 	data.take_damage(int(round(dmg)))
 	var dir := signf(global_position.x - enemy.global_position.x)
@@ -357,6 +408,7 @@ func _flash_hit() -> void:
 func apply_enemy_hit(attacker_stats: StatBlock) -> void:
 	if god_mode or _dodge_time > 0.0:   # i-frames durante a esquiva
 		return
+	_interrupt_drink()                  # um golpe no meio do gole cancela a cura
 	var dmg := CombatResolver.enemy_hit(attacker_stats, data)
 	data.take_damage(int(round(dmg)))
 	if _sprite != null:
@@ -372,6 +424,7 @@ func apply_enemy_hit(attacker_stats: StatBlock) -> void:
 func apply_flat_damage(amount: int) -> bool:
 	if god_mode or _dodge_time > 0.0:
 		return false
+	_interrupt_drink()                  # dano fixo (ex.: rocha do ogro) também corta o gole
 	data.take_damage(amount)
 	if _sprite != null:
 		Juice.flash_modulate(_sprite)

@@ -46,6 +46,7 @@ func _setup_input_actions() -> void:
 	_ensure_action("jump", [KEY_SPACE, KEY_W, KEY_UP])
 	_ensure_action("dodge", [KEY_SHIFT, KEY_L])
 	_ensure_action("interact", [KEY_E, KEY_F])   # descansar na fogueira
+	_ensure_action("flask", [KEY_R, KEY_1])      # beber o frasco de cura (o Estus)
 
 func _ensure_action(action: String, physical_keys: Array) -> void:
 	if InputMap.has_action(action):

@@ -1,11 +1,12 @@
 ## Ogro (boss). Habilidades NORMAIS escolhidas por DISTÂNCIA do player (dx horizontal):
-##  - ≤ 100px (zona comum baderna+melee): sorteia golpe melee ou baderna.
+##  - ≤ 100px (zona comum baderna+melee): sorteia golpe melee (que por sua vez é golpe único OU
+##    combo de 3, 50/50 — cada golpe dá um passo à frente) ou baderna.
 ##  - 100–250px: aproxima (nenhuma habilidade nessa faixa).
 ##  - 250–560px (zona de rochas): arremesso de 3 rochas (25 de dano cada); cooldown próprio de 8s.
 ##  - > 560px: aproxima.
 ## Nas zonas exclusivas ele SEMPRE usa a habilidade daquela zona; só sorteia na zona comum.
-## O golpe melee PODE andar em direção ao player durante o windup; a baderna e as rochas ficam
-## paradas. Entre QUALQUER habilidade normal há um cooldown global de 1s — durante ele o ogro
+## O golpe melee persegue o player durante o windup e dá um PASSO à frente ao conectar (avançando
+## comprometido); a baderna e as rochas ficam paradas. Entre QUALQUER habilidade normal há um cooldown global de 1s — durante ele o ogro
 ## anda em direção ao player (só para para castar quando o cooldown zera). Cada instância de dano
 ## recebida DURANTE o cooldown corta 0.4s dele (quanto mais apanha, mais rápido revida); dano fora
 ## do cooldown não conta. Detalhes:
@@ -41,6 +42,13 @@ const BADERNA_HITS := 6                  # 3 direita + 3 esquerda, intercalados
 const BADERNA_INITIAL_WINDUP := 1.0
 const BADERNA_BETWEEN := 0.3            # windup entre os golpes individuais
 
+# Golpe melee: sempre dá um PASSO à frente ao conectar (avança comprometido, na direção do player).
+# Tem duas formas, sorteadas 50/50 ao iniciar: golpe ÚNICO ou COMBO de 3 (um passo em cada).
+const MELEE_COMBO_HITS := 3             # golpes do combo
+const MELEE_BETWEEN := 0.35            # windup (telegrafo) de cada golpe seguinte do combo
+const MELEE_STEP_SPEED := 160.0        # velocidade do passo à frente ao golpear
+const MELEE_STEP_TIME := 0.15          # duração do passo (≈ 24px por golpe)
+
 const ROCK_MIN_RANGE := 250.0           # distância mínima p/ arremessar rochas
 const ROCK_RANGE := 560.0               # distância máxima da zona de rochas
 const ROCK_VRANGE := 200.0             # alcance vertical p/ arremessar (arena plana: quase irrestrito)
@@ -56,10 +64,13 @@ var _charge_hit := false                # já causou o dano único desta investi
 var _tired := 0.0
 var _next_threshold := 0
 
-var _ability_timer := 0.0               # rochas/baderna: tempo até o próximo arremesso/golpe
+var _ability_timer := 0.0               # rochas/baderna/melee: tempo até o próximo arremesso/golpe
 var _rock_left := 0
 var _bad_left := 0
 var _bad_side := 1.0
+var _melee_left := 0                     # golpes restantes do combo melee (1 = golpe único)
+var _melee_stepping := false            # true durante o passo à frente (logo após conectar o golpe)
+var _lunge_dir := 1.0                    # direção do passo à frente do golpe
 var _gcd := 0.0                         # cooldown global: bloqueia novo cast por ABILITY_GCD
 var _rock_cd := 0.0                     # cooldown próprio das rochas (ROCK_CD)
 var _walking := false                   # anda NESTE frame? (só p/ o som dos passos — ver _process)
@@ -234,9 +245,12 @@ func _start_windup() -> void:
 	else:
 		_start_melee()
 
-## --- Golpe melee normal: PODE andar em direção ao player durante o windup, depois conecta. ---
+## --- Golpe melee: persegue durante o windup, CONECTA, e dá um PASSO à frente (lunge). Sorteia
+## entre um golpe ÚNICO e um COMBO de 3 (um passo em cada, cada golpe com seu próprio windup). ---
 func _start_melee() -> void:
 	_special = "melee"
+	_melee_left = MELEE_COMBO_HITS if randi() % 2 == 0 else 1   # 50%: combo de 3; 50%: golpe único
+	_melee_stepping = false
 	_ability_timer = windup_time
 	_show_warn()
 
@@ -244,14 +258,34 @@ func _tick_melee(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y += GRAVITY * delta
 	var dx := target.global_position.x - global_position.x
-	velocity.x = signf(dx) * float(data.stats.move_speed)   # persegue o player durante o windup
+
+	# Passo à frente: logo depois de conectar, avança comprometido na direção travada do golpe.
+	if _melee_stepping:
+		velocity.x = _lunge_dir * MELEE_STEP_SPEED
+		move_and_slide()
+		_update_sprite(_lunge_dir, true)
+		_ability_timer -= delta
+		if _ability_timer <= 0.0:
+			_melee_stepping = false
+			if _melee_left > 0:
+				_ability_timer = MELEE_BETWEEN   # próximo golpe do combo, com seu próprio telegrafo
+				_show_warn()
+			else:
+				_end_normal_ability()
+		return
+
+	# Windup: persegue o player, encarando-o, até o golpe conectar.
+	velocity.x = signf(dx) * float(data.stats.move_speed)
 	move_and_slide()
 	_update_sprite(dx, true)
 	_ability_timer -= delta
 	if _ability_timer <= 0.0:
 		_hide_warn()
-		_resolve_melee()
-		_end_normal_ability()
+		_resolve_melee()                         # dano + anim + fx
+		_lunge_dir = signf(dx) if dx != 0.0 else _facing()
+		_melee_left -= 1
+		_melee_stepping = true                   # entra no passo à frente (dura MELEE_STEP_TIME)
+		_ability_timer = MELEE_STEP_TIME
 
 ## Conecta o golpe se o player estiver no alcance de DANO (_hit_range) horizontal e vertical.
 func _resolve_melee() -> void:

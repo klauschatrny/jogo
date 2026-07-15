@@ -18,18 +18,18 @@ level/augments/weapon and loses only the ground he'd walked. State lives in `Run
 never in the scene, which is torn down and remade on every death. `BonfireView` only draws and
 signals. Rest with **E/F** (`interact`).
 
-There is exactly **one bonfire, in the chest/augment room** (`CHEST_FIRE_X` in
-`_enter_chest_room`) — the refuge you reach after clearing a level: chest, augment, rest. Levels
-themselves have none, so `_can_rest()` only allows `chest_room`/`to_exit_door`.
+There is exactly **one bonfire**, in the **sanctuary** — the safe tail of a room level's corridor,
+past the wooden gate (`_spawn_sanctuary`, bonfire at `_fight_width + BONFIRE_IN`). The sanctuary is
+**not a separate screen** any more: it is a continuous extension of the same corridor
+(`corridor_length` = the fight zone; `+ SANCTUARY_LEN` = the refuge), so the player just **walks in
+and out of it** — no fade, no room swap. `BonfireView` only draws and signals; rest with **E/F**
+(`interact`), which `_try_rest()` gates purely by proximity to the fire (no phase check).
 
 **Respawn has exactly two outcomes, never a third:** the bonfire you last rested at, or the start
 of the game (the village). *Never where you fell* — reappearing in the boss arena that just killed
-you would make death free. `RunState.respawn()` enforces it (`checkpoint_floor` or `START_FLOOR`).
-Consequently the chest room is **re-enterable**: a cleared floor's exit door leads back into it
-(`to_chest_door`, not straight to the next level), because otherwise someone who died without
-resting could never reach the only bonfire in the game again. On those return trips the chest is
-already looted (`RunState.chest_taken`) — the augment is granted once — so only the fire and the
-onward door remain.
+you would make death free. `RunState.respawn()` enforces it (`checkpoint_floor` or `START_FLOOR`),
+and `_respawn_at_checkpoint()` re-enters that level through `_start_floor()`, which sees it as
+**cleared** and drops the player at the bonfire (`respawn_x`), gate already open, fog ahead.
 
 **Respawn ordering is load-bearing.** Put the player in place *before* spawning hazards
 (`_reset_player_to_start` then `_spawn_hazards`): an `Area2D` created on top of the corpse is born
@@ -39,9 +39,9 @@ second death on top of the first. `HazardView._dentro_do_poco()` re-checks the p
 position for the same reason; never trust `get_overlapping_bodies()` alone across a teleport.
 
 Three consequences worth knowing before you touch `floor_scene`:
-- `_clear_entities()` **must** run at the start of `_start_floor`/`_start_tutorial`/
-  `_enter_chest_room`. Respawning rebuilds the level *in the same scene*, so without it the
-  previous life's enemies stay alive and the new ones pile on top.
+- `_clear_entities()` **must** run at the start of `_start_floor`/`_start_tutorial`. Respawning
+  rebuilds the level *in the same scene*, so without it the previous life's enemies stay alive and
+  the new ones pile on top.
 - A **cleared** floor (`RunState.is_cleared`) is not repopulated if you walk back through it.
 - A boss's entrance cutscene runs **once** (`RunState.boss_seen`); retries go straight to
   `_begin_boss_retry()`.
@@ -52,14 +52,28 @@ the player sits at the bonfire and spends them (`Player.spend_point`, `Attribute
 attributes themselves are data (`balance.json → attributes`): each declares what one point adds to
 which stats, so adding one is a JSON edit. `Player.base_block()` is now a fixed base
 (`Scaling.player_base_hp/atk`) plus attribute bonuses — `Scaling.player_max_hp(level)` survives only
-for `sim_balance`'s "median player" model. The reward chest is gone and the room it lived in is now
-just the **fire room** (`_enter_fire_room`, `FIRE_ROOM_W`/`FIRE_X`); nothing is collected there, so
-it needs no "already visited" state and its onward door is always open. `Augment`/`AugmentPool`/
-`StatResolver`/`CardSelect` still compile and are still tested, but nothing in gameplay calls them
-(same treatment as Nemesis and the tower).
+for `sim_balance`'s "median player" model. The reward chest is gone; the refuge it lived in is now
+the **sanctuary** (see above). `Augment`/`AugmentPool`/`StatResolver`/`CardSelect` still compile and
+are still tested, but nothing in gameplay calls them (same treatment as Nemesis and the tower).
 
-**Doors**: a door in an area you've already beaten is always open. Only doors gated by a *mechanism*
-start closed — today that's exactly one: the Necromancer's room opens when he dies.
+**Passages — lever/gate and fog, not walk-through doors.** The village entrance is still a plain
+door you walk into. *Inside* the dungeon there are two mechanism passages, both persisted in
+`RunState`:
+- A **wooden gate** (`GateView`, a solid StaticBody2D on layer 4) closes the sanctuary off during
+  the fight. The **lever** (`LeverView`) that opens it is **always present** (spawned in
+  `_spawn_sanctuary`, just before the gate) but starts **disarmed** — it's inert scenery until the
+  Necromancer dies, when `_on_floor_cleared` calls `_lever.arm()` (disarmed: no prompt, `pull()` is a
+  no-op, and `_try_pull_lever` returns false, so you can't open the gate — and thus can't rest —
+  mid-fight). Pulling the armed lever (`interact`) opens the gate and records
+  `RunState.open_gate(id)` — **open stays open forever**, across deaths (`opened_gates`,
+  `_gate_id(floor)`). Die before pulling it and you have no checkpoint yet (the fire is past the
+  gate), so you respawn in the village; the lever is waiting (re-armed, since the floor is cleared).
+- The boss is behind a **fog gate** (`FogGateView`) at the sanctuary's end. It does not block
+  physically — you press `interact` (`_try_cross_fog`, cleared phase only) to fade into the arena.
+  This replaced the old walk-into-a-door transition to the boss.
+
+All three sanctuary interactions (lever, rest, fog) share the `interact` key and are disambiguated
+purely by proximity — they sit far enough apart that only one is ever in reach.
 
 **Done — souls and the Echo (the bloodstain).** `Player.souls` is the only currency. Every kill
 pays straight into the pocket (`"souls"` in each enemy's `loot`) — including the skeletons the
@@ -78,6 +92,18 @@ longer summons anything: `_echo_spot()` guarantees the echo **never lands in a b
 have to beat the boss to recover the souls it took from you) — a death at the boss deposits it at
 the **exit door of the previous level**, so the run-back walks straight through it.
 `GhostRepository`'s disk persistence is unused: the echo lives in the run, not across runs.
+
+**Done — the flask (the Estus).** The **only on-demand heal** in the game: `Player.flask_charges`
+(capacity + heal fraction are data, `balance.json → flask`). Each gulp heals `HEAL_FRACTION` of
+**max** HP — so raising Vigor also fattens the heal (`flask_heal_amount()`). Charges refill **only**
+at a bonfire (`RunState.rest_at`) and on respawn (`respawn()`), never mid-level — that scarcity is
+what turns every trade of blows into a resource calculation. Drinking is a **committed gesture**:
+`drink_flask()` spends the charge *up front* and returns the amount, but the heal is applied by
+`PlayerView` only at the **end** of the drink animation (`_drink_time`/`_drink_heal`). Taking any
+hit mid-gulp calls `_interrupt_drink()` — the heal is cancelled but the charge is already gone.
+There are **no i-frames** while drinking (unlike the dodge): it's a bet that a safe window exists,
+and because enemies are telegraphed, one always does. Bound to **R/1** (`flask`). `can_drink()`
+refuses at full HP so a charge is never wasted.
 
 **Still roguelike, still to convert**: the geometric per-floor enemy scaling — a soulslike
 hand-tunes fixed stats per area.

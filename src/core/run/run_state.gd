@@ -19,6 +19,7 @@ var checkpoint_x: float = 0.0      # onde, dentro do nível
 var lit_bonfires: Array = []       # ids ("nível:x") das fogueiras já acesas — acesas ficam acesas
 var cleared_floors: Array = []     # níveis já concluídos: não repovoam ao renascer
 var bosses_seen: Array = []        # bosses cuja cutscene de entrada já rodou (não se repete na retentativa)
+var opened_gates: Array = []       # portões de mecanismo já abertos (por alavanca): abertos ficam abertos
 var deaths: int = 0
 
 # --- O Eco (marca de sangue) ---
@@ -60,6 +61,7 @@ func rest_at(floor_n: int, x: float) -> void:
 	player.heal(player.stats.max_hp)
 	if player.stamina != null:
 		player.stamina.refill()
+	player.refill_flask()              # descansar reabastece a cura sob demanda
 	EventBus.checkpoint_rested.emit(floor_n)
 
 func is_lit(floor_n: int, x: float) -> bool:
@@ -115,6 +117,7 @@ func respawn() -> void:
 	player.heal(player.stats.max_hp)
 	if player.stamina != null:
 		player.stamina.refill()
+	player.refill_flask()              # renasce com o frasco cheio
 	EventBus.player_respawned.emit(current_floor)
 
 ## Onde o player reaparece dentro do nível: a fogueira, se ela for DESTE nível; senão o início.
@@ -131,6 +134,18 @@ func mark_cleared(floor_n: int) -> void:
 
 func is_cleared(floor_n: int) -> bool:
 	return cleared_floors.has(floor_n)
+
+# ---------------------------------------------------------------------------
+# Portões de mecanismo (alavanca). Um portão de madeira fecha a passagem até o jogador puxar a
+# alavanca que o abre — e, aberto, fica aberto para sempre (o caminho vira atalho permanente).
+# ---------------------------------------------------------------------------
+
+func open_gate(id: String) -> void:
+	if id != "" and not opened_gates.has(id):
+		opened_gates.append(id)
+
+func is_gate_open(id: String) -> bool:
+	return opened_gates.has(id)
 
 
 ## A cutscene de entrada do boss só roda na PRIMEIRA vez. Morrer e voltar não a repete —

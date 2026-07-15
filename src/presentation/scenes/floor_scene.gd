@@ -15,11 +15,16 @@ var _enemies: Array = []
 var _hud: Hud
 var _msg: Label
 var _layer: CanvasLayer
-var _phase := "room"           # tutorial | room | to_fire_door | transition | boss_intro | boss | fire_room | dead | victory
+var _phase := "room"           # tutorial | room | cleared | transition | boss_intro | boss | dead | victory
 var _floor_config: Dictionary = {}   # config do nível ATUAL (de levels.json)
 var _levels: Dictionary = {}         # nível(int) -> config (data/floors/levels.json)
 var _hazards: Dictionary = {}        # id -> definição de armadilha (data/hazards.json)
 var _bonfires: Array = []            # fogueiras (checkpoints) do nível atual — BonfireView
+var _fight_width := 1920.0           # largura da ZONA DE COMBATE (só a 1ª parte do corredor de um
+                                     # nível de sala; o refúgio — portão, fogueira, névoa — vem depois)
+var _gate: GateView                  # portão de madeira que a alavanca abre (nível de sala)
+var _lever: LeverView                # alavanca que abre o portão (aparece quando o Necromante cai)
+var _fog: FogGateView                # névoa na entrada do chefe (atravessa com INTERAGIR)
 var _fade_layer: CanvasLayer         # camada do fade — o letreiro da morte mora nela, por cima do preto
 var _death_banner: Label             # letreiro "VOCÊ MORREU" (some quando a tela volta)
 
@@ -86,8 +91,14 @@ const BOSS_INTRO_ROAR_MIN := 1.4     # mínimo encarando o player depois de pous
 # automática. Hoje são 2: 1 = sala do Necromante (esqueletos), 2 = arena do Ogro. Limpar o
 # último conclui a run. Ao criar um nível novo, descreva-o no JSON e some 1 aqui.
 const TOTAL_LEVELS := 2
-const FIRE_ROOM_W := 480.0     # sala da fogueira (fechada), ao fim de cada nível
-const FIRE_X := 200.0          # a fogueira — a ÚNICA do jogo (player entra em 80, porta em 470)
+# Refúgio (fim de um nível de sala): o corredor tem a ZONA DE COMBATE (corridor_length) e, depois
+# dela, um trecho seguro de SANCTUARY_LEN com o portão, a fogueira e a névoa do chefe. Assim a
+# sala da fogueira deixou de ser uma tela à parte (com fade) e virou parte contínua do mapa, que o
+# jogador percorre indo e voltando.
+const SANCTUARY_LEN := 620.0   # comprimento do refúgio, somado à zona de combate
+const LEVER_BACK := 96.0       # a alavanca fica este tanto à ESQUERDA do portão (depois do Necromante)
+const BONFIRE_IN := 240.0      # a fogueira, este tanto à DIREITA do portão (dentro do refúgio)
+const FOG_BACK := 34.0         # a névoa, este tanto antes da parede do fim
 
 # --- Vila de tutorial (fora da dungeon; roda uma vez antes do nível 1) ---
 const TUTORIAL_LENGTH := 1920.0
@@ -210,7 +221,11 @@ func _build_environment(width: float, is_boss_room: bool, hazards := []) -> void
 		remove_child(_env)
 		_env.queue_free()
 	_arena_width = width
+	_fight_width = width      # por padrão, combate ocupa o nível inteiro; um nível de sala reduz depois
 	_door = null
+	_gate = null              # refeitos por _spawn_sanctuary; filhos do _env antigo já foram liberados
+	_lever = null
+	_fog = null
 	_env = Node2D.new()
 	add_child(_env)
 
@@ -381,11 +396,6 @@ func _on_bonfire_rested(bf: BonfireView) -> void:
 	Juice.burst(_env, bf.global_position + Vector2(0, -10), Color(1.0, 0.7, 0.25), 14, 90.0)
 	_open_attributes()
 
-## Dá para descansar nesta fase? Só na sala da fogueira — que é onde a única fogueira existe.
-## Não no meio do nível, não na luta do boss, não numa cutscene.
-func _can_rest() -> bool:
-	return _phase == "fire_room"
-
 ## Painel de atributos (pausa o jogo enquanto está aberto, como as Opções).
 func _open_attributes() -> void:
 	if _attr_layer != null:
@@ -407,13 +417,32 @@ func _close_attributes() -> void:
 		_attr_layer = null
 	_msg.text = "Fogueira acesa — você retorna aqui ao cair.       →  seguir"
 
-func _try_rest() -> void:
+## As três interações do refúgio, cada uma disparada por INTERAGIR (E/F) quando o player está perto
+## do objeto. Ficam longe umas das outras, então nunca há ambiguidade. Cada uma devolve true se agiu.
+
+func _try_pull_lever() -> bool:
+	if is_instance_valid(_lever) and _lever.is_armed() and not _lever.is_pulled() \
+			and _lever.in_reach(_player_view):
+		_lever.pull()
+		return true
+	return false
+
+func _try_rest() -> bool:
 	if not is_instance_valid(_player_view):
-		return
+		return false
 	for bf in _bonfires:
 		if is_instance_valid(bf) and bf.in_reach(_player_view):
 			bf.rest()
-			return
+			return true
+	return false
+
+## Atravessa a névoa do chefe: só com o nível vencido (não dá para pular o combate) e perto dela.
+## Leva ao próximo nível — a arena do chefe — com o fade de sempre.
+func _try_cross_fog() -> bool:
+	if _phase == "cleared" and is_instance_valid(_fog) and _fog.in_reach(_player_view):
+		_transition(_next_floor)
+		return true
+	return false
 
 ## Recoloca o player no nível, devolve o controle a ele (caso uma cutscene o tenha congelado) e
 ## gruda a câmera nele (sem pan da transição). `x` = onde: o início do nível por padrão, ou a
@@ -577,18 +606,20 @@ func _start_floor() -> void:
 	Music.stop()          # fora da sala do boss não há trilha (por ora)
 	_current_boss_id = ""
 	_boss_view = null
+	# O corredor tem duas partes: a ZONA DE COMBATE (corridor_length) e, depois dela, o REFÚGIO
+	# (SANCTUARY_LEN) com o portão, a fogueira e a névoa do chefe — tudo contínuo, sem fade.
 	_corridor_length = float(_floor_config.get("corridor_length", _corridor_length))
-	_build_environment(_corridor_length, false, hazards)
-	_reset_player_to_start(PLAYER_START_X)   # o player primeiro; os poços depois (ver _start_tutorial)
+	_build_environment(_corridor_length + SANCTUARY_LEN, false, hazards)
+	_fight_width = _corridor_length          # combate só na 1ª parte; _build_environment o resetara p/ o total
+	_reset_player_to_start(_run.respawn_x(PLAYER_START_X))   # início do nível, ou a fogueira ao renascer
 	_spawn_hazards(hazards)
+	_spawn_sanctuary(floor)                   # alavanca + portão + fogueira + névoa (o refúgio do nível)
 
-	# Nível já vencido: você só está passando por aqui de volta ao chefe. Não repovoa. A porta leva
-	# à SALA DA FOGUEIRA (não direto ao próximo nível) — é lá que se salva, e o caminho de volta
-	# precisa passar por ela, senão quem morreu sem descansar nunca mais a alcançaria.
+	# Nível já vencido: sem inimigos. A alavanca já nasceu destravada em _spawn_sanctuary (e puxada,
+	# se o portão já foi aberto antes); nada a fazer aqui além de marcar a fase e o Eco.
 	if _run.is_cleared(floor):
-		_phase = "to_fire_door"
-		_spawn_door(_arena_width - 10.0, Palette.ACCENT)
-		_msg.text = "Nível já vencido — siga para a porta →"
+		_phase = "cleared"
+		_msg.text = "Nível vencido — a fogueira e a névoa do chefe aguardam adiante →"
 		_spawn_echo_if_here()      # ...mas o seu Eco ainda pode estar esperando no caminho
 		return
 
@@ -674,7 +705,7 @@ func _spawn_necromancer(id: String) -> void:
 	view.set_meta("tier", "elite")
 	_alive["elite"] += 1
 	_necro = view
-	_add_view(view, enemy, Vector2(_arena_width - 198.0, GROUND_Y - 40.0))   # 150px à esquerda do fim
+	_add_view(view, enemy, Vector2(_fight_width - 198.0, GROUND_Y - 40.0))   # 150px à esquerda do fim do COMBATE
 
 ## Andar 1: os heavies a<b<c EM ORDEM de proximidade, um em cada terço da 2ª metade, dormentes.
 ## Acordam em cadeia — ver _update_heavy_chain.
@@ -684,8 +715,8 @@ func _spawn_l1_heavies() -> void:
 	var n := int(spec.get("count", 3))
 	if ids.is_empty():
 		return
-	var half := _arena_width * 0.5
-	var right := _arena_width - 48.0
+	var half := _fight_width * 0.5
+	var right := _fight_width - 48.0
 	var band := (right - half) / maxf(1.0, float(n))
 	for i in n:
 		var x := _off_pit(randf_range(half + band * i, half + band * (i + 1)))
@@ -769,7 +800,7 @@ func _has_necro() -> bool:
 
 ## Ponto aleatório uniforme num disco de RESPAWN_RADIUS ao redor do Necromante.
 func _necro_spawn_pos() -> Vector2:
-	var c := _necro.global_position if _has_necro() else Vector2(_arena_width - 198.0, GROUND_Y - 40.0)
+	var c := _necro.global_position if _has_necro() else Vector2(_fight_width - 198.0, GROUND_Y - 40.0)
 	var ang := randf() * TAU
 	var r := sqrt(randf()) * RESPAWN_RADIUS
 	var p := c + Vector2(cos(ang), sin(ang)) * r
@@ -833,14 +864,10 @@ func _check_room_cleared() -> void:
 		_on_floor_cleared()
 
 # ---------------------------------------------------------------------------
-# Portas. Entrar = chegar perto (DOOR_REACH). A regra: uma porta de área já vencida está SEMPRE
-# aberta — só as que dependem de um mecanismo (matar o Necromante, no nível 1) começam fechadas.
+# Passagens. A entrada da dungeon (vila) ainda é uma PORTA que se cruza andando. Dentro da dungeon,
+# o refúgio é aberto por uma ALAVANCA (portão de madeira) e o chefe por uma NÉVOA (INTERAGIR) —
+# ver _try_pull_lever / _try_cross_fog. `_spawn_door` segue existindo para a porta da vila.
 # ---------------------------------------------------------------------------
-
-func _open_exit_door() -> void:
-	_phase = "to_fire_door"
-	_spawn_door(_arena_width - 10.0, Palette.ACCENT)
-	_msg.text = "A porta se abriu →"
 
 func _process(_delta: float) -> void:
 	# Parallax do fundo segue a câmera (todo frame, em qualquer fase).
@@ -863,16 +890,9 @@ func _process(_delta: float) -> void:
 			_transition(_begin_dungeon)
 		return
 
-	# Portas: a do fim do nível leva à sala da fogueira; a da sala da fogueira, ao próximo nível.
-	if _phase != "to_fire_door" and _phase != "fire_room":
-		return
-	if not is_instance_valid(_player_view) or not is_instance_valid(_door):
-		return
-	if absf(_player_view.global_position.x - _door_x) <= DOOR_REACH:
-		if _phase == "to_fire_door":
-			_transition(_enter_fire_room)
-		else:
-			_transition(_next_floor)
+	# A passagem ao chefe não é mais uma porta que se cruza andando: é a NÉVOA, atravessada com
+	# INTERAGIR (ver _try_cross_fog). A fogueira e a alavanca também são por INTERAGIR — nada aqui
+	# dispara sozinho ao encostar.
 
 ## Fade out → executa on_black (troca o cenário) → fade in. Bloqueia re-disparo via fase.
 func _transition(on_black: Callable) -> void:
@@ -1065,37 +1085,63 @@ func _on_floor_cleared() -> void:
 	if _run.current_floor >= TOTAL_LEVELS:
 		_on_victory()
 		return
-	# Nível limpo: abre a porta (ao fim do nível) que leva à SALA DA FOGUEIRA.
-	_phase = "to_fire_door"
-	_spawn_door(_arena_width - 10.0, Palette.ACCENT)
-	_msg.text = "Nível limpo! Vá até a porta →"
+	# Nível de sala limpo (o Necromante caiu): a ALAVANCA (que já estava lá, travada) DESTRAVA. Puxá-la
+	# abre o portão de madeira que fecha o refúgio — e, aberto, ele fica aberto para sempre. Nada de
+	# porta com fade: o jogador anda daqui até a fogueira e a névoa do chefe pelo mesmo corredor.
+	_phase = "cleared"
+	if is_instance_valid(_lever):
+		_lever.arm()
+	_msg.text = "O Necromante caiu. Puxe a alavanca (E) para abrir o portão →"
 
-## Sob a tela preta: monta a SALA DA FOGUEIRA (fechada) e coloca o player nela. É o refúgio ao
-## fim de cada nível — o único lugar do jogo onde se salva e onde os pontos de atributo viram
-## poder de verdade.
-##
-## A sala é REENTRÁVEL: volta-se a ela ao renascer, ou atravessando de novo um nível já vencido no
-## caminho de volta ao chefe. Não há nada a coletar aqui, então ela não precisa de estado
-## "já visitada" — a porta adiante está SEMPRE aberta.
-func _enter_fire_room() -> void:
-	_clear_entities()
-	_floor_config = _levels.get(_run.current_floor, {})
-	_build_environment(FIRE_ROOM_W, true)
-	_reset_player_to_start(_run.respawn_x(PLAYER_START_X))
-	_spawn_fire_room_bonfire()
-	_phase = "fire_room"
-	_spawn_door(_arena_width - 10.0, Palette.ACCENT)
-	_msg.text = "A fogueira.   E  descansar e subir atributos       →  seguir"
+## Id estável do portão de mecanismo de um nível (persistido no RunState). Um por nível de sala.
+func _gate_id(floor_n: int) -> String:
+	return "gate_%d" % floor_n
 
-## A fogueira. Já acesa se o jogador descansou nela antes nesta run.
-func _spawn_fire_room_bonfire() -> void:
+## O REFÚGIO ao fim de um nível de sala, contínuo com a zona de combate (sem fade): a alavanca (no
+## fim do combate), o portão de madeira, a fogueira mais adiante e a névoa do chefe no extremo. O
+## portão barra a passagem até a alavanca ser puxada; aberto, fica aberto para sempre.
+func _spawn_sanctuary(floor_n: int) -> void:
 	_bonfires.clear()
+
+	# A alavanca fica SEMPRE no lugar, já durante a luta — mas só destravada (puxável) quando o
+	# nível está vencido. Se o portão já foi aberto nesta run, ela nasce puxada.
+	var gate_open := _run.is_gate_open(_gate_id(floor_n))
+	var lx := _fight_width - LEVER_BACK
+	_lever = LeverView.new()
+	_lever.position = Vector2(lx, GROUND_Y)
+	_env.add_child(_lever)
+	_lever.setup(lx, _player_view, gate_open, _run.is_cleared(floor_n))
+	_lever.pulled.connect(_on_lever_pulled)
+
+	var gate_x := _fight_width
+	_gate = GateView.new()
+	_gate.position = Vector2(gate_x, GROUND_Y)
+	_env.add_child(_gate)
+	_gate.setup(gate_x, gate_open)
+
+	# A fogueira: a ÚNICA do jogo. Já acesa se o jogador descansou nela antes nesta run.
+	var bf_x := _fight_width + BONFIRE_IN
 	var bf := BonfireView.new()
-	bf.position = Vector2(FIRE_X, GROUND_Y)
+	bf.position = Vector2(bf_x, GROUND_Y)
 	_env.add_child(bf)
-	bf.setup(FIRE_X, _run.is_lit(_run.current_floor, FIRE_X), _player_view)
+	bf.setup(bf_x, _run.is_lit(floor_n, bf_x), _player_view)
 	bf.rested.connect(_on_bonfire_rested)
 	_bonfires.append(bf)
+
+	# A névoa do chefe, no extremo do refúgio (encostada na parede do fim). Atravessa com INTERAGIR.
+	var fog_x := _arena_width - FOG_BACK
+	_fog = FogGateView.new()
+	_fog.position = Vector2(fog_x, GROUND_Y)
+	_env.add_child(_fog)
+	_fog.setup(fog_x, _player_view)
+
+## Alavanca puxada: abre o portão (na hora, com animação) e persiste isso na run — o atalho fica
+## aberto para sempre, inclusive depois de morrer e voltar.
+func _on_lever_pulled(_l: LeverView) -> void:
+	_run.open_gate(_gate_id(_run.current_floor))
+	if is_instance_valid(_gate):
+		_gate.open()
+	_msg.text = "O portão se abriu. A fogueira aguarda adiante →"
 
 func _next_floor() -> void:
 	_run.advance_floor()
@@ -1141,31 +1187,35 @@ func _respawn_at_checkpoint() -> void:
 		_death_banner = null
 	_run.respawn()
 	# Duas saídas, e só duas: a fogueira ou o começo do jogo. Nunca o lugar onde se caiu —
-	# renascer na arena do chefe que acabou de te matar seria de graça.
+	# renascer na arena do chefe que acabou de te matar seria de graça. Com fogueira, reentra o
+	# nível dela pelo _start_floor: ele já vê o nível como vencido e põe o player na fogueira
+	# (respawn_x), com o portão aberto e a névoa adiante.
 	if _run.has_checkpoint():
-		_enter_fire_room()
+		_start_floor()
 	else:
 		_start_tutorial()
 
 ## Onde o Eco fica. A regra: NUNCA numa arena de chefe — de lá não se volta sem enfrentar o chefe
 ## outra vez, e a marca ficaria inalcançável (ou pior: você teria de vencer o chefe para reaver as
-## almas que perdeu PARA ele). Morrer no chefe deposita o Eco no NÍVEL ANTERIOR, colado na porta
-## de saída dele — o caminho de volta passa por ele obrigatoriamente.
+## almas que perdeu PARA ele). Morrer no chefe deposita o Eco no REFÚGIO do nível anterior, entre a
+## fogueira e a névoa — exatamente no trecho que a corrida de volta (renascer na fogueira → cruzar
+## a névoa) percorre, então você passa por ele obrigatoriamente.
 func _echo_spot() -> Dictionary:
 	var floor_n := _run.current_floor
 	if _is_boss_level(floor_n):
 		var anterior := maxi(floor_n - 1, 1)
-		return { "floor": anterior, "x": _exit_door_x(anterior) }
+		return { "floor": anterior, "x": _prev_sanctuary_echo_x(anterior) }
 	var x := _player_view.global_position.x if is_instance_valid(_player_view) else PLAYER_START_X
 	return { "floor": floor_n, "x": x }
 
 func _is_boss_level(floor_n: int) -> bool:
 	return String(_levels.get(floor_n, {}).get("type", "")) == "boss"
 
-## Onde fica a porta de saída de um nível (o mesmo x que _open_exit_door usa).
-func _exit_door_x(floor_n: int) -> float:
-	var cfg: Dictionary = _levels.get(floor_n, {})
-	return float(cfg.get("corridor_length", _corridor_length)) - 10.0
+## x no refúgio de um nível, entre a fogueira e a névoa — onde o Eco espera a corrida de volta.
+func _prev_sanctuary_echo_x(floor_n: int) -> float:
+	var fight := float(_levels.get(floor_n, {}).get("corridor_length", _corridor_length))
+	var fog_x := fight + SANCTUARY_LEN - FOG_BACK
+	return fog_x - 160.0     # um tanto antes da névoa: enfrenta o Eco e então atravessa
 
 ## O Eco espera onde você caiu. Por construção ele nunca está num nível de chefe, mas a guarda
 ## fica: um Eco lá dentro seria inalcançável.
@@ -1234,8 +1284,8 @@ func _close_options() -> void:
 func _scatter_pos(second_half: bool) -> Vector2:
 	var min_x := SPAWN_EXCLUSION                        # exclusão dos px iniciais (folga do ponto de partida)
 	if second_half:
-		min_x = maxf(min_x, _arena_width * 0.5)
-	var max_x := maxf(min_x, _arena_width - 48.0)      # margem antes da parede direita
+		min_x = maxf(min_x, _fight_width * 0.5)
+	var max_x := maxf(min_x, _fight_width - 48.0)      # margem antes do portão (fim do combate)
 	return Vector2(_off_pit(randf_range(min_x, max_x)), GROUND_Y - 40.0)
 
 ## Empurra um x para fora de qualquer poço, pela borda mais próxima. O sensor de beirada impede
@@ -1269,9 +1319,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
 		_open_options()
 		return
-	# E/F descansa na fogueira. Não vale no meio da luta do boss nem numa cutscene/transição.
-	if event.is_action_pressed("interact") and _can_rest():
-		_try_rest()
+	# E/F: as interações do refúgio — puxar a alavanca, descansar na fogueira, atravessar a névoa.
+	# Cada uma só age se o player estiver perto do objeto; longe de todos, não faz nada. Bloqueadas
+	# durante transição/morte/cutscene, quando o player não tem controle.
+	if event.is_action_pressed("interact"):
+		if _phase in ["transition", "dead", "boss_intro", "victory"]:
+			return
+		if _try_pull_lever() or _try_rest() or _try_cross_fog():
+			return
 		return
 	# F9 alterna o overlay CRT (disponível sempre, não só em debug).
 	if event is InputEventKey and event.pressed and not event.echo \

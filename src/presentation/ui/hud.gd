@@ -12,6 +12,7 @@ var _bar: ColorRect
 var _label: Label
 var _stam_bar: ColorRect
 var _souls: Label
+var _flask: Label
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -55,6 +56,14 @@ func _ready() -> void:
 	_souls.add_theme_color_override("font_color", Palette.ACCENT)
 	add_child(_souls)
 
+	# Frasco de cura: a única cura sob demanda. Precisa estar à vista para virar decisão ("bebo a
+	# última carga agora?"). Cor de vida, para ler como recurso de HP.
+	_flask = Label.new()
+	_flask.position = Vector2(12, STAM_Y + STAM_H + 18)
+	_flask.add_theme_font_size_override("font_size", 11)
+	_flask.add_theme_color_override("font_color", Palette.PLAYER_HP)
+	add_child(_flask)
+
 	_refresh()
 
 func set_player(p: Player) -> void:
@@ -75,3 +84,5 @@ func _refresh() -> void:
 		_stam_bar.size.x = BAR_WIDTH * (_player.stamina.ratio() if _player.stamina != null else 0.0)
 	if _souls != null:
 		_souls.text = "%d almas" % _player.souls
+	if _flask != null:
+		_flask.text = "Frasco  %d/%d" % [_player.flask_charges, _player.flask_max]

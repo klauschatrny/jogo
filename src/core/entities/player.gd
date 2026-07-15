@@ -29,6 +29,12 @@ var run_id: String = ""
 var attributes: Dictionary = {}     # id -> valor (vigor, resistência, força...)
 var attribute_points: int = 0       # pontos por gastar
 
+# --- Frasco de cura (o Estus) ---
+# A única cura sob demanda do jogo. Cargas limitadas que só se recarregam na fogueira: é o que
+# transforma cada troca de golpes num cálculo de recurso ("curo agora e me exponho, ou aguento?").
+var flask_charges: int = 0
+var flask_max: int = 0
+
 static func create_new(player_name: String, chosen_weapon: Weapon) -> Player:
 	var p := Player.new()
 	p.id = _gen_id()
@@ -39,7 +45,37 @@ static func create_new(player_name: String, chosen_weapon: Weapon) -> Player:
 	p.attributes = Attributes.defaults()
 	p.stamina = Stamina.from_config(BalanceConfig.stamina)
 	p.recalculate_stats()             # depois da stamina: recalculate_stats também a redimensiona
+	p.refill_flask()                  # começa com o frasco cheio
 	return p
+
+# --- Frasco de cura (o Estus) ---
+
+## Cargas por descanso (do balance.json).
+func flask_capacity() -> int:
+	return int(BalanceConfig.get_value("flask", "CHARGES", 3))
+
+## Quanto UM gole cura: uma fração da vida MÁXIMA, então subir Vigor também engorda a cura.
+func flask_heal_amount() -> int:
+	return int(round(stats.max_hp * float(BalanceConfig.get_value("flask", "HEAL_FRACTION", 0.4))))
+
+## Enche o frasco (fogueira / renascer).
+func refill_flask() -> void:
+	flask_max = flask_capacity()
+	flask_charges = flask_max
+
+## Pode beber agora? Precisa de carga, estar vivo e não estar com a vida cheia (não gasta à toa).
+func can_drink() -> bool:
+	return flask_charges > 0 and is_alive() and stats.current_hp < stats.max_hp
+
+## Compromete uma carga e devolve quanto ela CURARÁ. A cura em si é aplicada por quem chama, ao
+## fim da animação de beber (via heal()) — se um golpe interromper antes, a carga já foi: é o preço.
+## Devolve 0 se não dava para beber.
+func drink_flask() -> int:
+	if not can_drink():
+		return 0
+	flask_charges -= 1
+	EventBus.flask_used.emit(flask_charges)
+	return flask_heal_amount()
 
 ## Derruba TODAS as almas (morte). Devolve quantas caíram — quem chama as entrega ao Eco.
 func lose_souls() -> int:
