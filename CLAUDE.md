@@ -16,13 +16,14 @@ bonfire he rested at, with HP and stamina full, while the world is rebuilt aroun
 level/augments/weapon and loses only the ground he'd walked. State lives in `RunState`
 (`checkpoint_floor`/`checkpoint_x`, `lit_bonfires`, `cleared_floors`, `bosses_seen`, `deaths`) —
 never in the scene, which is torn down and remade on every death. `BonfireView` only draws and
-signals. Rest with **E/F** (`interact`).
+signals. Rest with **E** (`interact`).
 
-There is exactly **one bonfire**, in the **sanctuary** — the safe tail of a room level's corridor,
-past the wooden gate (`_spawn_sanctuary`, bonfire at `_fight_width + BONFIRE_IN`). The sanctuary is
+There are **two bonfires**: one in the **sanctuary** — the safe tail of a room level's corridor,
+past the wooden gate (`_spawn_sanctuary`, bonfire at `_fight_width + BONFIRE_IN`) — and one at the
+entrance of the level-3 **rest area** (see below). The sanctuary is
 **not a separate screen** any more: it is a continuous extension of the same corridor
 (`corridor_length` = the fight zone; `+ SANCTUARY_LEN` = the refuge), so the player just **walks in
-and out of it** — no fade, no room swap. `BonfireView` only draws and signals; rest with **E/F**
+and out of it** — no fade, no room swap. `BonfireView` only draws and signals; rest with **E**
 (`interact`), which `_try_rest()` gates purely by proximity to the fire (no phase check).
 
 **Respawn has exactly two outcomes, never a third:** the bonfire you last rested at, or the start
@@ -124,7 +125,7 @@ what turns every trade of blows into a resource calculation. Drinking is a **com
 `PlayerView` only at the **end** of the drink animation (`_drink_time`/`_drink_heal`). Taking any
 hit mid-gulp calls `_interrupt_drink()` — the heal is cancelled but the charge is already gone.
 There are **no i-frames** while drinking (unlike the dodge): it's a bet that a safe window exists,
-and because enemies are telegraphed, one always does. Bound to **R/1** (`flask`). `can_drink()`
+and because enemies are telegraphed, one always does. Bound to **R** (`flask`). `can_drink()`
 only needs a charge + being alive — **drinking at full HP is allowed** (the heal saturates at max, but
 the charge is spent anyway; the player's call). The gulp has an **orange glow** (`PlayerView._drink_glow`,
 a `z=-1` aura that builds/pulses over the drink, orange embers, and a bright burst the instant the
@@ -156,16 +157,25 @@ mitigation via `defense_curve`), keyboard-only `PlayerView` (move + melee), `Ene
 (ADD<PCT_ADD<MULT), weighted `AugmentPool`, `Boss`/`BossPhase` (phased), `RunState`/`FloorManager`,
 and the playable `floor_scene` (waves → boss → card reward → next floor) with `CardSelect`.
 
-**Scope right now**: the playable dungeon is **2 hand-authored levels** — level 1 (a skeleton room:
-dormant minions that wake by proximity, cleared by killing them all) and level 2 (Ogre boss arena) —
-plus the tutorial village. **The Necromancer was pulled out of level 1** (he'll be placed in a later
+**Scope right now**: the playable dungeon is **3 hand-authored levels** — level 1 (a skeleton room:
+dormant minions that wake by proximity, cleared by killing them all), level 2 (Ogre boss arena) and
+level 3 (a `"rest"` area) — plus the tutorial village. **There is no victory screen any more**
+(`EndScreen` is compiled-but-unused, same treatment as the tower): beating the Ogre just opens the
+arena. The **boss arena has two doors** (`_spawn_boss_doors`), one on each wall — back (re-enter the
+previous level from its far end, `_entry_from_right`/`retreat_floor()`) and forward (the next level)
+— each covered by a **locked fog** (`FogGateView.locked`: dim, behind entities, no prompt) while the
+boss lives; killing him dissolves both (`_dismiss_boss_fogs`) and the doors become walk-through like
+the village door. A `"rest"` level is a small safe screen: a bonfire near the entrance, the fog at
+the end, no enemies/lever/gate (`_spawn_rest_area`); the last level's fog refuses to cross ("ainda
+por vir"). Controls are **remappable** (autoload `KeyBinds`, persisted in `user://keybinds.json`,
+CONTROLES tab in Options); every key name shown in UI comes from `KeyBinds`, never hardcoded. **The Necromancer was pulled out of level 1** (he'll be placed in a later
 level); his machinery — the static ranged elite, the revival loop, the heavy a/b/c chain — stays in
 `floor_scene` intact and fires only when a level's `room` declares `elites`. A `room` without a
 Necromancer is just "kill everything": `_check_room_cleared` clears it by count, and the scattered
 minions spawn **dormant**, waking within `MINION_WAKE` of the player (`_update_room_wake`, the same
 feel as the refuge guard). `data/floors/levels.json`
 is the whole content list and `TOTAL_LEVELS` in `floor_scene.gd` must match it; there is **no
-fallback level and no procedural repetition** (a missing level ends the run with a warning).
+fallback level and no procedural repetition** (passages only open toward levels that exist).
 **Environmental hazards** (`HazardView` + `data/hazards.json`) are the first non-combat content:
 what a hazard *is* lives in `hazards.json`, where it *sits* in each level's `"hazards"` array.
 A spike pit is *terrain*: `_build_environment` reads the level's hazard list and lays the floor as
@@ -193,7 +203,7 @@ and never reshuffles on death/respawn. The tutorial village keeps its houses (`_
 lessons live in `_TUTORIAL_TIPS` (`[trigger_x, text]`) and surface as a centered bottom-of-screen toast
 (`_build_tip_ui`/`_show_tip`, a `Control` in `_layer`) as the player walks past each `x`
 (`_update_tutorial_tips`, once each). A tip auto-dismisses after `TIP_SECONDS` (10s) or the instant
-the player presses `interact` (E/F) — that dismissal takes priority over every other `interact`
+the player presses `interact` (E) — that dismissal takes priority over every other `interact`
 action, but the village has no lever/bonfire/fog so there's no conflict. The first tip is fired
 explicitly at the end of `_start_tutorial` (not left to frame-1 `_process`) so it's up the moment the
 village loads; `_tips_done` resets each village visit and `_begin_dungeon` hides any open tip.
