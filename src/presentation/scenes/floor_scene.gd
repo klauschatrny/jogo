@@ -118,7 +118,7 @@ const TUTORIAL_LENGTH := 1920.0
 const _TUTORIAL_TIPS := [
 	[0.0,    "Ande com  A / D"],
 	[480.0,  "Pule com  ESPACO / W"],
-	[840.0,  "Ataque com  J / K  —  teste no boneco à frente"],
+	[840.0,  "Ataque com  J  —  teste no boneco à frente"],
 	[1200.0, "Esquive com  SHIFT / L   (gasta stamina)"],
 	[1520.0, "Parado, a stamina se recupera.  Sem ela, você não ataca nem esquiva."],
 	[1760.0, "A porta à frente leva à Dungeon"],
@@ -589,6 +589,23 @@ func _schedule_first_tip() -> void:
 	await get_tree().create_timer(FIRST_TIP_DELAY).timeout
 	if _phase == "tutorial" and _tips_done.size() == 1:   # ainda no começo, nada mais disparou
 		_show_tip(String(_TUTORIAL_TIPS[0][1]))
+
+## Dica do Frasco de Cura, na ÁREA DA FOGUEIRA: aparece uma única vez por run, quando o player
+## chega perto da fogueira (que só é alcançável depois de limpar a sala — o portão abre então).
+## Persistida em RunState.flask_tutorial_seen para não repetir a cada morte/run-back.
+const FLASK_TIP_REACH := 130.0
+
+func _update_flask_tip() -> void:
+	if _run == null or _run.flask_tutorial_seen or _bonfires.is_empty():
+		return
+	if not is_instance_valid(_player_view):
+		return
+	var px := _player_view.global_position.x
+	for bf in _bonfires:
+		if is_instance_valid(bf) and absf(px - bf.global_position.x) <= FLASK_TIP_REACH:
+			_run.flask_tutorial_seen = true
+			_show_tip("Frasco de Cura: beba com R para recuperar vida na luta. Ele reabastece ao descansar na fogueira (E).")
+			return
 
 ## No tutorial, dispara a dica cujo x o player acabou de alcançar (uma vez cada).
 func _update_tutorial_tips() -> void:
@@ -1124,6 +1141,9 @@ func _process(delta: float) -> void:
 	# automático ao passar por cima dela, como no Dark Souls (sem tecla).
 	_update_bloodstain()
 
+	# Chegou perto da fogueira pela 1ª vez na run: ensina o Frasco de Cura.
+	_update_flask_tip()
+
 	# Vila de tutorial: as dicas surgem conforme o player anda; chegar na porta entra na dungeon.
 	if _phase == "tutorial":
 		_update_tutorial_tips()
@@ -1635,7 +1655,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 # ---------------------------------------------------------------------------
 # DEBUG — atalhos para testar partes específicas sem jogar a run inteira.
-# Teclas escolhidas para não colidir com o jogo (mover A/D, pular Espaço/W, atacar J/K, esquivar Shift/L).
+# Teclas escolhidas para não colidir com o jogo (mover A/D, pular Espaço/W, atacar J, esquivar Shift/L).
 # ---------------------------------------------------------------------------
 
 func _apply_debug_start() -> void:
