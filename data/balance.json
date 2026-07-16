@@ -29,7 +29,7 @@
     "DEFENSE_K": 100
   },
   "stamina": {
-    "MAX": 120,
+    "MAX": 100,
     "REGEN_PER_SEC": 45,
     "REGEN_DELAY": 0.5,
     "ATTACK_COST": 20,
@@ -42,12 +42,12 @@
     "DRINK_TIME": 0.8
   },
   "attributes": {
-    "_comment": "Progressao soulslike: subir de nivel NAO da stat nenhuma sozinho — da PONTOS, que o jogador gasta em atributos na fogueira. 'start' e o valor inicial de cada atributo; 'gain' e o que UM ponto acrescenta. Os valores de partida sao calibrados para bater com a base do player_scaling/stamina (vigor 10 = 90 de vida, forca 10 = 5 de ataque, resistencia 10 = 120 de stamina), entao mexer em 'start' desloca a base inteira.",
+    "_comment": "Progressao soulslike: subir de nivel NAO da stat nenhuma sozinho — da PONTOS, que o jogador gasta em atributos na fogueira. 'start' e o valor inicial de cada atributo; 'gain' e o que UM ponto acrescenta. Os valores de partida sao calibrados para bater com a base do player_scaling/stamina (vigor 10 = 90 de vida, forca 10 = 5 de ataque, resistencia 10 = 100 de stamina), entao mexer em 'start' desloca a base inteira.",
     "POINTS_PER_LEVEL": 1,
     "LIST": [
-      { "id": "vigor", "name": "VIGOR", "desc": "vida maxima", "start": 10, "gain": { "max_hp": 9 } },
-      { "id": "endurance", "name": "RESISTENCIA", "desc": "stamina", "start": 10, "gain": { "stamina_max": 6 } },
-      { "id": "strength", "name": "FORCA", "desc": "dano dos golpes", "start": 10, "gain": { "attack": 2 } }
+      { "id": "vigor", "name": "VIGOR", "desc": "vida máxima", "start": 10, "gain": { "max_hp": 9 } },
+      { "id": "endurance", "name": "RESISTÊNCIA", "desc": "stamina", "start": 10, "gain": { "stamina_max": 6 } },
+      { "id": "strength", "name": "FORÇA", "desc": "dano dos golpes", "start": 10, "gain": { "attack": 2 } }
     ]
   },
   "augments": {
