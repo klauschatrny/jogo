@@ -21,6 +21,8 @@ func _ready() -> void:
 	_player = AudioStreamPlayer.new()
 	_player.name = "Stream"
 	_player.bus = AudioSettings.MUSIC_BUS   # o jogador regula esta categoria nas Opções
+	# Web: "Sample" (padrão do Godot 4.3+) sai mudo com mp3; "Stream" toca certo. Ver Sfx._ready.
+	_player.playback_type = AudioServer.PLAYBACK_TYPE_STREAM
 	add_child(_player)
 
 ## Toca a faixa `id` de audio.json. Se já for a que está tocando, não faz nada (não reinicia).

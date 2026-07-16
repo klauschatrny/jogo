@@ -55,6 +55,10 @@ func _ready() -> void:
 		var p := AudioStreamPlayer.new()
 		p.name = "Voice%d" % i
 		p.bus = AudioSettings.SFX_BUS
+		# Web: o padrão do Godot 4.3+ é "Sample", que sai MUDO com mp3 no navegador. "Stream" toca
+		# certo (exige os headers COOP/COEP, que o itch e o servidor local de teste já mandam). No
+		# desktop, "Stream" é o caminho normal — sem efeito colateral.
+		p.playback_type = AudioServer.PLAYBACK_TYPE_STREAM
 		add_child(p)
 		_voices.append(p)
 
@@ -159,6 +163,7 @@ func sustain(id: String, active: bool) -> void:
 		var p := AudioStreamPlayer.new()
 		p.name = "Sustain_%s" % id
 		p.bus = AudioSettings.SFX_BUS
+		p.playback_type = AudioServer.PLAYBACK_TYPE_STREAM   # ver nota em _ready (web/mp3 x Sample)
 		add_child(p)
 		st = { "player": p, "stop_at": -1.0, "last_pos": 0.0 }
 		_sustained[id] = st
