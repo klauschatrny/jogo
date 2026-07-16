@@ -170,6 +170,13 @@ func advance_floor() -> void:
 	player.heal(player.stats.max_hp)   # cada novo andar começa com HP cheio
 	EventBus.floor_changed.emit(current_floor)
 
+## Volta UM nível (a porta de trás da arena do chefe, depois de vencê-lo). Sem cura: voltar não é
+## "novo andar", é revisitar — o chão é o nível 1, abaixo dele não há dungeon.
+func retreat_floor() -> void:
+	current_floor = maxi(1, current_floor - 1)
+	player.current_floor = current_floor
+	EventBus.floor_changed.emit(current_floor)
+
 ## Buff de Vingança (§1.4.3): +VENGEANCE_DAMAGE_BUFF de dano até o fim do andar. Implementado
 ## como um augment temporário (sobrevive a level-ups; removido em advance_floor).
 func apply_vengeance() -> void:

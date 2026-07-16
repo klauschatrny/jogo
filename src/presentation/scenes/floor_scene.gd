@@ -5,7 +5,7 @@
 extends Node2D
 
 # --- DEBUG (desligue pondo DEBUG = false antes de buildar de verdade) ---
-const DEBUG := false
+const DEBUG := true
 const DEBUG_START_FLOOR := 0   # 0 = normal (tutorial); 2 = pula direto para a arena do Ogro
 const DEBUG_START_LEVEL := 0   # 0 = normal; nível inicial do jogador
 
@@ -15,7 +15,7 @@ var _enemies: Array = []
 var _hud: Hud
 var _msg: Label
 var _layer: CanvasLayer
-var _phase := "room"           # tutorial | room | cleared | transition | boss_intro | boss | dead | victory
+var _phase := "room"           # tutorial | room | cleared | transition | boss_intro | boss | dead
 var _floor_config: Dictionary = {}   # config do nível ATUAL (de levels.json)
 var _levels: Dictionary = {}         # nível(int) -> config (data/floors/levels.json)
 var _hazards: Dictionary = {}        # id -> definição de armadilha (data/hazards.json)
@@ -68,6 +68,13 @@ var _env: Node2D               # container do cenário atual (reconstruído por 
 var _fade: ColorRect           # overlay de fade das transições
 var _door: Node2D              # porta ativa (nula quando não há)
 var _door_x := 0.0
+# As DUAS portas da arena do chefe: atrás (voltar ao nível anterior) e adiante (o próximo nível).
+# Cada uma nasce coberta por uma névoa TRAVADA enquanto o chefe vive; vencê-lo as dissipa e as
+# portas passam a funcionar como a da vila (cruza andando). Ver _spawn_boss_doors.
+var _boss_fogs: Array = []           # FogGateViews sobre as portas (só durante a luta)
+var _boss_door_left_x := 0.0
+var _boss_door_right_x := 0.0
+var _entry_from_right := false       # o próximo _start_floor entra pela DIREITA (veio de voltar)
 var _attr_layer: CanvasLayer    # painel de atributos (aberto ao descansar na fogueira)
 
 ## Linha de topo do chão (eixo Y). Player e inimigos pousam aqui pela gravidade.
@@ -95,7 +102,8 @@ const BOSS_INTRO_ROAR_MIN := 1.4     # mínimo encarando o player depois de pous
 # Todo nível é desenhado à mão em data/floors/levels.json; não há mais geração/repetição
 # automática. Hoje são 2: 1 = sala do Necromante (esqueletos), 2 = arena do Ogro. Limpar o
 # último conclui a run. Ao criar um nível novo, descreva-o no JSON e some 1 aqui.
-const TOTAL_LEVELS := 2
+const TOTAL_LEVELS := 3
+const BOSS_DOOR_IN := 26.0     # as portas da arena do chefe, este tanto para dentro de cada parede
 # Refúgio (fim de um nível de sala): o corredor tem a ZONA DE COMBATE (corridor_length) e, depois
 # dela, um trecho seguro de SANCTUARY_LEN com o portão, a fogueira e a névoa do chefe. Assim a
 # sala da fogueira deixou de ser uma tela à parte (com fade) e virou parte contínua do mapa, que o
@@ -114,15 +122,10 @@ const MINION_WAKE := 150.0          # idem para os esqueletos DORMENTES espalhad
 const TUTORIAL_LENGTH := 1920.0
 # Dicas do tutorial: [x-gatilho no corredor, texto]. Não são mais placas no mundo — aparecem como
 # um TOAST no HUD quando o player alcança aquele x (uma vez cada) e somem sozinhas em TIP_SECONDS,
-# ou na hora, se ele apertar INTERAGIR (E/F). Ensinam as teclas reais (game_manager._setup_input_actions).
-const _TUTORIAL_TIPS := [
-	[0.0,    "Ande com  A / D"],
-	[480.0,  "Pule com  ESPACO / W"],
-	[840.0,  "Ataque com  J  —  teste no boneco à frente"],
-	[1200.0, "Esquive com  SHIFT / L   (gasta stamina)"],
-	[1520.0, "Parado, a stamina se recupera.  Sem ela, você não ataca nem esquiva."],
-	[1760.0, "A porta à frente leva à Dungeon"],
-]
+# ou na hora, se ele apertar INTERAGIR. A lista canônica vive em TutorialTips (compartilhada com a
+# aba TUTORIAL das Opções); os nomes de tecla vêm do KeyBinds — chame na hora de MOSTRAR, nunca cacheie.
+func _tutorial_tips() -> Array:
+	return TutorialTips.entries()
 const TIP_SECONDS := 10.0     # quanto tempo uma dica fica na tela antes de sumir sozinha
 # Armadilhas da vila: [id, x, largura]. O que cada uma FAZ está em data/hazards.json — aqui só o
 # lugar. Hoje NÃO há nenhum poço no jogo (removido a pedido); a maquinaria (HazardView, _off_pit,
@@ -371,8 +374,9 @@ func _add_fade_overlay() -> void:
 	_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	fl.add_child(_fade)
 
-## Porta no chão (parte do _env atual, some quando o cenário é reconstruído).
-func _spawn_door(x: float, accent: Color) -> void:
+## Porta no chão (parte do _env atual, some quando o cenário é reconstruído). Devolve o nó —
+## quem chama decide o que ela é (a da vila vira `_door`; as da arena do chefe são livres).
+func _spawn_door(x: float, accent: Color) -> Node2D:
 	var d := Node2D.new()
 	d.position = Vector2(x, GROUND_Y)
 	d.z_index = -4                           # à frente do chão, atrás das entidades
@@ -387,8 +391,7 @@ func _spawn_door(x: float, accent: Color) -> void:
 	inner.position = Vector2(-13, -78)
 	d.add_child(inner)
 	_env.add_child(d)
-	_door = d
-	_door_x = x
+	return d
 
 ## Espalha as armadilhas do nível pelo chão. `list` = [{ "id": ..., "x": ..., "width": ... }],
 ## vinda do nível (levels.json) ou da vila. Filhas do _env: somem junto com o cenário.
@@ -428,15 +431,17 @@ func _open_attributes() -> void:
 	panel.closed.connect(_close_attributes)
 	_attr_layer.add_child(panel)
 	get_tree().paused = true
+	Music.set_muffled(true)    # a música recua para "atrás da porta" enquanto o painel está aberto
 
 func _close_attributes() -> void:
 	get_tree().paused = false
+	Music.set_muffled(false)
 	if _attr_layer != null:
 		_attr_layer.queue_free()
 		_attr_layer = null
-	_msg.text = "Fogueira acesa — você retorna aqui ao cair.       →  seguir"
+	_msg.text = "Fogueira acesa: você retorna aqui ao cair.       →  seguir"
 
-## As três interações do refúgio, cada uma disparada por INTERAGIR (E/F) quando o player está perto
+## As três interações do refúgio, cada uma disparada por INTERAGIR (E, padrão) quando o player está perto
 ## do objeto. Ficam longe umas das outras, então nunca há ambiguidade. Cada uma devolve true se agiu.
 
 func _try_pull_lever() -> bool:
@@ -456,9 +461,13 @@ func _try_rest() -> bool:
 	return false
 
 ## Atravessa a névoa do chefe: só com o nível vencido (não dá para pular o combate) e perto dela.
-## Leva ao próximo nível — a arena do chefe — com o fade de sempre.
+## Leva ao próximo nível com o fade de sempre — e se o próximo nível ainda não foi desenhado
+## (fim do conteúdo atual), a névoa não deixa passar e avisa.
 func _try_cross_fog() -> bool:
 	if _phase == "cleared" and is_instance_valid(_fog) and _fog.in_reach(_player_view):
+		if not _levels.has(_run.current_floor + 1):
+			_show_tip("O caminho adiante ainda está por vir...")
+			return true
 		_transition(_next_floor)
 		return true
 	return false
@@ -491,10 +500,11 @@ func _start_tutorial() -> void:
 	_reset_player_to_start()
 	_spawn_hazards(_TUTORIAL_HAZARDS)
 	_spawn_training_dummy(980.0)
-	_spawn_door(_arena_width - 40.0, Palette.ACCENT)
+	_door = _spawn_door(_arena_width - 40.0, Palette.ACCENT)
+	_door_x = _arena_width - 40.0
 	_tips_done.clear()          # as dicas recomeçam a cada visita à vila
 	_hide_tip()
-	_msg.text = "Vila — siga até a porta da Dungeon →"
+	_msg.text = "Vila: siga até a porta da Dungeon →"
 	_schedule_first_tip()       # a 1ª dica (mover) só entra 3s depois de começar
 
 ## Boneco de treino: esqueleto blindado passivo (dormant) pra praticar o ataque. Some se
@@ -515,10 +525,13 @@ func _spawn_training_dummy(x: float) -> void:
 # ---------------------------------------------------------------------------
 
 func _build_tip_ui() -> void:
-	const W := 520.0
-	const H := 34.0
+	# Fonte 16 (o nativo da Pixel Operator — menor sai borrado). A caixa é JUSTA para uma linha
+	# (a dica mais longa tem ~69 caracteres ≈ 552px) — o autowrap fica de rede de segurança.
+	# Sem linha de "fechar": INTERAGIR fecha, mas isso não precisa de aviso.
+	const W := 584.0
+	const H := 30.0
 	var x := (640.0 - W) * 0.5
-	var y := 306.0          # parte INFERIOR da tela (base 640×360; caixa de 34px com margem do fundo)
+	var y := 318.0          # parte INFERIOR da tela (base 640×360; caixa de 30px com margem do fundo)
 
 	_tip_root = Control.new()
 	_tip_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -538,24 +551,16 @@ func _build_tip_ui() -> void:
 	_tip_root.add_child(strip)
 
 	_tip_label = Label.new()
-	_tip_label.add_theme_font_size_override("font_size", 11)
 	_tip_label.add_theme_color_override("font_color", Palette.TEXT)
 	_tip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_tip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_tip_label.size = Vector2(W, 20.0)
-	_tip_label.position = Vector2(x, y + 4.0)
+	_tip_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_tip_label.size = Vector2(W - 16.0, H - 4.0)
+	_tip_label.position = Vector2(x + 8.0, y + 2.0)
 	_tip_root.add_child(_tip_label)
 
-	var hint := Label.new()
-	hint.text = "E  para fechar"
-	hint.add_theme_font_size_override("font_size", 7)
-	hint.add_theme_color_override("font_color", Color(Palette.TEXT, 0.55))
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.size = Vector2(W, 10.0)
-	hint.position = Vector2(x, y + H - 11.0)
-	_tip_root.add_child(hint)
-
-## Mostra uma dica no HUD por TIP_SECONDS (ou até o player apertar E). Uma nova substitui a atual.
+## Mostra uma dica no HUD por TIP_SECONDS (ou até o player apertar INTERAGIR). Uma nova substitui
+## a atual.
 func _show_tip(text: String) -> void:
 	if _tip_label == null:
 		return
@@ -583,12 +588,13 @@ func _hide_tip() -> void:
 const FIRST_TIP_DELAY := 3.0
 
 func _schedule_first_tip() -> void:
-	if _TUTORIAL_TIPS.is_empty():
+	var tips := _tutorial_tips()
+	if tips.is_empty():
 		return
 	_tips_done[0] = true
 	await get_tree().create_timer(FIRST_TIP_DELAY).timeout
 	if _phase == "tutorial" and _tips_done.size() == 1:   # ainda no começo, nada mais disparou
-		_show_tip(String(_TUTORIAL_TIPS[0][1]))
+		_show_tip(String(_tutorial_tips()[0][1]))
 
 ## Dica do Frasco de Cura, na ÁREA DA FOGUEIRA: aparece uma única vez por run, quando o player
 ## chega perto da fogueira (que só é alcançável depois de limpar a sala — o portão abre então).
@@ -598,13 +604,18 @@ const FLASK_TIP_REACH := 130.0
 func _update_flask_tip() -> void:
 	if _run == null or _run.flask_tutorial_seen or _bonfires.is_empty():
 		return
+	# A lição pertence à PRIMEIRA fogueira (o refúgio do nível 1). Nas outras (ex.: a área de
+	# descanso pós-chefe, cuja fogueira fica na entrada), quem chegou até lá já bebeu do frasco —
+	# e a sala teria a mensagem de chegada atropelada pelo tutorial.
+	if _run.current_floor != 1:
+		return
 	if not is_instance_valid(_player_view):
 		return
 	var px := _player_view.global_position.x
 	for bf in _bonfires:
 		if is_instance_valid(bf) and absf(px - bf.global_position.x) <= FLASK_TIP_REACH:
 			_run.flask_tutorial_seen = true
-			_show_tip("Frasco de Cura: beba com R para recuperar vida na luta. Ele reabastece ao descansar na fogueira (E).")
+			_show_tip(TutorialTips.flask_tip())
 			return
 
 ## No tutorial, dispara a dica cujo x o player acabou de alcançar (uma vez cada).
@@ -612,12 +623,13 @@ func _update_tutorial_tips() -> void:
 	if not is_instance_valid(_player_view):
 		return
 	var px := _player_view.global_position.x
-	for i in _TUTORIAL_TIPS.size():
+	var tips := _tutorial_tips()
+	for i in tips.size():
 		if _tips_done.has(i):
 			continue
-		if px >= float(_TUTORIAL_TIPS[i][0]):
+		if px >= float(tips[i][0]):
 			_tips_done[i] = true
-			_show_tip(String(_TUTORIAL_TIPS[i][1]))
+			_show_tip(String(tips[i][1]))
 
 ## Casinhas simples ao fundo, só pra dar cara de vila (placeholder, sem arte).
 func _decorate_village() -> void:
@@ -762,7 +774,9 @@ func _begin_dungeon() -> void:
 ## Início de um nível da dungeon. Cada nível é desenhado à mão em levels.json e é de UM tipo:
 ##   "boss" → arena fechada, direto no chefe.
 ##   "room" → sala/corredor a limpar (ex.: sala do Necromante). Sem chefe.
-## Passar do último nível existente encerra a run (vitória).
+##   "rest" → área pequena e SEGURA (depois de um chefe): só a fogueira no começo e a névoa no
+##            fim — sem inimigos, sem alavanca, sem portão. Um respiro.
+## A névoa do último nível existente não deixa passar ("ainda por vir").
 ## Desmonta as entidades do nível anterior. Antes isso não existia porque a morte trocava de
 ## cena — agora a morte REMONTA o nível na mesma cena, e sem esta limpeza os inimigos da vida
 ## passada continuariam vivos no mundo, somados aos novos.
@@ -795,12 +809,20 @@ func _clear_entities() -> void:
 
 func _start_floor() -> void:
 	var floor := _run.current_floor
+	# Veio da porta de trás de uma arena? Então entra por este nível pela DIREITA (pela névoa/porta
+	# do fim), não pelo começo. Consumido aqui — a próxima entrada volta ao normal.
+	var from_right := _entry_from_right
+	_entry_from_right = false
 	_clear_entities()
+	_boss_fogs.clear()   # views eram filhas do _env (demolido abaixo); só solta as referências
 	_floor_config = _levels.get(floor, {})
 	var ltype := String(_floor_config.get("type", ""))
 	if ltype == "":
-		push_warning("[floor_scene] nível %d não existe em levels.json — encerrando a run" % floor)
-		_on_victory()
+		# Não deveria acontecer: as passagens só se abrem quando o próximo nível existe
+		# (_try_cross_fog / portas da arena). Se um debug pular além, volta ao último válido.
+		push_warning("[floor_scene] nível %d não existe em levels.json — voltando ao anterior" % floor)
+		_run.retreat_floor()
+		_start_floor()
 		return
 
 	var hazards: Array = _floor_config.get("hazards", [])
@@ -808,9 +830,17 @@ func _start_floor() -> void:
 	if ltype == "boss":
 		_current_boss_id = String(_floor_config.get("boss_id", ""))
 		_build_environment(BOSS_ROOM_W, true, hazards)
-		_reset_player_to_start(PLAYER_START_X)   # o player primeiro; os poços depois (ver _start_tutorial)
+		var entry_x := (BOSS_ROOM_W - BOSS_DOOR_IN - 34.0) if from_right else PLAYER_START_X
+		_reset_player_to_start(entry_x)          # o player primeiro; os poços depois (ver _start_tutorial)
 		_spawn_hazards(hazards)
+		_spawn_boss_doors(_run.is_cleared(floor))
 		_spawn_bloodstain_if_here()              # a marca pode estar AQUI: a queda no chefe fica na arena
+		# Chefe já vencido: arena vazia, portas livres (as névoas nem nascem). Só passagem.
+		if _run.is_cleared(floor):
+			Music.stop()
+			_phase = "cleared"
+			_msg.text = "A arena está vazia. As portas aguardam →"
+			return
 		# A cutscene de entrada só na PRIMEIRA vez: quem morreu e voltou já sabe quem mora aqui.
 		if _run.boss_seen(_current_boss_id):
 			_begin_boss_retry()
@@ -822,12 +852,34 @@ func _start_floor() -> void:
 	Music.stop()          # fora da sala do boss não há trilha (por ora)
 	_current_boss_id = ""
 	_boss_view = null
+
+	# Área de descanso: uma tela pequena, sem perigo. A fogueira logo na entrada e a névoa no fim.
+	if ltype == "rest":
+		var rest_w := float(_floor_config.get("corridor_length", 640.0))
+		_build_environment(rest_w, false, hazards)
+		_fight_width = rest_w
+		var rx := _run.respawn_x(PLAYER_START_X)      # renascer aqui = levantar na fogueira
+		if from_right:
+			rx = _arena_width - FOG_BACK - 48.0
+		_reset_player_to_start(rx)
+		_spawn_rest_area(floor)
+		_spawn_bloodstain_if_here()
+		_phase = "cleared"                            # nada a limpar: a névoa já responde
+		# O toast de chegada só na PRIMEIRA visita (fogueira ainda apagada) — renascer aqui após
+		# cada morte repetindo "momento de paz" viraria piada de mau gosto.
+		if not _bonfires.is_empty() and not _bonfires[0].lit:
+			_show_tip("Um raro momento de paz. A fogueira convida")
+		return
+
 	# O corredor tem duas partes: a ZONA DE COMBATE (corridor_length) e, depois dela, o REFÚGIO
 	# (SANCTUARY_LEN) com o portão, a fogueira e a névoa do chefe — tudo contínuo, sem fade.
 	_corridor_length = float(_floor_config.get("corridor_length", _corridor_length))
 	_build_environment(_corridor_length + SANCTUARY_LEN, false, hazards)
 	_fight_width = _corridor_length          # combate só na 1ª parte; _build_environment o resetara p/ o total
-	_reset_player_to_start(_run.respawn_x(PLAYER_START_X))   # início do nível, ou a fogueira ao renascer
+	var start_x := _run.respawn_x(PLAYER_START_X)   # início do nível, ou a fogueira ao renascer
+	if from_right:
+		start_x = _arena_width - FOG_BACK - 48.0    # voltou da arena: entra pela névoa do fim
+	_reset_player_to_start(start_x)
 	_spawn_hazards(hazards)
 	_spawn_sanctuary(floor)                   # alavanca + portão + fogueira + névoa (o refúgio do nível)
 
@@ -835,7 +887,7 @@ func _start_floor() -> void:
 	# se o portão já foi aberto antes); nada a fazer aqui além de marcar a fase e o Eco.
 	if _run.is_cleared(floor):
 		_phase = "cleared"
-		_msg.text = "Nível vencido — a fogueira e a névoa do chefe aguardam adiante →"
+		_msg.text = "Nível vencido: a fogueira e a névoa do chefe aguardam adiante →"
 		_spawn_guard(floor)        # a guarda do run-back reocupa o caminho até a névoa
 		_spawn_bloodstain_if_here()  # ...e a sua marca ainda pode estar esperando no caminho
 		return
@@ -881,9 +933,9 @@ func _start_room() -> void:
 		_fill_pool("normal")
 
 	if _has_necro():
-		_msg.text = "Nível %d / %d — o Necromante comanda a horda. Elimine-o!" % [_run.current_floor, TOTAL_LEVELS]
+		_msg.text = "Nível %d / %d: o Necromante comanda a horda. Elimine-o!" % [_run.current_floor, TOTAL_LEVELS]
 	else:
-		_msg.text = "Nível %d / %d — limpe a sala de esqueletos." % [_run.current_floor, TOTAL_LEVELS]
+		_msg.text = "Nível %d / %d: limpe a sala de esqueletos." % [_run.current_floor, TOTAL_LEVELS]
 	_start_respawn_cast()   # loop de reinvocação: 1 esqueleto do pool por cast, enquanto o Necromante vive (sem ele, no-op)
 	_check_room_cleared()   # fallback: sem Necromante, a sala limpa por contagem
 
@@ -1133,9 +1185,12 @@ func _process(delta: float) -> void:
 		_update_heavy_chain()
 		_update_room_wake()
 
-	# Nível vencido: a guarda do refúgio desperta por proximidade quando o player se aproxima.
+	# Nível vencido: a guarda do refúgio desperta por proximidade; numa ARENA vencida, as duas
+	# portas (voltar/seguir) cruzam andando.
 	if _phase == "cleared":
 		_update_guard_wake()
+		if String(_floor_config.get("type", "")) == "boss":
+			_update_boss_doors()
 
 	# A marca de sangue (quando presente, em QUALQUER fase — inclusive na arena do chefe): recolhe
 	# automático ao passar por cima dela, como no Dark Souls (sem tecla).
@@ -1177,7 +1232,7 @@ func _begin_boss_intro() -> void:
 	_boss_landing_sfx = String(_boss_repo.get_by_id(_current_boss_id).get("landing_sfx", ""))
 	if is_instance_valid(_player_view):
 		_player_view.frozen = true
-	_msg.text = "Nível %d — algo desperta na escuridão..." % _run.current_floor
+	_msg.text = "Nível %d: algo desperta na escuridão..." % _run.current_floor
 	_intro_token += 1
 	_start_boss_music(_intro_token)   # entra atrasada, em paralelo à cutscene
 	_boss_intro(_intro_token)
@@ -1285,7 +1340,7 @@ func _abort_boss_intro() -> void:
 	_on_floor_cleared()               # já corta a música (ver o topo dele)
 
 func _boss_title(boss_name: String) -> String:
-	return "Nível %d — CHEFE: %s" % [_run.current_floor, boss_name]
+	return "Nível %d   CHEFE: %s" % [_run.current_floor, boss_name]
 
 ## Cria o boss do nível em `at`. Quem chama decide se ele já age (a cutscene o deixa dormente).
 ## Também resolve o eco do Nemesis, que o próprio boss invoca ao cruzar o limiar de HP.
@@ -1332,10 +1387,13 @@ func _on_enemy_died(view: EnemyView, enemy: Enemy) -> void:
 func _on_floor_cleared() -> void:
 	_run.mark_cleared(_run.current_floor)   # morrer adiante e voltar por aqui não o repovoa
 	if _phase == "boss":
-		Music.stop()   # a trilha é da sala do boss: acabou a luta, ela se despede (fade do audio.json)
-	# Vencer o último nível conclui a dungeon.
-	if _run.current_floor >= TOTAL_LEVELS:
-		_on_victory()
+		# Chefe vencido: a trilha se despede (fade do audio.json) e as DUAS névoas da arena se
+		# desmancham — voltar e seguir ficam livres (a porta da direita leva à área nova).
+		Music.stop()
+		_phase = "cleared"
+		_dismiss_boss_fogs()
+		_show_tip("O guardião caiu. As névoas se dissipam e as portas se abrem")
+		_msg.text = "As portas da arena estão abertas"
 		return
 	# Nível de sala limpo (o Necromante caiu): a ALAVANCA (que já estava lá, travada) DESTRAVA. Puxá-la
 	# abre o portão de madeira que fecha o refúgio — e, aberto, ele fica aberto para sempre. Nada de
@@ -1345,6 +1403,84 @@ func _on_floor_cleared() -> void:
 		_lever.arm()
 	_spawn_guard(_run.current_floor)   # o mundo reocupa o caminho ao chefe: a guarda toma o refúgio
 	_msg.text = "Sala limpa. Puxe a alavanca (E) para abrir o portão →"
+
+## As duas portas da arena do chefe: atrás (à esquerda, volta ao nível anterior) e adiante (à
+## direita, o próximo nível — a área nova, com a outra fogueira). Enquanto o chefe vive, cada uma
+## nasce coberta por uma névoa TRAVADA (bloqueio visual, sem convite — as paredes da arena já
+## seguram o player); vencê-lo as dissipa (_dismiss_boss_fogs) e as portas passam a cruzar
+## andando, como a da vila (_update_boss_doors). Uma porta só existe se o nível dela existe.
+func _spawn_boss_doors(cleared: bool) -> void:
+	_boss_fogs.clear()
+	_boss_door_left_x = 0.0
+	_boss_door_right_x = 0.0
+	var portas: Array = []
+	if _levels.has(_run.current_floor - 1):
+		_boss_door_left_x = BOSS_DOOR_IN
+		portas.append(_boss_door_left_x)
+	if _levels.has(_run.current_floor + 1):
+		_boss_door_right_x = _arena_width - BOSS_DOOR_IN
+		portas.append(_boss_door_right_x)
+	for x in portas:
+		_spawn_door(x, Palette.ACCENT.darkened(0.35))
+		if not cleared:
+			var fog := FogGateView.new()
+			fog.locked = true              # sem prompt: durante a luta ela é só bloqueio
+			fog.position = Vector2(x, GROUND_Y)
+			_env.add_child(fog)
+			fog.setup(x, _player_view)
+			# Discreta DURANTE a luta: atrás das entidades (a névoa de travessia fica à frente,
+			# z=60, mas aqui ela cobriria o combate) e meio translúcida — presença de cenário,
+			# não de cortina. A dissipação da vitória parte deste alfa.
+			fog.z_index = -2
+			fog.modulate.a = 0.5
+			_boss_fogs.append(fog)
+
+## Vencido o chefe, as névoas das portas se desmancham num fade e somem de vez.
+func _dismiss_boss_fogs() -> void:
+	for fog in _boss_fogs:
+		if is_instance_valid(fog):
+			var tw := create_tween()
+			tw.tween_property(fog, "modulate:a", 0.0, 1.4)
+			tw.tween_callback(fog.queue_free)
+	_boss_fogs.clear()
+
+## Arena vencida: cruzar uma porta ANDANDO (como a da vila). A esquerda volta ao nível anterior
+## (entrando por ele pela direita); a direita segue ao próximo. Só roda na fase "cleared" de uma
+## arena — a _transition trava re-disparo mudando a fase.
+func _update_boss_doors() -> void:
+	if not is_instance_valid(_player_view):
+		return
+	var px := _player_view.global_position.x
+	if _boss_door_left_x > 0.0 and absf(px - _boss_door_left_x) <= DOOR_REACH:
+		_entry_from_right = true
+		_transition(_prev_floor)
+	elif _boss_door_right_x > 0.0 and absf(px - _boss_door_right_x) <= DOOR_REACH:
+		_transition(_next_floor)
+
+func _prev_floor() -> void:
+	_run.retreat_floor()
+	_start_floor()
+
+## A ÁREA DE DESCANSO (nível "rest"): só a fogueira, perto da entrada, e a névoa no fim. Nada de
+## alavanca, portão ou guarda — aqui não há o que vencer, e por isso nada tranca a fogueira.
+func _spawn_rest_area(floor_n: int) -> void:
+	_bonfires.clear()
+	_lever = null      # nada de mecanismo neste nível (as views antigas morreram com o _env)
+	_gate = null
+
+	var bf_x := PLAYER_START_X + 70.0
+	var bf := BonfireView.new()
+	bf.position = Vector2(bf_x, GROUND_Y)
+	_env.add_child(bf)
+	bf.setup(bf_x, _run.is_lit(floor_n, bf_x), _player_view)
+	bf.rested.connect(_on_bonfire_rested)
+	_bonfires.append(bf)
+
+	var fog_x := _arena_width - FOG_BACK
+	_fog = FogGateView.new()
+	_fog.position = Vector2(fog_x, GROUND_Y)
+	_env.add_child(_fog)
+	_fog.setup(fog_x, _player_view)
 
 ## Id estável do portão de mecanismo de um nível (persistido no RunState). Um por nível de sala.
 func _gate_id(floor_n: int) -> String:
@@ -1523,7 +1659,7 @@ func _spawn_bloodstain_if_here() -> void:
 	_env.add_child(bs)                # filha do cenário: limpa junto ao remontar o nível
 	bs.setup(_run.bloodstain_x, _run.bloodstain_souls, _player_view)
 	_bloodstain = bs
-	_msg.text = "Sua marca de sangue aguarda — recupere %d almas." % _run.bloodstain_souls
+	_msg.text = "Sua marca de sangue aguarda: recupere %d almas." % _run.bloodstain_souls
 
 ## Recolhe automático (sem tecla, como no Dark Souls) ao passar por cima da marca — em qualquer fase,
 ## inclusive dentro da arena do chefe.
@@ -1538,7 +1674,7 @@ func _recover_bloodstain() -> void:
 		_bloodstain.queue_free()
 	_bloodstain = null
 	Juice.burst(self, _player_view.global_position, Color(0.85, 0.92, 1.0), 18, 130.0)
-	_msg.text = "Marca recolhida — %d almas de volta." % back
+	_msg.text = "Marca recolhida: %d almas de volta." % back
 
 ## O letreiro entra na camada do FADE (não no HUD): ali ele fica por cima do preto, e não debaixo
 ## dele. Aparece junto com o escurecimento, no mesmo compasso.
@@ -1546,47 +1682,37 @@ func _show_death_banner(souls_perdidas: int) -> void:
 	_death_banner = Label.new()
 	_death_banner.text = "VOCÊ MORREU"
 	if souls_perdidas > 0:
-		_death_banner.text += "\n%d almas ficaram na sua marca de sangue" % souls_perdidas
-	_death_banner.add_theme_font_size_override("font_size", 28)
+		# Curto de propósito: na fonte 32 cada caractere tem ~16px e a linha precisa caber nos 640.
+		_death_banner.text += "\n%d almas ficaram na sua marca" % souls_perdidas
+	_death_banner.add_theme_font_size_override("font_size", 32)   # 2× o nativo da fonte = nítido
 	_death_banner.add_theme_color_override("font_color", Palette.ENEMY)
 	_death_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_death_banner.size = Vector2(640, 60)
+	_death_banner.size = Vector2(640, 64)
 	_death_banner.position = Vector2(0, 140)
 	_death_banner.modulate.a = 0.0
 	_fade_layer.add_child(_death_banner)
 	create_tween().tween_property(_death_banner, "modulate:a", 1.0, DEATH_FADE_OUT)
 
-func _on_victory() -> void:
-	_phase = "victory"
-	Music.stop()
-	_show_end_screen("VITÓRIA!", [
-		"Você limpou os %d níveis da dungeon" % TOTAL_LEVELS,
-		"Nível %d" % _run.player.level,
-		"O resto da dungeon ainda está por vir...",
-	], Palette.ACCENT)
-
-func _show_end_screen(title: String, lines: Array, accent: Color) -> void:
-	var es := EndScreen.new()
-	es.setup(title, lines, accent)
-	_layer.add_child(es)
-
-## ESC no meio da run: PAUSA o jogo e abre as Opções. O painel roda com a árvore pausada e, ao
-## fechar, despausa. A música segue tocando na pausa (o autoload Music é PROCESS_MODE_ALWAYS), o
-## que é bom: dá para ajustar o volume dela e ouvir o efeito na hora.
+## B no meio da run: PAUSA o jogo e abre o menu de pausa (PauseMenu — a mesma estética do menu
+## principal; as Opções abrem de dentro dele). Roda com a árvore pausada e, ao fechar, despausa.
+## A música segue tocando na pausa (o autoload Music é PROCESS_MODE_ALWAYS), mas ABAFADA
+## (Music.set_muffled) — dá para ouvir o slider de volume mesmo assim.
 func _open_options() -> void:
 	if _options_layer != null:
-		return                        # já aberto (o painel trata o ESC de fechar)
+		return                        # já aberto (o menu trata o próprio B de fechar)
 	_options_layer = CanvasLayer.new()
 	_options_layer.layer = 96         # acima do HUD e do fade, abaixo do CRT (100)
 	_options_layer.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(_options_layer)
-	var panel := OptionsPanel.new()
-	panel.closed.connect(_close_options)
-	_options_layer.add_child(panel)
+	var menu := PauseMenu.new()
+	menu.closed.connect(_close_options)
+	_options_layer.add_child(menu)
 	get_tree().paused = true
+	Music.set_muffled(true)    # abafa a música na pausa (e volta ao normal em _close_options)
 
 func _close_options() -> void:
 	get_tree().paused = false
+	Music.set_muffled(false)
 	if _options_layer != null:
 		_options_layer.queue_free()
 		_options_layer = null
@@ -1631,14 +1757,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
 		_open_options()
 		return
-	# E/F: as interações do refúgio — puxar a alavanca, descansar na fogueira, atravessar a névoa.
+	# INTERAGIR: as interações do refúgio — puxar a alavanca, descansar na fogueira, atravessar a névoa.
 	# Cada uma só age se o player estiver perto do objeto; longe de todos, não faz nada. Bloqueadas
 	# durante transição/morte/cutscene, quando o player não tem controle.
 	if event.is_action_pressed("interact"):
 		if _tip_time > 0.0:            # há uma dica na tela: E fecha ela antes de qualquer outra coisa
 			_hide_tip()
 			return
-		if _phase in ["transition", "dead", "boss_intro", "victory"]:
+		if _phase in ["transition", "dead", "boss_intro"]:
 			return
 		if _try_pull_lever() or _try_rest() or _try_cross_fog():
 			return
@@ -1649,9 +1775,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		_crt.visible = not _crt.visible
 	if DEBUG:
 		_debug_input(event)
-	# Só a VITÓRIA volta ao menu. Morrer não encerra mais nada: você levanta na fogueira.
-	if _phase == "victory" and event.is_action_pressed("ui_accept"):
-		get_tree().change_scene_to_file("res://src/presentation/scenes/main_menu.tscn")
 
 # ---------------------------------------------------------------------------
 # DEBUG — atalhos para testar partes específicas sem jogar a run inteira.
@@ -1700,7 +1823,7 @@ func _debug_clear_all() -> void:
 	_enemies.clear()
 
 func _debug_skip_floors(n: int) -> void:
-	if _phase == "dead" or _phase == "victory":
+	if _phase == "dead":
 		return
 	_debug_clear_all()
 	if n > 1:
