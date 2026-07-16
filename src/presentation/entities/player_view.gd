@@ -48,6 +48,9 @@ var _dodge_cost := 30.0            # custo de stamina por esquiva
 var _drink_time := 0.0             # >0 enquanto bebe o frasco: parado e vulnerável (sem i-frames)
 var _drink_heal := 0               # cura pendente, aplicada ao FIM do gesto (0 se interrompido)
 var _drink_dur := 0.6              # duração do gesto de beber (data-driven; ou os frames da anim)
+var _drink_glow: ColorRect        # aura laranja do gole de cura (Estus): brilha atrás do corpo
+var _drink_total := 0.0           # duração total do gole atual (para o progresso da aura)
+var _drink_ember_cd := 0.0        # cadência das fagulhas laranja durante o gole
 var box_w := SIZE                  # hitbox efetiva (px); resolvida em _build do manifesto player.json
 var box_h := SIZE                  # (ou SIZE × SIZE se o manifesto não definir "hitbox")
 var _body: ColorRect
@@ -114,6 +117,17 @@ func _build() -> void:
 		add_child(_sprite)
 		_body.visible = false
 
+	# Aura do gole de cura (Estus): fica ATRÁS do corpo/sprite (z -1), invisível até beber. A cada
+	# gole ela acende e pulsa em laranja, com um clarão no instante em que a cura cai (ver _start_drink).
+	# Mais larga que alta: o fator vertical é menor para a aura não estourar acima da cabeça/pés.
+	var gsize := Vector2(box.x * 1.8, box.y * 1.15)
+	_drink_glow = ColorRect.new()
+	_drink_glow.color = Color(1.0, 0.55, 0.12, 0.0)
+	_drink_glow.size = gsize
+	_drink_glow.position = -0.5 * gsize
+	_drink_glow.z_index = -1
+	add_child(_drink_glow)
+
 func _physics_process(delta: float) -> void:
 	if data == null:
 		return
@@ -134,6 +148,11 @@ func _physics_process(delta: float) -> void:
 	_anim_lock = maxf(0.0, _anim_lock - delta)
 	_attack_move_lock = maxf(0.0, _attack_move_lock - delta)
 	_combo_timer = maxf(0.0, _combo_timer - delta)
+
+	# Aura do gole: fora do gesto (ou após ser interrompido), decai suavemente até sumir. Durante o
+	# gole é o próprio bloco de beber que a acende (ver _update_drink_glow).
+	if _drink_glow != null and _drink_time <= 0.0 and _drink_glow.color.a > 0.0:
+		_drink_glow.color.a = maxf(0.0, _drink_glow.color.a - delta * 4.0)
 	if data.stamina != null:
 		data.stamina.tick(delta)      # stamina regenera (após o atraso desde o último gasto)
 	if _combo_timer <= 0.0:
@@ -177,9 +196,11 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		_update_footsteps(0.0)
 		_play_anim("drink")
+		_update_drink_glow(delta)
 		if _drink_time <= 0.0 and _drink_heal > 0:
 			data.heal(_drink_heal)
 			_drink_heal = 0
+			_drink_finish_fx()      # clarão + estouro de partículas laranja no instante da cura
 		return
 
 	# Começa a beber: no chão, fora de anim travada, com carga e com vida faltando.
@@ -260,12 +281,39 @@ func _start_drink() -> void:
 		_drink_time = float(fc) / maxf(spd, 0.1)
 	_anim_lock = _drink_time
 	_attack_move_lock = _drink_time
+	# Acende a aura do gole: guarda a duração total (para o progresso) e dá um brilho inicial suave.
+	_drink_total = _drink_time
+	_drink_ember_cd = 0.0
+	if _drink_glow != null:
+		_drink_glow.color.a = 0.12
 
 ## Um golpe recebido no meio do gole CANCELA a cura — a carga já foi gasta. Chamado dos caminhos de
 ## dano (colisão, golpe de inimigo, dano fixo): a punição por beber na hora errada.
 func _interrupt_drink() -> void:
 	_drink_time = 0.0
 	_drink_heal = 0
+	# A aura não é apagada aqui: o decaimento em _physics_process a esvanece sozinho (gole cortado).
+
+## Aura laranja durante o gole: a opacidade cresce com o progresso do gesto e pulsa, e fagulhas
+## laranja sobem em cadência. É o "brilho" do Estus.
+func _update_drink_glow(delta: float) -> void:
+	if _drink_glow == null:
+		return
+	var prog := 1.0 - clampf(_drink_time / maxf(_drink_total, 0.001), 0.0, 1.0)   # 0→1 ao longo do gole
+	var t := Time.get_ticks_msec() / 1000.0
+	var pulse := 0.10 * (0.5 + 0.5 * sin(t * 20.0))
+	_drink_glow.color.a = clampf(0.14 + 0.48 * prog + pulse, 0.0, 0.82)
+	_drink_ember_cd -= delta
+	if _drink_ember_cd <= 0.0:
+		_drink_ember_cd = 0.14
+		Juice.burst(get_parent(), global_position + Vector2(0.0, -box_h * 0.2), Color(1.0, 0.62, 0.18), 3, 55.0)
+
+## Clarão + estouro de partículas laranja no instante em que a cura cai (fim do gole). O decaimento
+## em _physics_process apaga o clarão em seguida.
+func _drink_finish_fx() -> void:
+	if _drink_glow != null:
+		_drink_glow.color.a = 0.82
+	Juice.burst(get_parent(), global_position + Vector2(0.0, -box_h * 0.25), Color(1.0, 0.70, 0.25), 20, 130.0)
 
 ## Vira o sprite conforme a direção (no-op sem sprite).
 func _flip(dir: Vector2) -> void:
