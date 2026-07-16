@@ -51,7 +51,7 @@ func _ready() -> void:
 	_music = _add_row(box, "MUSICA", AudioSettings.music_volume, _on_music)
 	_sfx = _add_row(box, "EFEITOS", AudioSettings.sfx_volume, _on_sfx)
 	box.add_child(_spacer(8))
-	box.add_child(_hint("SETAS  ajustar     ESC  voltar"))
+	box.add_child(_hint("SETAS  ajustar     B  voltar"))
 
 	_music.grab_focus()
 

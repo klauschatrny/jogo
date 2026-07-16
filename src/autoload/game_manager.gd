@@ -35,23 +35,36 @@ func _on_state_changed(state_name: String) -> void:
 
 ## Registra as ações de input via código (mais robusto que editar o formato do
 ## project.godot à mão). Side-scroller: A/D (ou setas) anda, Espaço/W/cima pula,
-## J/K ataca, Shift/L esquiva. move_up/down ficam registradas (não usadas no movimento
+## J ataca, Shift/L esquiva. move_up/down ficam registradas (não usadas no movimento
 ## lateral) para não quebrar menus/UI que dependam delas.
 func _setup_input_actions() -> void:
 	_ensure_action("move_up", [KEY_W, KEY_UP])
 	_ensure_action("move_down", [KEY_S, KEY_DOWN])
 	_ensure_action("move_left", [KEY_A, KEY_LEFT])
 	_ensure_action("move_right", [KEY_D, KEY_RIGHT])
-	_ensure_action("attack", [KEY_J, KEY_K])
+	_ensure_action("attack", [KEY_J])
 	_ensure_action("jump", [KEY_SPACE, KEY_W, KEY_UP])
 	_ensure_action("dodge", [KEY_SHIFT, KEY_L])
 	_ensure_action("interact", [KEY_E, KEY_F])   # descansar na fogueira
 	_ensure_action("flask", [KEY_R, KEY_1])      # beber o frasco de cura (o Estus)
+	# ui_cancel (pausar/fechar painéis) sai do ESC padrão e passa para B.
+	_rebind_action("ui_cancel", [KEY_B])
 
 func _ensure_action(action: String, physical_keys: Array) -> void:
 	if InputMap.has_action(action):
 		return
 	InputMap.add_action(action)
+	for k in physical_keys:
+		var ev := InputEventKey.new()
+		ev.physical_keycode = k
+		InputMap.action_add_event(action, ev)
+
+## Redefine as teclas de uma ação que JÁ existe (ex.: as ui_* embutidas do Godot, criadas antes
+## de _setup_input_actions). Limpa os eventos atuais e liga só as teclas pedidas.
+func _rebind_action(action: String, physical_keys: Array) -> void:
+	if not InputMap.has_action(action):
+		InputMap.add_action(action)
+	InputMap.action_erase_events(action)
 	for k in physical_keys:
 		var ev := InputEventKey.new()
 		ev.physical_keycode = k

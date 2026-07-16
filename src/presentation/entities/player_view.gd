@@ -1,5 +1,5 @@
 ## Apresentação do jogador (§2.3). Side-scroller de chão plano: A/D anda, Espaço/W pula,
-## J/K ataca (combo de 3 golpes; pra baixo no ar = pogo), Shift esquiva (dash direcional
+## J ataca (combo de 3 golpes; pra baixo no ar = pogo), Shift esquiva (dash direcional
 ## com i-frames + rastro). Monta o próprio visual/colisão via código (placeholder ColorRect
 ## — spritesheet entra na Leva 4). A lógica de combate vive no Core (CombatResolver).
 class_name PlayerView
