@@ -1,4 +1,4 @@
-## Fogueira (checkpoint soulslike). Apagada até você chegar perto e apertar INTERAGIR (E/F):
+## Fogueira (checkpoint soulslike). Apagada até você chegar perto e apertar INTERAGIR (E, padrão):
 ## aí ela acende, cura por completo e passa a ser o ponto de retorno da sua morte.
 ##
 ## Uma vez acesa, fica acesa — inclusive depois de morrer. Descansar de novo numa fogueira já
@@ -90,11 +90,11 @@ func _build() -> void:
 	add_child(_core)
 
 	_prompt = Label.new()
-	_prompt.add_theme_font_size_override("font_size", 8)
+	# fonte 16 (nativa da bitmap — menor sai ilegível); caixa larga para caber "X  descansar"
 	_prompt.add_theme_color_override("font_color", Palette.TEXT)
 	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_prompt.size = Vector2(80.0, 10.0)
-	_prompt.position = Vector2(-40.0, -46.0)
+	_prompt.size = Vector2(160.0, 18.0)
+	_prompt.position = Vector2(-80.0, -54.0)
 	_prompt.visible = false
 	add_child(_prompt)
 
@@ -106,7 +106,8 @@ func _process(delta: float) -> void:
 	# acesa, oferece o que ela faz.
 	if _prompt != null and is_instance_valid(_player):
 		_prompt.visible = absf(_player.global_position.x - global_position.x) <= REACH
-		_prompt.text = "E  descansar" if lit else "E  acender"
+		var k: String = KeyBinds.key_name("interact")
+		_prompt.text = ("%s  descansar" if lit else "%s  acender") % k
 
 func _refresh() -> void:
 	if _flame == null:

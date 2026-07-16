@@ -72,19 +72,54 @@ func _ready() -> void:
 
 	# Almas: a moeda. Precisa estar SEMPRE visível — é o que você perde ao morrer, e não dá para
 	# decidir se vale a pena avançar ou voltar à fogueira sem ver quanto está em jogo.
-	_souls = Label.new()
-	_souls.position = Vector2(12, STAM_Y + STAM_H + 4)
-	_souls.add_theme_font_size_override("font_size", 11)
-	_souls.add_theme_color_override("font_color", Palette.ACCENT)
-	_souls.add_theme_color_override("font_outline_color", OUTLINE_COLOR)   # contorno escuro
-	_souls.add_theme_constant_override("outline_size", 4)
-	add_child(_souls)
+	_build_souls()
 
 	# Frasco de cura: a única cura sob demanda. Precisa estar à vista para virar decisão ("bebo a
 	# última carga agora?"). Ícone visual (estilo Estus) com o número da carga atual embaixo.
 	_build_flask()
 
 	_refresh()
+
+## Símbolo de ALMA (placeholder, sem arte) + o número à direita — sem a palavra "almas".
+## O símbolo é uma chama espectral azulada com núcleo claro, o desenho clássico do gênero.
+func _build_souls() -> void:
+	# O centro VERTICAL é um só: símbolo e número se alinham por ele.
+	var y_center := STAM_Y + STAM_H + 14
+	var icon := Node2D.new()
+	icon.position = Vector2(20, y_center)
+	add_child(icon)
+
+	var shape := PackedVector2Array([            # a silhueta da chama (reusada no contorno)
+		Vector2(0, -8), Vector2(3, -3), Vector2(5, 1), Vector2(4, 5),
+		Vector2(0, 8), Vector2(-4, 5), Vector2(-5, 1), Vector2(-3, -3),
+	])
+	var outline := Polygon2D.new()               # contorno: a mesma silhueta, escura e inflada,
+	outline.color = OUTLINE_COLOR                # desenhada ATRÁS (mesmo truque das barras)
+	outline.polygon = shape
+	outline.scale = Vector2(1.45, 1.3)           # ~2px de sobra em cada eixo (a forma é 10×16)
+	icon.add_child(outline)
+	var wisp := Polygon2D.new()                  # o corpo da chama (azul espectral)
+	wisp.color = Color(0.45, 0.68, 0.92)
+	wisp.polygon = shape
+	icon.add_child(wisp)
+	var core := Polygon2D.new()                  # o miolo brilhante
+	core.color = Color(0.88, 0.96, 1.0)
+	core.polygon = PackedVector2Array([
+		Vector2(0, -2), Vector2(2, 1), Vector2(1, 4), Vector2(-1, 4), Vector2(-2, 1),
+	])
+	icon.add_child(core)
+
+	_souls = Label.new()                         # o número, à DIREITA do símbolo
+	# Caixa com centro vertical explícito = o mesmo y_center do símbolo.
+	_souls.position = Vector2(32, y_center - 10)
+	_souls.size = Vector2(90, 20)
+	_souls.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	# 16 = o nativo da fonte bitmap; menor sai borrado (vale para todo texto do jogo).
+	# Azul espectral claro: a mesma família do símbolo (entre o corpo e o miolo da chama).
+	_souls.add_theme_color_override("font_color", Color(0.76, 0.88, 1.0))
+	_souls.add_theme_color_override("font_outline_color", OUTLINE_COLOR)   # contorno escuro
+	_souls.add_theme_constant_override("outline_size", 4)
+	add_child(_souls)
 
 ## Ícone do frasco (placeholder, sem arte): um quadro estilo Estus com o frasco âmbar dentro e o
 ## número da carga ATUAL logo abaixo (não "3/3"). O corpo âmbar é recolorido para cinza quando vazio.
@@ -137,7 +172,6 @@ func _build_flask() -> void:
 	_flask_count.position = Vector2(-15, 34)
 	_flask_count.size = Vector2(30, 14)
 	_flask_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_flask_count.add_theme_font_size_override("font_size", 12)
 	_flask_count.add_theme_color_override("font_color", Color(0.92, 0.90, 0.82))
 	_flask_count.add_theme_color_override("font_outline_color", OUTLINE_COLOR)   # contorno escuro
 	_flask_count.add_theme_constant_override("outline_size", 4)
@@ -172,7 +206,7 @@ func _refresh() -> void:
 		_stam_bg.size.x = st_w
 		_stam_bar.size.x = st_w * (_player.stamina.ratio() if _player.stamina != null else 0.0)
 	if _souls != null:
-		_souls.text = "%d almas" % _player.souls
+		_souls.text = "%d" % _player.souls
 	if _flask_count != null:
 		var tem := _player.flask_charges > 0
 		_flask_body.color = Color(0.95, 0.62, 0.16) if tem else Color(0.32, 0.32, 0.34)

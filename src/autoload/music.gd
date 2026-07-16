@@ -8,10 +8,20 @@ extends Node
 const CONFIG := "res://data/audio.json"
 const SILENT_DB := -60.0     # volume de "mudo" usado como ponta dos fades
 
+# Abafado (pausa): passa-baixa + corte de ganho no BUS da música — não toca no volume do player
+# (que os fades usam) nem no volume do bus (que é do jogador, via AudioSettings/Opções).
+const MUFFLE_CUTOFF := 700.0     # Hz com o filtro fechado ("atrás da porta")
+const OPEN_CUTOFF := 20500.0     # Hz com o filtro aberto (acima do audível = transparente)
+const MUFFLE_GAIN_DB := -9.0     # a música também recua, além de perder os agudos
+const MUFFLE_TIME := 0.25        # segundos da transição (nos dois sentidos)
+
 var _tracks: Dictionary = {}   # id -> { stream, volume_db, loop, fade_in, fade_out }
 var _player: AudioStreamPlayer
 var _current := ""             # id da faixa tocando ("" = silêncio)
 var _fade: Tween
+var _lowpass: AudioEffectLowPassFilter
+var _duck_gain: AudioEffectAmplify
+var _muffle: Tween
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS   # a música continua com o jogo pausado
@@ -24,6 +34,36 @@ func _ready() -> void:
 	# Web: "Sample" (padrão do Godot 4.3+) sai mudo com mp3; "Stream" toca certo. Ver Sfx._ready.
 	_player.playback_type = AudioServer.PLAYBACK_TYPE_STREAM
 	add_child(_player)
+	_setup_muffle_effects()
+
+## Pausou (painel aberto): a música fica "atrás da porta" — abafada e mais baixa — em vez de
+## seguir em primeiro plano. `set_muffled(false)` a traz de volta. Idempotente nos dois sentidos.
+func set_muffled(on: bool) -> void:
+	if _lowpass == null:
+		return
+	if _muffle != null and _muffle.is_valid():
+		_muffle.kill()
+	var idx := AudioServer.get_bus_index(AudioSettings.MUSIC_BUS)
+	if idx >= 0:      # os efeitos ficam SEMPRE ligados; "desligado" = filtro aberto e ganho 0
+		AudioServer.set_bus_effect_enabled(idx, 0, true)
+		AudioServer.set_bus_effect_enabled(idx, 1, true)
+	_muffle = create_tween().set_parallel()
+	_muffle.tween_property(_lowpass, "cutoff_hz",
+		MUFFLE_CUTOFF if on else OPEN_CUTOFF, MUFFLE_TIME)
+	_muffle.tween_property(_duck_gain, "volume_db",
+		MUFFLE_GAIN_DB if on else 0.0, MUFFLE_TIME)
+
+## Pendura o passa-baixa + ganho no bus da música (uma vez, já "abertos" = sem efeito audível).
+func _setup_muffle_effects() -> void:
+	var idx := AudioServer.get_bus_index(AudioSettings.MUSIC_BUS)
+	if idx < 0:
+		return
+	_lowpass = AudioEffectLowPassFilter.new()
+	_lowpass.cutoff_hz = OPEN_CUTOFF
+	_duck_gain = AudioEffectAmplify.new()
+	_duck_gain.volume_db = 0.0
+	AudioServer.add_bus_effect(idx, _lowpass, 0)
+	AudioServer.add_bus_effect(idx, _duck_gain, 1)
 
 ## Toca a faixa `id` de audio.json. Se já for a que está tocando, não faz nada (não reinicia).
 func play(id: String) -> void:

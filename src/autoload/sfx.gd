@@ -184,6 +184,14 @@ func sustain(id: String, active: bool) -> void:
 		st["last_pos"] = pos
 		st["stop_at"] = _quiet_point(def, pos)
 
+## Corta NA HORA todos os ciclos sustentados (passos, corrida). Para a troca de cena
+## (sair para o menu): nenhum loop do mundo deve seguir soando fora dele.
+func stop_sustains() -> void:
+	for id in _sustained:
+		var st: Dictionary = _sustained[id]
+		(st["player"] as AudioStreamPlayer).stop()
+		st["stop_at"] = -1.0
+
 ## Vigia as paradas agendadas: (a) as passadas isoladas de play_step, cortadas antes que a
 ## passada SEGUINTE do arquivo comece a soar; (b) os ciclos de sustain, no ponto de silêncio.
 func _process(_delta: float) -> void:

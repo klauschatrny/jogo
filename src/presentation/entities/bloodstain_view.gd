@@ -60,11 +60,11 @@ func _build() -> void:
 		_wisps.append(w)
 
 	_prompt = Label.new()
-	_prompt.add_theme_font_size_override("font_size", 8)
+	# fonte 16 (nativa da bitmap — menor sai ilegível)
 	_prompt.add_theme_color_override("font_color", Palette.TEXT)
 	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_prompt.size = Vector2(90.0, 10.0)
-	_prompt.position = Vector2(-45.0, -40.0)
+	_prompt.size = Vector2(160.0, 18.0)
+	_prompt.position = Vector2(-80.0, -48.0)
 	_prompt.visible = false
 	add_child(_prompt)
 

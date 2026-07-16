@@ -1,6 +1,6 @@
 ## Alavanca de madeira. Fica SEMPRE no lugar (mesmo com o Necromante vivo), mas só FUNCIONA depois
 ## que ele cai — até lá está "travada" (sem convite, e puxá-la não faz nada). Puxá-la (INTERAGIR,
-## E/F) abre o portão que fechava a passagem; puxada uma vez, fica puxada. Só desenha e avisa —
+## E, padrão) abre o portão que fechava a passagem; puxada uma vez, fica puxada. Só desenha e avisa —
 ## quem abre o portão e persiste o estado é o floor_scene/RunState.
 class_name LeverView
 extends Node2D
@@ -55,11 +55,11 @@ func _build() -> void:
 	knob.add_child(shine)
 
 	_prompt = Label.new()
-	_prompt.add_theme_font_size_override("font_size", 8)
+	# fonte 16 (nativa da bitmap — menor sai ilegível); caixa larga para "X  abrir portão"
 	_prompt.add_theme_color_override("font_color", Palette.TEXT)
 	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_prompt.size = Vector2(90.0, 10.0)
-	_prompt.position = Vector2(-45.0, -58.0)
+	_prompt.size = Vector2(180.0, 18.0)
+	_prompt.position = Vector2(-90.0, -66.0)
 	_prompt.visible = false
 	add_child(_prompt)
 
@@ -69,7 +69,7 @@ func _process(_delta: float) -> void:
 	# O convite só aparece com a alavanca destravada (Necromante morto) — antes disso ela é só
 	# cenário, para não prometer uma ação que ainda não funciona.
 	_prompt.visible = _armed and not _is_pulled and in_reach(_player)
-	_prompt.text = "E  abrir portão"
+	_prompt.text = "%s  abrir portão" % KeyBinds.key_name("interact")
 
 func in_reach(player: Node2D) -> bool:
 	return is_instance_valid(player) and absf(player.global_position.x - global_position.x) <= REACH

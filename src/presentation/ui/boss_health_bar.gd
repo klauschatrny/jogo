@@ -36,9 +36,8 @@ func _ready() -> void:
 	add_child(_fill)
 
 	_name = Label.new()                   # nome do boss (sem quantidade de HP)
-	_name.add_theme_font_size_override("font_size", 9)
 	_name.add_theme_color_override("font_color", Color(0.90, 0.88, 0.84))
-	_name.position = Vector2(x, Y - 13.0)
+	_name.position = Vector2(x, Y - 20.0)   # fonte 16 (nativa) — o rótulo subiu para não invadir a barra
 	add_child(_name)
 
 func setup(boss_name: String) -> void:
