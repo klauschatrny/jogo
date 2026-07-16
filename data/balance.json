@@ -16,7 +16,7 @@
     "KING":       { "hp": 30.0, "atk": 3.0 }
   },
   "player_scaling": {
-    "BASE_PHP": 120,
+    "BASE_PHP": 90,
     "HP_PER_LEVEL": 14,
     "BASE_PATK": 5,
     "ATK_PER_LEVEL": 2,
@@ -29,7 +29,7 @@
     "DEFENSE_K": 100
   },
   "stamina": {
-    "MAX": 100,
+    "MAX": 120,
     "REGEN_PER_SEC": 45,
     "REGEN_DELAY": 0.5,
     "ATTACK_COST": 20,
@@ -39,10 +39,10 @@
     "_comment": "Frasco de cura (o Estus). CHARGES cargas por descanso; cada gole cura HEAL_FRACTION da vida MAXIMA (escala com Vigor). Beber TRAVA o jogador por DRINK_TIME segundos e a carga e gasta no inicio (compromisso): tomar dano no meio cancela a cura, mas a carga ja foi. Recarrega ao descansar na fogueira e ao renascer.",
     "CHARGES": 3,
     "HEAL_FRACTION": 0.4,
-    "DRINK_TIME": 0.6
+    "DRINK_TIME": 0.8
   },
   "attributes": {
-    "_comment": "Progressao soulslike: subir de nivel NAO da stat nenhuma sozinho — da PONTOS, que o jogador gasta em atributos na fogueira. 'start' e o valor inicial de cada atributo; 'gain' e o que UM ponto acrescenta. Os valores de partida sao calibrados para bater com a base do player_scaling/stamina (vigor 10 = 120 de vida, forca 10 = 5 de ataque, resistencia 10 = 100 de stamina), entao mexer em 'start' desloca a base inteira.",
+    "_comment": "Progressao soulslike: subir de nivel NAO da stat nenhuma sozinho — da PONTOS, que o jogador gasta em atributos na fogueira. 'start' e o valor inicial de cada atributo; 'gain' e o que UM ponto acrescenta. Os valores de partida sao calibrados para bater com a base do player_scaling/stamina (vigor 10 = 90 de vida, forca 10 = 5 de ataque, resistencia 10 = 120 de stamina), entao mexer em 'start' desloca a base inteira.",
     "POINTS_PER_LEVEL": 1,
     "LIST": [
       { "id": "vigor", "name": "VIGOR", "desc": "vida maxima", "start": 10, "gain": { "max_hp": 9 } },

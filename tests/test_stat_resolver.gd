@@ -51,4 +51,4 @@ func test_player_recalcula_com_augment() -> void:
 	var p := Player.create_new("X", Weapon.from_dict({"base_damage": 15}))
 	p.add_augment(Augment.from_dict({"id": "iron", "effects": [
 		{"stat": "max_hp", "operation": "PCT_ADD", "value": 0.5}]}))
-	assert_eq(p.stats.max_hp, 180)  # 120 * 1.5
+	assert_eq(p.stats.max_hp, 135)  # 90 * 1.5

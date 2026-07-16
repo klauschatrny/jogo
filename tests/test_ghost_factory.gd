@@ -58,7 +58,7 @@ func test_eco_fraco_recebe_piso_de_elite() -> void:
 		"weapon": {}, "augments": [],
 	}
 	var g := GhostData.from_snapshot(snap, 10, "r", 0.65)
-	var p := _player()
+	var p := _player(300)   # no andar 10 o jogador já teria bastante vida; sem isso o teto anti-impossível corta o piso ELITE
 	p.current_floor = 10
 	var e := GhostFactory.build(g, p)
 

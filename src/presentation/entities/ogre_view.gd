@@ -33,7 +33,7 @@ const ABILITY_GCD := 1.0                 # cooldown global entre QUALQUER cast d
 const GCD_HIT_REDUCTION := 0.4           # cada dano recebido corta isto do cooldown atual
 
 const ROCK_COUNT := 3                    # arremesso de rochas: quantidade
-const ROCK_DAMAGE := 25
+const ROCK_DAMAGE := 40
 const ROCK_INITIAL_WINDUP := 1.0        # windup antes do 1º arremesso
 const ROCK_BETWEEN_WINDUP := 0.9        # windup entre os arremessos
 const ROCK_SPEED := 250.0

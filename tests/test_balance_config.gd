@@ -5,7 +5,7 @@ func test_carrega_enemy_scaling() -> void:
 	assert_almost(BalanceConfig.enemy_scaling.get("GROWTH_HP", 0), 1.09)
 
 func test_carrega_player_scaling() -> void:
-	assert_almost(BalanceConfig.player_scaling.get("BASE_PHP", 0), 120.0)
+	assert_almost(BalanceConfig.player_scaling.get("BASE_PHP", 0), 90.0)
 	assert_almost(BalanceConfig.player_scaling.get("WEAPON_GROWTH", 0), 1.12)
 
 func test_carrega_nemesis() -> void:

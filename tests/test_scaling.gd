@@ -22,9 +22,9 @@ func test_rank_mult() -> void:
 # --- Curva do jogador (§1.2.2) ---
 
 func test_player_max_hp_linear() -> void:
-	assert_almost(Scaling.player_max_hp(1), 120.0)   # BASE_PHP
-	assert_almost(Scaling.player_max_hp(2), 134.0)   # +14
-	assert_almost(Scaling.player_max_hp(10), 120.0 + 9 * 14)
+	assert_almost(Scaling.player_max_hp(1), 90.0)    # BASE_PHP
+	assert_almost(Scaling.player_max_hp(2), 104.0)   # +14
+	assert_almost(Scaling.player_max_hp(10), 90.0 + 9 * 14)
 
 func test_player_atk_linear() -> void:
 	assert_almost(Scaling.player_atk(1), 5.0)
