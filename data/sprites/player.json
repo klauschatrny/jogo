@@ -4,6 +4,7 @@
   "scale": 2,
   "animations": {
     "idle":   { "row": 0, "frames": 7,  "fps": 8 },
+    "run":    { "row": 3, "frames": 10, "fps": 16 },
     "dodge":  { "row": 1, "frames": 16, "fps": 24, "loop": false },
     "attack": { "row": 2, "frames": 7,  "fps": 32, "loop": false }
   }

@@ -3,7 +3,7 @@
   "music": {
     "boss": {
       "stream": "res://assets/audio/music/boss_makai_symphony.mp3",
-      "volume_db": -12.0,
+      "volume_db": -16.0,
       "loop": true,
       "fade_in": 0.6,
       "fade_out": 2.0
@@ -22,12 +22,13 @@
       "volume_db": -16.0
     },
     "player_footsteps": {
-      "_comment": "Ciclo de corrida na GRAMA. MEDIDO no clipe de 0,76 s: 3 passadas, uma a cada ~0,25 s, a 1ª em 0,12 s. Tocado com Sfx.sustain (mesma regra do ogro): ao parar de correr, o ciclo só se cala num ponto de silêncio — nunca no meio de uma passada.",
+      "_comment": "Passadas de corrida na GRAMA. MEDIDO no clipe de 0,76 s: 3 passadas, uma a cada ~0,25 s, a 1ª em 0,12 s. Tocado com Sfx.play_step (mesma técnica da investida do ogro): o PlayerView recorta UMA passada por vez, no quadro exato da anim 'run' em que o pé apoia (STEP_FRAMES) — a cadência vem da animação, não deste arquivo. step_dur = quanto tempo o recorte soa; se um passo 'clicar' no fim, diminua-o.",
       "streams": ["res://assets/audio/sfx/player_footsteps.mp3"],
-      "volume_db": -12.0,
+      "volume_db": -16.0,
       "loop": true,
       "step_every": 0.253,
-      "first_step": 0.12
+      "first_step": 0.12,
+      "step_dur": 0.22
     },
     "skeleton_attack": {
       "_comment": "Rodízio automático: cada golpe de esqueleto alterna a variação (data/enemies/*.json -> attack_sfx).",

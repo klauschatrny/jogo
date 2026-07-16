@@ -74,6 +74,7 @@ var _door_x := 0.0
 var _boss_fogs: Array = []           # FogGateViews sobre as portas (só durante a luta)
 var _boss_door_left_x := 0.0
 var _boss_door_right_x := 0.0
+var _exit_door_x := 0.0              # saída LIVRE no fim do nível (a névoa já se dissipou com o chefe)
 var _entry_from_right := false       # o próximo _start_floor entra pela DIREITA (veio de voltar)
 var _attr_layer: CanvasLayer    # painel de atributos (aberto ao descansar na fogueira)
 
@@ -208,6 +209,7 @@ func _ready() -> void:
 	add_child(_player_view)
 	_camera.follow_target = _player_view                 # câmera passa a seguir o player
 	_hud.set_player(_run.player)
+	_hud.set_run(_run)                                   # liga o contador de mortes (playtest)
 
 	EventBus.player_died.connect(_on_player_died)
 
@@ -245,6 +247,7 @@ func _build_environment(width: float, is_boss_room: bool, hazards := []) -> void
 	_gate = null              # refeitos por _spawn_sanctuary; filhos do _env antigo já foram liberados
 	_lever = null
 	_fog = null
+	_exit_door_x = 0.0        # refeita por _spawn_exit_passage, quando o nível adiante já caiu
 	_bloodstain = null        # refeita por _spawn_bloodstain_if_here (filha do _env, já liberada)
 	_env = Node2D.new()
 	add_child(_env)
@@ -1191,6 +1194,8 @@ func _process(delta: float) -> void:
 		_update_guard_wake()
 		if String(_floor_config.get("type", "")) == "boss":
 			_update_boss_doors()
+		else:
+			_update_exit_door()
 
 	# A marca de sangue (quando presente, em QUALQUER fase — inclusive na arena do chefe): recolhe
 	# automático ao passar por cima dela, como no Dark Souls (sem tecla).
@@ -1461,6 +1466,14 @@ func _prev_floor() -> void:
 	_run.retreat_floor()
 	_start_floor()
 
+## A porta LIVRE no fim de um nível de sala/descanso (só existe quando o chefe adiante já caiu —
+## ver _spawn_exit_passage): cruza andando, como as portas da arena. A _transition trava re-disparo.
+func _update_exit_door() -> void:
+	if _exit_door_x <= 0.0 or not is_instance_valid(_player_view):
+		return
+	if absf(_player_view.global_position.x - _exit_door_x) <= DOOR_REACH:
+		_transition(_next_floor)
+
 ## A ÁREA DE DESCANSO (nível "rest"): só a fogueira, perto da entrada, e a névoa no fim. Nada de
 ## alavanca, portão ou guarda — aqui não há o que vencer, e por isso nada tranca a fogueira.
 func _spawn_rest_area(floor_n: int) -> void:
@@ -1476,7 +1489,17 @@ func _spawn_rest_area(floor_n: int) -> void:
 	bf.rested.connect(_on_bonfire_rested)
 	_bonfires.append(bf)
 
+	_spawn_exit_passage(floor_n)
+
+## A saída no extremo do nível: a névoa do chefe (atravessa com INTERAGIR) — ou, se o nível
+## adiante JÁ FOI VENCIDO, uma porta livre que se cruza andando (_update_exit_door), como as da
+## arena: a névoa se dissipou junto com o chefe e não volta mais.
+func _spawn_exit_passage(floor_n: int) -> void:
 	var fog_x := _arena_width - FOG_BACK
+	if _levels.has(floor_n + 1) and _run.is_cleared(floor_n + 1):
+		_spawn_door(fog_x, Palette.ACCENT.darkened(0.35))
+		_exit_door_x = fog_x
+		return
 	_fog = FogGateView.new()
 	_fog.position = Vector2(fog_x, GROUND_Y)
 	_env.add_child(_fog)
@@ -1517,12 +1540,9 @@ func _spawn_sanctuary(floor_n: int) -> void:
 	bf.rested.connect(_on_bonfire_rested)
 	_bonfires.append(bf)
 
-	# A névoa do chefe, no extremo do refúgio (encostada na parede do fim). Atravessa com INTERAGIR.
-	var fog_x := _arena_width - FOG_BACK
-	_fog = FogGateView.new()
-	_fog.position = Vector2(fog_x, GROUND_Y)
-	_env.add_child(_fog)
-	_fog.setup(fog_x, _player_view)
+	# A saída do refúgio, no extremo (encostada na parede do fim): a névoa do chefe — ou uma porta
+	# livre, se o chefe adiante já caiu (_spawn_exit_passage).
+	_spawn_exit_passage(floor_n)
 
 ## Alavanca puxada: abre o portão (na hora, com animação) e persiste isso na run — o atalho fica
 ## aberto para sempre, inclusive depois de morrer e voltar.

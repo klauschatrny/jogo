@@ -24,7 +24,8 @@ const FINISHER_KNOCKBACK := 2.4  # o 3º golpe empurra bem mais
 const ATTACK_CONTACT_FRAME := 2  # quadro da anim de ataque em que a lâmina conecta (impacto)
 const ATTACK_SFX := "player_attack"        # 3 sons = os 3 passos do combo, na ordem (ver _attack)
 const DODGE_SFX := "player_dodge"          # rolamento
-const FOOTSTEPS_SFX := "player_footsteps"  # ciclo de passos em loop enquanto corre no chão
+const FOOTSTEPS_SFX := "player_footsteps"  # passadas avulsas, uma por apoio do pé (ver STEP_FRAMES)
+const STEP_FRAMES: Array[int] = [0, 5]     # quadros da anim "run" em que um pé APOIA no chão
 const HIT_HEIGHT := 56.0         # altura do retângulo de dano; o comprimento vem do attack_range da arma
 
 var data: Player                    # entidade Core
@@ -140,7 +141,7 @@ func _physics_process(delta: float) -> void:
 			velocity.y += GRAVITY * delta
 		move_and_slide()
 		_play_anim("idle")
-		_update_footsteps(0.0)
+		_update_footsteps()
 		return
 
 	_attack_cd = maxf(0.0, _attack_cd - delta)
@@ -184,7 +185,7 @@ func _physics_process(delta: float) -> void:
 		_flip(_dodge_dir)
 		_play_anim("dodge")
 		move_and_slide()
-		_update_footsteps(0.0)   # rolamento não são passos
+		_update_footsteps()   # rolamento não são passos (a anim "dodge" já os cala)
 		return
 
 	# Frasco de cura (o Estus): beber TRAVA o jogador no lugar, SEM i-frames. A cura só cai no fim
@@ -194,7 +195,7 @@ func _physics_process(delta: float) -> void:
 		_drink_time -= delta
 		velocity.x = 0.0
 		move_and_slide()
-		_update_footsteps(0.0)
+		_update_footsteps()
 		_play_anim("drink")
 		_update_drink_glow(delta)
 		if _drink_time <= 0.0 and _drink_heal > 0:
@@ -234,7 +235,7 @@ func _physics_process(delta: float) -> void:
 
 	_flip(_facing)
 	_update_locomotion(ix)
-	_update_footsteps(move_x)
+	_update_footsteps()
 
 	# Não pode atacar durante a trava de anim (o próprio ataque ou o rolamento). O cooldown do combo
 	# (dur+gap) já é maior que a animação, então isto não atrasa a sequência — só garante que a anim
@@ -324,11 +325,25 @@ func _flip(dir: Vector2) -> void:
 func _play_anim(anim: String) -> void:
 	SpriteLoader.play_safe(_sprite, anim)
 
-## Passos: o ciclo toca enquanto ele corre NO CHÃO por vontade própria. Cessa ao parar, pular,
-## rolar, ficar travado no ataque ou ser empurrado (o knockback não entra em move_x). `Sfx.sustain`
-## nunca corta uma passada no meio: ao parar, ela soa inteira antes de o ciclo se calar.
-func _update_footsteps(move_x: float) -> void:
-	Sfx.sustain(FOOTSTEPS_SFX, is_on_floor() and absf(move_x) > 1.0)
+var _step_index := 0        # rodízio das passadas do arquivo (1ª, 2ª, 3ª, 1ª...)
+var _last_step_frame := -1  # último quadro visto (dispara UMA vez por quadro, não por tick)
+
+## Passos sincronizados com a ANIMAÇÃO: um som de passada dispara no exato quadro em que um pé
+## apoia no chão (STEP_FRAMES da anim "run"). `Sfx.play_step` recorta UMA passada do arquivo por
+## vez, no tom original, então o som acompanha qualquer fps da animação — mude o fps no manifesto
+## e a cadência sonora segue junto. Pular/rolar/atacar/beber trocam a anim, o que já cala os
+## passos sem condição extra (por isso a função não precisa mais do move_x).
+func _update_footsteps() -> void:
+	if _sprite == null or _sprite.animation != "run" or not is_on_floor():
+		_last_step_frame = -1
+		return
+	var f := _sprite.frame
+	if f == _last_step_frame:
+		return
+	_last_step_frame = f
+	if f in STEP_FRAMES:
+		Sfx.play_step(FOOTSTEPS_SFX, _step_index)
+		_step_index += 1
 
 ## Escolhe a animação de locomoção (pulo/corrida/parado), salvo durante o ataque (_anim_lock).
 func _update_locomotion(ix: float) -> void:

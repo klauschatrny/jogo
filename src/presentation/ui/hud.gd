@@ -16,6 +16,8 @@ const OUTLINE := 2.0          # espessura do contorno escuro em volta das barras
 const OUTLINE_COLOR := Color(0.03, 0.03, 0.05)
 
 var _player: Player
+var _run: RunState            # fonte do contador de mortes (playtest); pode ficar nulo (ex.: combat_test)
+var _deaths: Label            # contador de MORTES no canto superior direito (instrumentação de playtest)
 var _hp_outline: ColorRect
 var _hp_bg: ColorRect
 var _bar: ColorRect
@@ -77,6 +79,9 @@ func _ready() -> void:
 	# Frasco de cura: a única cura sob demanda. Precisa estar à vista para virar decisão ("bebo a
 	# última carga agora?"). Ícone visual (estilo Estus) com o número da carga atual embaixo.
 	_build_flask()
+
+	# Contador de mortes (playtest): visível para medir a dificuldade nas sessões de teste.
+	_build_deaths()
 
 	_refresh()
 
@@ -177,8 +182,26 @@ func _build_flask() -> void:
 	_flask_count.add_theme_constant_override("outline_size", 4)
 	_flask_icon.add_child(_flask_count)
 
+## Contador de MORTES (instrumentação de playtest): canto superior direito, alinhado pela
+## margem de 12px das barras. Só aparece quando há um RunState (set_run) — no combat_test fica oculto.
+func _build_deaths() -> void:
+	_deaths = Label.new()
+	_deaths.position = Vector2(628.0 - 150.0, 8.0)   # caixa encostada na margem direita (base 640×360)
+	_deaths.size = Vector2(150.0, 20.0)
+	_deaths.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_deaths.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_deaths.add_theme_color_override("font_color", Color(0.88, 0.52, 0.52))   # vermelho apagado, tom de morte
+	_deaths.add_theme_color_override("font_outline_color", OUTLINE_COLOR)
+	_deaths.add_theme_constant_override("outline_size", 4)
+	_deaths.visible = false
+	add_child(_deaths)
+
 func set_player(p: Player) -> void:
 	_player = p
+	_refresh()
+
+func set_run(r: RunState) -> void:
+	_run = r
 	_refresh()
 
 ## Atualiza todo frame: reflete dano, cura (lifesteal) e level-up sem depender de eventos.
@@ -190,6 +213,10 @@ func _bar_width(max_value: float, px_per_unit: float) -> float:
 	return clampf(max_value * px_per_unit, BAR_MIN, BAR_MAX)
 
 func _refresh() -> void:
+	# Mortes (playtest): antes do guard do player — o contador não depende dele.
+	if _deaths != null and _run != null:
+		_deaths.visible = true
+		_deaths.text = "Mortes: %d" % _run.deaths
 	if _player == null or _player.stats == null:
 		return
 	# Vida: o fundo cresce com a vida MÁXIMA; o preenchimento é a fração atual dessa largura.
