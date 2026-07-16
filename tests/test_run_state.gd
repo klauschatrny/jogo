@@ -199,53 +199,54 @@ func test_nivel_vencido_fica_vencido() -> void:
 	assert_eq(rs.cleared_floors.size(), 1)
 	assert_false(rs.is_cleared(2))
 
-# --- O Eco (marca de sangue) ---
+# --- A mancha de sangue (bloodstain) ---
 
-func test_morrer_deixa_o_eco_com_as_almas() -> void:
+func test_morrer_deixa_a_marca_com_as_almas() -> void:
 	var rs := _run()
 	rs.player.gain_souls(240)
-	rs.drop_echo(1, 900.0)
+	var caidas := rs.drop_bloodstain(1, 900.0)
+	assert_eq(caidas, 240, "devolve quantas caíram")
 	assert_eq(rs.player.souls, 0, "o bolso esvazia")
-	assert_true(rs.echo != null)
-	assert_eq(rs.echo.souls, 240, "e as almas ficam com o Eco")
-	assert_almost(rs.echo.death_x, 900.0)
-	assert_true(rs.has_echo_on(1))
-	assert_false(rs.has_echo_on(2), "só no nível onde caiu")
+	assert_true(rs.has_bloodstain())
+	assert_eq(rs.bloodstain_souls, 240, "e as almas ficam na marca")
+	assert_almost(rs.bloodstain_x, 900.0)
+	assert_true(rs.has_bloodstain_on(1))
+	assert_false(rs.has_bloodstain_on(2), "só no nível onde caiu")
 
-func test_sem_almas_nao_deixa_eco() -> void:
+func test_sem_almas_nao_deixa_marca() -> void:
 	var rs := _run()
-	rs.drop_echo(1, 900.0)
-	assert_true(rs.echo == null, "um Eco vazio seria só um inimigo a mais no caminho")
+	assert_eq(rs.drop_bloodstain(1, 900.0), 0)
+	assert_false(rs.has_bloodstain(), "uma marca vazia não teria o que recolher")
 
-func test_vencer_o_eco_devolve_as_almas() -> void:
+func test_tocar_a_marca_devolve_as_almas() -> void:
 	var rs := _run()
 	rs.player.gain_souls(240)
-	rs.drop_echo(1, 900.0)
-	var back := rs.recover_echo()
+	rs.drop_bloodstain(1, 900.0)
+	var back := rs.recover_bloodstain()
 	assert_eq(back, 240)
 	assert_eq(rs.player.souls, 240)
-	assert_true(rs.echo == null)
-	assert_false(rs.has_echo_on(1))
+	assert_false(rs.has_bloodstain())
+	assert_false(rs.has_bloodstain_on(1))
 
-## A aposta do gênero: morrer de novo antes de chegar no Eco substitui a marca — as almas
+## A aposta do gênero: morrer de novo antes de chegar na marca a substitui — as almas
 ## antigas se perdem PARA SEMPRE.
-func test_morrer_de_novo_apaga_o_eco_anterior() -> void:
+func test_morrer_de_novo_apaga_a_marca_anterior() -> void:
 	var rs := _run()
 	rs.player.gain_souls(500)
-	rs.drop_echo(1, 900.0)               # 500 almas ficam lá
+	rs.drop_bloodstain(1, 900.0)         # 500 almas ficam lá
 	rs.player.gain_souls(60)             # juntou umas poucas no caminho de volta
-	rs.drop_echo(1, 300.0)               # morreu antes de chegar nelas
-	assert_eq(rs.echo.souls, 60, "só as novas — as 500 se perderam")
-	assert_almost(rs.echo.death_x, 300.0)
-	assert_eq(rs.recover_echo(), 60)
+	rs.drop_bloodstain(1, 300.0)         # morreu antes de chegar nelas
+	assert_eq(rs.bloodstain_souls, 60, "só as novas — as 500 se perderam")
+	assert_almost(rs.bloodstain_x, 300.0)
+	assert_eq(rs.recover_bloodstain(), 60)
 
-func test_o_eco_e_construido_a_partir_de_voce() -> void:
+## A marca fica no ponto EXATO da queda, sem relocação — inclusive dentro de uma arena de chefe.
+func test_marca_fica_no_ponto_exato_inclusive_no_boss() -> void:
 	var rs := _run()
 	rs.player.gain_souls(100)
-	rs.drop_echo(1, 500.0)
-	var snap: Dictionary = rs.echo.player_snapshot
-	assert_eq(String(snap.get("name", "")), rs.player.name)
-	assert_eq(int(snap.get("level", 0)), rs.player.level)
+	rs.drop_bloodstain(2, 512.0)         # nível 2 = arena do Ogro, no meio dela
+	assert_true(rs.has_bloodstain_on(2), "fica no próprio nível do chefe")
+	assert_almost(rs.bloodstain_x, 512.0, 0.01, "exatamente onde caiu")
 
 func test_cutscene_do_boss_so_na_primeira_vez() -> void:
 	var rs := _run()

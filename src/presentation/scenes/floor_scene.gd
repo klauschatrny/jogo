@@ -5,7 +5,7 @@
 extends Node2D
 
 # --- DEBUG (desligue pondo DEBUG = false antes de buildar de verdade) ---
-const DEBUG := true
+const DEBUG := false
 const DEBUG_START_FLOOR := 0   # 0 = normal (tutorial); 2 = pula direto para a arena do Ogro
 const DEBUG_START_LEVEL := 0   # 0 = normal; nível inicial do jogador
 
@@ -20,6 +20,14 @@ var _floor_config: Dictionary = {}   # config do nível ATUAL (de levels.json)
 var _levels: Dictionary = {}         # nível(int) -> config (data/floors/levels.json)
 var _hazards: Dictionary = {}        # id -> definição de armadilha (data/hazards.json)
 var _bonfires: Array = []            # fogueiras (checkpoints) do nível atual — BonfireView
+var _guard: Array = []               # a GUARDA do refúgio: esqueletos do run-back (nível vencido) — EnemyView
+var _bloodstain: BloodstainView      # a marca de sangue na cena, quando presente (passiva, recolhe ao tocar)
+# Toast de dica do tutorial (substitui as antigas placas): aparece no HUD conforme o player anda.
+var _tip_root: Control               # a caixa da dica (no _layer); invisível quando não há dica
+var _tip_label: Label
+var _tip_time := 0.0                 # segundos restantes da dica na tela (0 = nenhuma)
+var _tip_tween: Tween
+var _tips_done := {}                 # índices de _TUTORIAL_TIPS já mostrados nesta visita à vila
 var _fight_width := 1920.0           # largura da ZONA DE COMBATE (só a 1ª parte do corredor de um
                                      # nível de sala; o refúgio — portão, fogueira, névoa — vem depois)
 var _gate: GateView                  # portão de madeira que a alavanca abre (nível de sala)
@@ -45,9 +53,6 @@ var _boss_view: EnemyView
 var _intro_token := 0           # invalida cutscenes de entrada antigas ainda no ar (ver _boss_intro)
 var _boss_landing_sfx := ""     # som do impacto na cutscene de entrada ("landing_sfx" no JSON do boss)
 var _boss_bar: BossHealthBar    # barra de vida grande no rodapé (Dark Souls)
-# O Eco (marca de sangue) está ligado? Vem de "nemesis"/"ENABLED" no balance.json. Desligado, a
-# morte ainda tira as almas — elas só não ficam esperando em lugar nenhum.
-var _nemesis_on := false
 
 # repositórios carregados uma vez
 var _enemy_repo: EnemyRepository
@@ -95,28 +100,34 @@ const TOTAL_LEVELS := 2
 # dela, um trecho seguro de SANCTUARY_LEN com o portão, a fogueira e a névoa do chefe. Assim a
 # sala da fogueira deixou de ser uma tela à parte (com fade) e virou parte contínua do mapa, que o
 # jogador percorre indo e voltando.
-const SANCTUARY_LEN := 620.0   # comprimento do refúgio, somado à zona de combate
+const SANCTUARY_LEN := 980.0   # comprimento do refúgio, somado à zona de combate (folga p/ a guarda)
 const LEVER_BACK := 96.0       # a alavanca fica este tanto à ESQUERDA do portão (depois do Necromante)
-const BONFIRE_IN := 240.0      # a fogueira, este tanto à DIREITA do portão (dentro do refúgio)
+const BONFIRE_IN := 160.0      # a fogueira, este tanto à DIREITA do portão (logo depois dele)
 const FOG_BACK := 34.0         # a névoa, este tanto antes da parede do fim
+# A GUARDA do refúgio (run-back): postada no trecho entre a fogueira e a névoa, com folga dos dois.
+const GUARD_AFTER_BONFIRE := 180.0   # começa este tanto DEPOIS da fogueira (bolha segura ao redor do fogo)
+const GUARD_BEFORE_FOG := 120.0      # e termina este tanto ANTES da névoa
+const GUARD_WAKE := 140.0            # um esqueleto dormente da guarda desperta a esta distância do player
+const MINION_WAKE := 150.0          # idem para os esqueletos DORMENTES espalhados numa sala (sem Necromante)
 
 # --- Vila de tutorial (fora da dungeon; roda uma vez antes do nível 1) ---
 const TUTORIAL_LENGTH := 1920.0
-# [x no corredor, texto da placa]. Ensinam as teclas reais (game_manager._setup_input_actions).
-const _TUTORIAL_SIGNS := [
-	[230.0, "MOVER\nA  /  D"],
-	[520.0, "PULAR\nESPACO / W"],
-	[880.0, "ATACAR\nJ  /  K\nno boneco ->"],
-	[1240.0, "ESQUIVAR\nSHIFT / L\n(gasta stamina)"],
-	[1420.0, "BURACO ->\ncair MATA.\npule. rolar\nnao salva."],
-	[1700.0, "Parado, a stamina\nregenera. Sem ela,\nnao ataca nem esquiva."],
-	[1820.0, "ENTRADA DA\nDUNGEON ->"],
+# Dicas do tutorial: [x-gatilho no corredor, texto]. Não são mais placas no mundo — aparecem como
+# um TOAST no HUD quando o player alcança aquele x (uma vez cada) e somem sozinhas em TIP_SECONDS,
+# ou na hora, se ele apertar INTERAGIR (E/F). Ensinam as teclas reais (game_manager._setup_input_actions).
+const _TUTORIAL_TIPS := [
+	[0.0,    "Ande com  A / D"],
+	[480.0,  "Pule com  ESPACO / W"],
+	[840.0,  "Ataque com  J / K  —  teste no boneco à frente"],
+	[1200.0, "Esquive com  SHIFT / L   (gasta stamina)"],
+	[1520.0, "Parado, a stamina se recupera.  Sem ela, você não ataca nem esquiva."],
+	[1760.0, "A porta à frente leva à Dungeon"],
 ]
-# Armadilhas da vila: [id, x, largura]. O que cada uma FAZ está em data/hazards.json — aqui só
-# o lugar. É o primeiro obstáculo não-combativo do jogo: ensina que o cenário também machuca.
-const _TUTORIAL_HAZARDS := [
-	{ "id": "spikes", "x": 1540.0, "width": 56.0 },
-]
+const TIP_SECONDS := 10.0     # quanto tempo uma dica fica na tela antes de sumir sozinha
+# Armadilhas da vila: [id, x, largura]. O que cada uma FAZ está em data/hazards.json — aqui só o
+# lugar. Hoje NÃO há nenhum poço no jogo (removido a pedido); a maquinaria (HazardView, _off_pit,
+# _ledge_ahead) fica de pé, esperando um nível que declare "hazards".
+const _TUTORIAL_HAZARDS := []
 
 func _ready() -> void:
 	randomize()
@@ -164,10 +175,15 @@ func _ready() -> void:
 	_boss_bar = BossHealthBar.new()          # barra grande no rodapé (só visível na luta de boss)
 	_boss_bar.visible = false
 	_layer.add_child(_boss_bar)
+	# Mensagem de seção (andar/avisos). OCULTA a pedido: o texto branco de instrução ("siga até a
+	# porta da Dungeon" etc.) saiu da tela. O nó fica vivo (muitas partes ainda fazem _msg.text = …,
+	# inofensivo) — só nunca aparece. Instruções agora só pelo toast de dica e pelos prompts de mundo.
 	_msg = Label.new()
 	_msg.position = Vector2(16, 36)
-	_msg.add_theme_font_size_override("font_size", 8)   # mensagem de seção (andar/avisos)
+	_msg.add_theme_font_size_override("font_size", 8)
+	_msg.visible = false
 	_layer.add_child(_msg)
+	_build_tip_ui()          # o toast de dica do tutorial (oculto até a 1ª dica disparar)
 
 	var weapons := WeaponRepository.new()
 	weapons.load_all()
@@ -181,7 +197,6 @@ func _ready() -> void:
 	_enemy_repo.load_all()
 	_boss_repo = BossRepository.new()
 	_boss_repo.load_all()
-	_nemesis_on = bool(BalanceConfig.nemesis.get("ENABLED", false))
 
 	_run = RunState.start_new("Kael", weapon, aug_repo.all_augments(), randi())
 	_player_view = PlayerView.new()
@@ -195,7 +210,8 @@ func _ready() -> void:
 
 	if DEBUG:
 		_apply_debug_start()
-		_show_debug_legend()
+		# A legenda de debug na tela fica DESLIGADA a pedido; os atalhos seguem ativos (ver _debug_input).
+		# _show_debug_legend()
 
 	# Começa na vila de tutorial (fora da dungeon); a porta ao fim leva ao nível 1.
 	# Se o debug pular direto para um andar (DEBUG_START_FLOOR > 1), entra na dungeon.
@@ -226,6 +242,7 @@ func _build_environment(width: float, is_boss_room: bool, hazards := []) -> void
 	_gate = null              # refeitos por _spawn_sanctuary; filhos do _env antigo já foram liberados
 	_lever = null
 	_fog = null
+	_bloodstain = null        # refeita por _spawn_bloodstain_if_here (filha do _env, já liberada)
 	_env = Node2D.new()
 	add_child(_env)
 
@@ -304,6 +321,7 @@ func _build_environment(width: float, is_boss_room: bool, hazards := []) -> void
 			edge.z_index = -5
 			_env.add_child(edge)
 
+	_decorate_scenery(width, dim)   # enfeites de fundo (cercas, pedras, ruínas, árvores) — cosmético
 	_camera.setup_corridor(width)
 
 ## Uma laje de chão de `a` a `b`, com o TOPO em `top` (o corpo desce 200px a partir dali).
@@ -393,6 +411,7 @@ func _spawn_hazards(list: Array) -> void:
 ## painel de atributos, que é onde os pontos ganhos subindo de nível viram poder de verdade.
 func _on_bonfire_rested(bf: BonfireView) -> void:
 	_run.rest_at(_run.current_floor, bf.pos_x)
+	_reset_guard()   # descansar RENASCE a guarda do refúgio (o run-back clássico)
 	Juice.burst(_env, bf.global_position + Vector2(0, -10), Color(1.0, 0.7, 0.25), 14, 90.0)
 	_open_attributes()
 
@@ -456,9 +475,9 @@ func _reset_player_to_start(x := PLAYER_START_X) -> void:
 	_camera.global_position.x = _player_view.global_position.x
 
 # ---------------------------------------------------------------------------
-# Vila de tutorial (fora da dungeon). Área tranquila de 1920 onde o player aprende os
-# controles básicos por placas ao longo do caminho + um boneco de treino, com a porta de
-# entrada da dungeon ao fim. Roda uma vez no começo (antes do nível 1). Sem inimigos hostis.
+# Vila de tutorial (fora da dungeon). Área tranquila de 1920 onde o player aprende os controles
+# básicos por DICAS que surgem no HUD conforme ele anda (ver _update_tutorial_tips) + um boneco de
+# treino, com a porta da dungeon ao fim. Roda uma vez no começo (antes do nível 1). Sem inimigos.
 # ---------------------------------------------------------------------------
 
 func _start_tutorial() -> void:
@@ -471,42 +490,17 @@ func _start_tutorial() -> void:
 	# corpo nasce "vendo" o player dentro dela, e o mataria de novo assim que ele renascesse.
 	_reset_player_to_start()
 	_spawn_hazards(_TUTORIAL_HAZARDS)
-	for s in _TUTORIAL_SIGNS:
-		_spawn_sign(float(s[0]), String(s[1]))
 	_spawn_training_dummy(980.0)
 	_spawn_door(_arena_width - 40.0, Palette.ACCENT)
-	_msg.text = "Vila — aprenda os controles e vá até a porta da Dungeon ->"
-
-## Placa de madeira com instrução (texto em world-space, rola com a câmera). Filha do _env.
-func _spawn_sign(x: float, text: String) -> void:
-	var post_node := Node2D.new()
-	post_node.position = Vector2(x, GROUND_Y)
-	post_node.z_index = -3                       # à frente do chão, atrás das entidades
-	var post := ColorRect.new()
-	post.color = Color(0.30, 0.20, 0.11)
-	post.size = Vector2(4, 40)
-	post.position = Vector2(-2, -40)
-	post_node.add_child(post)
-	var board := ColorRect.new()
-	board.color = Color(0.60, 0.45, 0.25)
-	board.size = Vector2(104, 46)
-	board.position = Vector2(-52, -86)
-	post_node.add_child(board)
-	var lbl := Label.new()
-	lbl.text = text
-	lbl.add_theme_font_size_override("font_size", 8)
-	lbl.add_theme_color_override("font_color", Color(0.12, 0.07, 0.03))
-	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	lbl.size = Vector2(104, 46)
-	lbl.position = Vector2(-52, -86)
-	post_node.add_child(lbl)
-	_env.add_child(post_node)
+	_tips_done.clear()          # as dicas recomeçam a cada visita à vila
+	_hide_tip()
+	_msg.text = "Vila — siga até a porta da Dungeon →"
+	_schedule_first_tip()       # a 1ª dica (mover) só entra 3s depois de começar
 
 ## Boneco de treino: esqueleto blindado passivo (dormant) pra praticar o ataque. Some se
 ## derrotado. Não dá XP (tier "minion") nem participa da lógica de sala.
 func _spawn_training_dummy(x: float) -> void:
-	var base := _enemy_repo.get_by_id("enm_skeleton_armored")
+	var base := _enemy_repo.get_by_id("enm_skeleton_minion")
 	if base.is_empty():
 		return
 	var enemy := EnemyFactory.build(base, 1)
@@ -514,6 +508,99 @@ func _spawn_training_dummy(x: float) -> void:
 	view.set_meta("tier", "minion")
 	view.dormant = true
 	_add_view(view, enemy, Vector2(x, GROUND_Y - 40.0))
+
+# ---------------------------------------------------------------------------
+# Toast de dica (HUD). Uma caixa centrada na parte INFERIOR da tela com uma instrução. Aparece por
+# posição no tutorial (_update_tutorial_tips) e some em TIP_SECONDS ou quando o player aperta INTERAGIR.
+# ---------------------------------------------------------------------------
+
+func _build_tip_ui() -> void:
+	const W := 520.0
+	const H := 34.0
+	var x := (640.0 - W) * 0.5
+	var y := 306.0          # parte INFERIOR da tela (base 640×360; caixa de 34px com margem do fundo)
+
+	_tip_root = Control.new()
+	_tip_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tip_root.visible = false
+	_tip_root.modulate.a = 0.0
+	_layer.add_child(_tip_root)
+
+	var bg := ColorRect.new()
+	bg.color = Color(0.05, 0.04, 0.08, 0.82)
+	bg.size = Vector2(W, H)
+	bg.position = Vector2(x, y)
+	_tip_root.add_child(bg)
+	var strip := ColorRect.new()          # faixa de destaque no topo da caixa
+	strip.color = Color(Palette.ACCENT, 0.9)
+	strip.size = Vector2(W, 2.0)
+	strip.position = Vector2(x, y)
+	_tip_root.add_child(strip)
+
+	_tip_label = Label.new()
+	_tip_label.add_theme_font_size_override("font_size", 11)
+	_tip_label.add_theme_color_override("font_color", Palette.TEXT)
+	_tip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_tip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_tip_label.size = Vector2(W, 20.0)
+	_tip_label.position = Vector2(x, y + 4.0)
+	_tip_root.add_child(_tip_label)
+
+	var hint := Label.new()
+	hint.text = "E  para fechar"
+	hint.add_theme_font_size_override("font_size", 7)
+	hint.add_theme_color_override("font_color", Color(Palette.TEXT, 0.55))
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.size = Vector2(W, 10.0)
+	hint.position = Vector2(x, y + H - 11.0)
+	_tip_root.add_child(hint)
+
+## Mostra uma dica no HUD por TIP_SECONDS (ou até o player apertar E). Uma nova substitui a atual.
+func _show_tip(text: String) -> void:
+	if _tip_label == null:
+		return
+	_tip_label.text = text
+	_tip_time = TIP_SECONDS
+	_tip_root.visible = true
+	if _tip_tween != null and _tip_tween.is_valid():
+		_tip_tween.kill()
+	_tip_tween = create_tween()
+	_tip_tween.tween_property(_tip_root, "modulate:a", 1.0, 0.18)
+
+func _hide_tip() -> void:
+	_tip_time = 0.0
+	if _tip_root == null or not _tip_root.visible:
+		return
+	if _tip_tween != null and _tip_tween.is_valid():
+		_tip_tween.kill()
+	_tip_tween = create_tween()
+	_tip_tween.tween_property(_tip_root, "modulate:a", 0.0, 0.18)
+	_tip_tween.tween_callback(func(): if _tip_root != null: _tip_root.visible = false)
+
+## A 1ª dica (mover) NÃO aparece de cara: entra 3s depois de a vila carregar. Pré-marca a dica 0
+## como "já disparada" para o _process não mostrá-la antes da hora, e só a exibe se, ao fim dos 3s,
+## o player ainda estiver no início (nenhuma outra dica disparada por ter andado).
+const FIRST_TIP_DELAY := 3.0
+
+func _schedule_first_tip() -> void:
+	if _TUTORIAL_TIPS.is_empty():
+		return
+	_tips_done[0] = true
+	await get_tree().create_timer(FIRST_TIP_DELAY).timeout
+	if _phase == "tutorial" and _tips_done.size() == 1:   # ainda no começo, nada mais disparou
+		_show_tip(String(_TUTORIAL_TIPS[0][1]))
+
+## No tutorial, dispara a dica cujo x o player acabou de alcançar (uma vez cada).
+func _update_tutorial_tips() -> void:
+	if not is_instance_valid(_player_view):
+		return
+	var px := _player_view.global_position.x
+	for i in _TUTORIAL_TIPS.size():
+		if _tips_done.has(i):
+			continue
+		if px >= float(_TUTORIAL_TIPS[i][0]):
+			_tips_done[i] = true
+			_show_tip(String(_TUTORIAL_TIPS[i][1]))
 
 ## Casinhas simples ao fundo, só pra dar cara de vila (placeholder, sem arte).
 func _decorate_village() -> void:
@@ -537,8 +624,117 @@ func _decorate_village() -> void:
 		house.add_child(win)
 		_env.add_child(house)
 
+# ---------------------------------------------------------------------------
+# Enfeites de fundo do cenário (para não ficar cru): cercas, pedras, ruínas e árvores mortas.
+# São placeholders em ColorRect/Polygon2D (sem arte ainda), SEM colisão, num z atrás das entidades
+# e à frente do chão. Espalhados de forma DETERMINÍSTICA — um RNG semeado pela largura do nível —
+# então o cenário fica idêntico a cada morte/reentrada, em vez de embaralhar. É puramente cosmético,
+# então usa um RNG local, não o RNGService (reservado à lógica reproduzível da run).
+# ---------------------------------------------------------------------------
+
+const DECO_Z := -4              # atrás das entidades (0) e das placas (-3), à frente do chão (-5)
+
+func _decorate_scenery(width: float, dim: float) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(width) * 31 + int(dim * 1000.0)   # estável por nível; muda entre sala e arena do boss
+	var x := 70.0
+	while x < width - 60.0:
+		var node: Node2D
+		match rng.randi() % 4:
+			0: node = _deco_dead_tree(rng)
+			1: node = _deco_rock(rng)
+			2: node = _deco_fence(rng)
+			_: node = _deco_ruin(rng)
+		node.position = Vector2(x, GROUND_Y)
+		node.z_index = DECO_Z
+		node.modulate = Color(1, 1, 1).darkened(dim)   # acompanha o escurecimento da sala do boss
+		_env.add_child(node)
+		x += rng.randf_range(150.0, 300.0)
+
+## Árvore morta: tronco fino + alguns galhos tortos (retângulos rotacionados).
+func _deco_dead_tree(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var h := rng.randf_range(48.0, 82.0)
+	var bark := Color(0.16, 0.12, 0.11)
+	var trunk := ColorRect.new()
+	trunk.color = bark
+	trunk.size = Vector2(6, h)
+	trunk.position = Vector2(-3, -h)
+	n.add_child(trunk)
+	for i in 3:
+		var br := ColorRect.new()
+		br.color = bark
+		var bl := rng.randf_range(12.0, 22.0)
+		br.size = Vector2(bl, 3)
+		var dir := 1.0 if rng.randi() % 2 == 0 else -1.0
+		br.position = Vector2(0.0 if dir > 0.0 else -bl, -h + rng.randf_range(6.0, h * 0.6))
+		br.rotation = dir * rng.randf_range(0.3, 0.7)
+		n.add_child(br)
+	return n
+
+## Pedra: um polígono irregular baixo, apoiado no chão.
+func _deco_rock(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var w := rng.randf_range(22.0, 46.0)
+	var h := rng.randf_range(12.0, 26.0)
+	var rock := Polygon2D.new()
+	rock.color = Color(0.30, 0.30, 0.35)
+	rock.polygon = PackedVector2Array([
+		Vector2(-w * 0.5, 0), Vector2(-w * 0.42, -h * 0.7), Vector2(-w * 0.1, -h),
+		Vector2(w * 0.28, -h * 0.82), Vector2(w * 0.5, 0),
+	])
+	n.add_child(rock)
+	return n
+
+## Cerca de madeira: postes com dois trilhos; às vezes um poste faltando (quebrada).
+func _deco_fence(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var wood := Color(0.34, 0.25, 0.16)
+	var posts := rng.randi_range(3, 5)
+	var gap := 18.0
+	for i in posts:
+		if rng.randf() < 0.2:
+			continue                     # poste faltando: cerca meio caída
+		var post := ColorRect.new()
+		post.color = wood
+		post.size = Vector2(4, 28)
+		post.position = Vector2(i * gap, -28)
+		n.add_child(post)
+	for ry in [-22.0, -11.0]:
+		var rail := ColorRect.new()
+		rail.color = wood
+		rail.size = Vector2((posts - 1) * gap + 4, 3)
+		rail.position = Vector2(0, ry)
+		n.add_child(rail)
+	return n
+
+## Construção meio destruída: uma parede com topo irregular (duas colunas desiguais) e uma fresta escura.
+func _deco_ruin(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var w := rng.randf_range(50.0, 92.0)
+	var h := rng.randf_range(42.0, 72.0)
+	var stone := Color(0.24, 0.22, 0.28)
+	var left := ColorRect.new()
+	left.color = stone
+	left.size = Vector2(w * 0.38, h)
+	left.position = Vector2(-w * 0.5, -h)
+	n.add_child(left)
+	var right := ColorRect.new()
+	right.color = stone
+	var rh := h * rng.randf_range(0.5, 0.82)
+	right.size = Vector2(w * 0.42, rh)
+	right.position = Vector2(w * 0.08, -rh)
+	n.add_child(right)
+	var win := ColorRect.new()
+	win.color = Color(0.08, 0.07, 0.10)
+	win.size = Vector2(10, 12)
+	win.position = Vector2(-w * 0.42, -h * 0.66)
+	n.add_child(win)
+	return n
+
 ## Entra na dungeon: limpa o boneco de treino e começa o nível 1.
 func _begin_dungeon() -> void:
+	_hide_tip()                  # sai da vila: qualquer dica na tela some
 	for v in _enemies.duplicate():
 		if is_instance_valid(v):
 			v.queue_free()
@@ -562,6 +758,8 @@ func _clear_entities() -> void:
 				v.get_parent().remove_child(v)
 			v.queue_free()
 	_enemies.clear()
+	_guard.clear()      # as views da guarda estão em _enemies (já liberadas acima); só zera a lista
+	_bloodstain = null  # ela é filha do _env, liberada ao remontar o cenário; aqui só solta a referência
 
 	# Projéteis em voo. O Necromante e o Ogro os penduram na CENA (get_parent()), não em si
 	# mesmos, então não morrem junto com quem os atirou: sem isto, um tiro disparado um instante
@@ -595,6 +793,7 @@ func _start_floor() -> void:
 		_build_environment(BOSS_ROOM_W, true, hazards)
 		_reset_player_to_start(PLAYER_START_X)   # o player primeiro; os poços depois (ver _start_tutorial)
 		_spawn_hazards(hazards)
+		_spawn_bloodstain_if_here()              # a marca pode estar AQUI: a queda no chefe fica na arena
 		# A cutscene de entrada só na PRIMEIRA vez: quem morreu e voltou já sabe quem mora aqui.
 		if _run.boss_seen(_current_boss_id):
 			_begin_boss_retry()
@@ -620,18 +819,22 @@ func _start_floor() -> void:
 	if _run.is_cleared(floor):
 		_phase = "cleared"
 		_msg.text = "Nível vencido — a fogueira e a névoa do chefe aguardam adiante →"
-		_spawn_echo_if_here()      # ...mas o seu Eco ainda pode estar esperando no caminho
+		_spawn_guard(floor)        # a guarda do run-back reocupa o caminho até a névoa
+		_spawn_bloodstain_if_here()  # ...e a sua marca ainda pode estar esperando no caminho
 		return
 
 	_phase = "room"
 	_start_room()
-	_spawn_echo_if_here()
+	_spawn_bloodstain_if_here()
 
 # ---------------------------------------------------------------------------
-# Sala regida pelo Necromante. Composição vem de floor_config["room"]:
+# Sala a limpar. Composição vem de floor_config["room"] — todas as partes são OPCIONAIS:
 #   elites   → Necromante(s): estático no fim da sala, ranged, revive a horda, mata todos ao cair.
-#   heavies  → esqueletos pesados (andar 1: encadeamento a/b/c dormente).
-#   minions/normals → horda espalhada; cada morto renasce perto do Necromante após respawn_delay.
+#              (o nível 1 não tem mais — ele vai para outro nível; a maquinaria fica aqui pronta.)
+#   heavies  → esqueletos pesados (com Necromante no andar 1: encadeamento a/b/c dormente).
+#   minions/normals → esqueletos espalhados. Nascem DORMENTES e acordam por proximidade
+#                     (_update_room_wake). Com Necromante, cada morto renasce perto dele.
+# Sem Necromante, a sala é só "mate todos": limpa por contagem (_check_room_cleared).
 # ---------------------------------------------------------------------------
 
 func _start_room() -> void:
@@ -660,8 +863,11 @@ func _start_room() -> void:
 		_fill_pool("minion")
 		_fill_pool("normal")
 
-	_msg.text = "Nível %d / %d — o Necromante comanda a horda. Elimine-o!" % [_run.current_floor, TOTAL_LEVELS]
-	_start_respawn_cast()   # loop de reinvocação: 1 esqueleto do pool por cast, enquanto o Necromante vive
+	if _has_necro():
+		_msg.text = "Nível %d / %d — o Necromante comanda a horda. Elimine-o!" % [_run.current_floor, TOTAL_LEVELS]
+	else:
+		_msg.text = "Nível %d / %d — limpe a sala de esqueletos." % [_run.current_floor, TOTAL_LEVELS]
+	_start_respawn_cast()   # loop de reinvocação: 1 esqueleto do pool por cast, enquanto o Necromante vive (sem ele, no-op)
 	_check_room_cleared()   # fallback: sem Necromante, a sala limpa por contagem
 
 ## Spec de um tier: { "ids": [...], "count": N }.
@@ -672,13 +878,17 @@ func _tier_spec(tier: String) -> Dictionary:
 		"heavy": return _room.get("heavies", {})
 	return {}
 
-## Spawna até o pool do tier encher. No início do nível a horda nasce espalhada (_scatter_pos).
+## Spawna até o pool do tier encher. No início do nível a horda nasce espalhada (_scatter_pos) e
+## DORMENTE: fica imóvel, encarando o player, até ele se aproximar (_update_room_wake). É o mesmo
+## comportamento da guarda do refúgio — o esqueleto ganha vida quando você chega perto.
 func _fill_pool(tier: String) -> void:
 	var spec := _tier_spec(tier)
 	var cap := int(spec.get("count", 0))
 	var ids: Array = spec.get("ids", [])
 	while _alive[tier] < cap and not ids.is_empty():
-		_spawn_room_enemy(tier, String(ids[randi() % ids.size()]), _scatter_pos(false))
+		var v := _spawn_room_enemy(tier, String(ids[randi() % ids.size()]), _scatter_pos(false))
+		if v != null:
+			v.dormant = true
 
 func _spawn_room_enemy(tier: String, id: String, pos: Vector2) -> EnemyView:
 	if id == "":
@@ -789,6 +999,22 @@ func _mark_heavy_dead(view: EnemyView) -> void:
 			st["dead"] = true
 			return
 
+## Desperta os esqueletos comuns (minion/normal) DORMENTES da sala por proximidade — o mesmo
+## comportamento da guarda do refúgio. Os heavies têm a cadeia própria (_update_heavy_chain) e o
+## Necromante é estático, então ambos ficam de fora daqui.
+func _update_room_wake() -> void:
+	if not is_instance_valid(_player_view):
+		return
+	var px := _player_view.global_position.x
+	for v in _enemies:
+		if not is_instance_valid(v) or not v.dormant:
+			continue
+		var tier := String(v.get_meta("tier", ""))
+		if tier != "minion" and tier != "normal":
+			continue
+		if absf(px - v.global_position.x) <= MINION_WAKE:
+			v.dormant = false
+
 # --- Respawn automático por morte (perto do Necromante) ---
 # Ao morrer um esqueleto (minion/normal/heavy) com o Necromante vivo, ele renasce após
 # respawn_delay dentro de um raio ao redor do Necromante. Matar o Necromante encerra tudo.
@@ -869,7 +1095,7 @@ func _check_room_cleared() -> void:
 # ver _try_pull_lever / _try_cross_fog. `_spawn_door` segue existindo para a porta da vila.
 # ---------------------------------------------------------------------------
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	# Parallax do fundo segue a câmera (todo frame, em qualquer fase).
 	# get_screen_center_position() = centro da VISTA de fato, com os limit_* já aplicados.
 	# global_position NÃO é travado pelos limites (só a vista é): usá-lo faria o fundo rolar
@@ -879,12 +1105,28 @@ func _process(_delta: float) -> void:
 
 	_update_boss_bar()
 
-	# Nível 1: reavalia os gatilhos de posição dos heavies (sair da exclusão / passar dos spawns).
+	# Dica do tutorial: conta o tempo na tela e some sozinha ao zerar (E também fecha — _unhandled_input).
+	if _tip_time > 0.0:
+		_tip_time -= delta
+		if _tip_time <= 0.0:
+			_hide_tip()
+
+	# Sala: os heavies seguem a cadeia de posição; os esqueletos comuns dormentes acordam por proximidade.
 	if _phase == "room":
 		_update_heavy_chain()
+		_update_room_wake()
 
-	# Vila de tutorial: chegar na porta ao fim entra na dungeon (nível 1).
+	# Nível vencido: a guarda do refúgio desperta por proximidade quando o player se aproxima.
+	if _phase == "cleared":
+		_update_guard_wake()
+
+	# A marca de sangue (quando presente, em QUALQUER fase — inclusive na arena do chefe): recolhe
+	# automático ao passar por cima dela, como no Dark Souls (sem tecla).
+	_update_bloodstain()
+
+	# Vila de tutorial: as dicas surgem conforme o player anda; chegar na porta entra na dungeon.
 	if _phase == "tutorial":
+		_update_tutorial_tips()
 		if is_instance_valid(_player_view) and is_instance_valid(_door) \
 				and absf(_player_view.global_position.x - _door_x) <= DOOR_REACH:
 			_transition(_begin_dungeon)
@@ -1035,8 +1277,8 @@ func _spawn_boss(at: Vector2) -> void:
 		return
 	var boss := EnemyFactory.build_boss(base, floor)
 
-	# O chefe NÃO invoca mais nada: o Eco deixou de ser um espectro invocado e virou a marca de
-	# sangue, que espera no lugar da queda — e nunca numa arena de chefe (ver _echo_spot).
+	# O chefe NÃO invoca nada: a morte deixa uma marca de sangue passiva no ponto exato da queda
+	# (inclusive aqui na arena), que se recolhe ao tocar — ver _spawn_bloodstain_if_here.
 	var bv: BossView = OgreView.new() if _current_boss_id == "bss_ogre" else BossView.new()
 	_boss_view = bv
 	if _boss_bar != null:
@@ -1052,6 +1294,7 @@ func _add_view(view: EnemyView, enemy: Enemy, pos: Vector2) -> void:
 
 func _on_enemy_died(view: EnemyView, enemy: Enemy) -> void:
 	_enemies.erase(view)
+	_guard.erase(view)   # se era da guarda, sai da lista (matou-se um esqueleto do run-back)
 
 	# Almas: TODO inimigo morto entrega as suas, direto para o bolso — inclusive os esqueletos que
 	# o Necromante reinvoca sem parar. Antes esses não davam XP, para não virar farm infinito de
@@ -1059,23 +1302,12 @@ func _on_enemy_died(view: EnemyView, enemy: Enemy) -> void:
 	# de gasta na fogueira, e morrer com o bolso cheio entrega tudo ao Eco.
 	_run.player.gain_souls(int(enemy.loot.get("souls", 0)))
 
-	# O Eco não pertence à sala nem ao chefe: vencê-lo só devolve as almas.
-	if view is GhostView:
-		_on_echo_defeated()
-		return
-
 	match _phase:
 		"room":
 			_on_room_enemy_died(view)
 		"boss":
 			if view == _boss_view:
 				_on_floor_cleared()
-
-## Venceu o próprio Eco: as almas voltam para o bolso e a marca some.
-func _on_echo_defeated() -> void:
-	var back := _run.recover_echo()
-	Juice.burst(self, _player_view.global_position, Palette.GHOST, 20, 140.0)
-	_msg.text = "Eco superado — %d almas recuperadas." % back
 
 func _on_floor_cleared() -> void:
 	_run.mark_cleared(_run.current_floor)   # morrer adiante e voltar por aqui não o repovoa
@@ -1091,7 +1323,8 @@ func _on_floor_cleared() -> void:
 	_phase = "cleared"
 	if is_instance_valid(_lever):
 		_lever.arm()
-	_msg.text = "O Necromante caiu. Puxe a alavanca (E) para abrir o portão →"
+	_spawn_guard(_run.current_floor)   # o mundo reocupa o caminho ao chefe: a guarda toma o refúgio
+	_msg.text = "Sala limpa. Puxe a alavanca (E) para abrir o portão →"
 
 ## Id estável do portão de mecanismo de um nível (persistido no RunState). Um por nível de sala.
 func _gate_id(floor_n: int) -> String:
@@ -1143,6 +1376,72 @@ func _on_lever_pulled(_l: LeverView) -> void:
 		_gate.open()
 	_msg.text = "O portão se abriu. A fogueira aguarda adiante →"
 
+# ---------------------------------------------------------------------------
+# A GUARDA do refúgio (o run-back do soulslike). Depois que o nível é vencido, uma pequena leva de
+# esqueletos reocupa o trecho entre a fogueira e a névoa do chefe. Descansar na fogueira os RENASCE
+# (ver _reset_guard), então voltar ao chefe custa a mesma corrida a cada morte — é o que dá sentido
+# à fogueira "renascer inimigos". Nascem DORMENTES e despertam por proximidade (_update_guard_wake),
+# para não marcharem até o portão ainda fechado no instante em que o Necromante cai.
+# ---------------------------------------------------------------------------
+
+## Faixa (x_min, x_max) onde a guarda se posta: entre a fogueira e a névoa, com folga dos dois.
+func _guard_zone() -> Vector2:
+	var bf_x := _fight_width + BONFIRE_IN
+	var fog_x := _arena_width - FOG_BACK
+	return Vector2(bf_x + GUARD_AFTER_BONFIRE, fog_x - GUARD_BEFORE_FOG)
+
+## (Re)cria a guarda a partir de floor_config["guard"] = { ids, count }. Espalha os esqueletos pela
+## faixa do refúgio, todos dormentes. Sem "guard" no nível (ex.: arena de chefe), não faz nada.
+func _spawn_guard(floor_n: int) -> void:
+	_clear_guard()
+	var spec: Dictionary = _floor_config.get("guard", {})
+	var ids: Array = spec.get("ids", [])
+	var n := int(spec.get("count", 0))
+	if ids.is_empty() or n <= 0:
+		return
+	var zone := _guard_zone()
+	var band := (zone.y - zone.x) / maxf(1.0, float(n))
+	for i in n:
+		var base := _enemy_repo.get_by_id(String(ids[i % ids.size()]))
+		if base.is_empty():
+			continue
+		var enemy := EnemyFactory.build(base, floor_n)
+		var view := EnemyView.new()
+		view.set_meta("tier", "guard")
+		view.dormant = true                    # imóvel até o player chegar perto (_update_guard_wake)
+		var x := zone.x + band * (float(i) + 0.5)
+		_add_view(view, enemy, Vector2(x, GROUND_Y - 40.0))
+		_guard.append(view)
+
+## Remove as views da guarda atual (ao remontar o nível e ao renascê-la na fogueira). As views vivem
+## em _enemies (via _add_view): tira de lá também, senão o _clear_entities seguinte mexeria em nós já
+## liberados.
+func _clear_guard() -> void:
+	for v in _guard.duplicate():
+		if is_instance_valid(v):
+			_enemies.erase(v)
+			if v.get_parent() != null:
+				v.get_parent().remove_child(v)
+			v.queue_free()
+	_guard.clear()
+
+## Descansar na fogueira RENASCE a guarda: os que você matou voltam e os vivos recuam ao posto,
+## dormentes. Só faz sentido com o nível vencido (a fogueira só se alcança com o portão aberto).
+func _reset_guard() -> void:
+	if _phase != "cleared":
+		return
+	_spawn_guard(_run.current_floor)
+
+## Desperta a guarda por proximidade: um esqueleto dormente ganha vida quando o player chega a
+## GUARD_WAKE dele. Comportamento soulslike — esperam imóveis e acordam quando você se aproxima.
+func _update_guard_wake() -> void:
+	if _guard.is_empty() or not is_instance_valid(_player_view):
+		return
+	var px := _player_view.global_position.x
+	for v in _guard:
+		if is_instance_valid(v) and v.dormant and absf(px - v.global_position.x) <= GUARD_WAKE:
+			v.dormant = false
+
 func _next_floor() -> void:
 	_run.advance_floor()
 	_start_floor()
@@ -1160,15 +1459,11 @@ func _on_player_died(_p: Player) -> void:
 	if is_instance_valid(_player_view):
 		_player_view.frozen = true
 
-	# Todas as almas do bolso caem AQUI, com o Eco. Um Eco anterior é substituído — as almas dele
-	# se perdem para sempre. É a aposta que dá peso à morte.
-	var souls_perdidas := 0
-	if _nemesis_on:
-		var spot := _echo_spot()
-		souls_perdidas = _run.player.souls
-		_run.drop_echo(int(spot["floor"]), float(spot["x"]))
-	else:
-		souls_perdidas = _run.player.lose_souls()
+	# Todas as almas do bolso ficam numa MARCA no ponto EXATO da queda (inclusive na arena do chefe).
+	# Uma marca anterior é substituída — as almas dela se perdem para sempre. É a aposta que dá peso
+	# à morte. Sem almas no bolso, não deixa marca (drop_bloodstain devolve 0).
+	var death_x := _player_view.global_position.x if is_instance_valid(_player_view) else PLAYER_START_X
+	var souls_perdidas := _run.drop_bloodstain(_run.current_floor, death_x)
 	_show_death_banner(souls_perdidas)
 
 	# A tela apaga JÁ (não se assiste ao próprio cadáver), fica preta com o letreiro enquanto o
@@ -1195,38 +1490,35 @@ func _respawn_at_checkpoint() -> void:
 	else:
 		_start_tutorial()
 
-## Onde o Eco fica. A regra: NUNCA numa arena de chefe — de lá não se volta sem enfrentar o chefe
-## outra vez, e a marca ficaria inalcançável (ou pior: você teria de vencer o chefe para reaver as
-## almas que perdeu PARA ele). Morrer no chefe deposita o Eco no REFÚGIO do nível anterior, entre a
-## fogueira e a névoa — exatamente no trecho que a corrida de volta (renascer na fogueira → cruzar
-## a névoa) percorre, então você passa por ele obrigatoriamente.
-func _echo_spot() -> Dictionary:
-	var floor_n := _run.current_floor
-	if _is_boss_level(floor_n):
-		var anterior := maxi(floor_n - 1, 1)
-		return { "floor": anterior, "x": _prev_sanctuary_echo_x(anterior) }
-	var x := _player_view.global_position.x if is_instance_valid(_player_view) else PLAYER_START_X
-	return { "floor": floor_n, "x": x }
-
 func _is_boss_level(floor_n: int) -> bool:
 	return String(_levels.get(floor_n, {}).get("type", "")) == "boss"
 
-## x no refúgio de um nível, entre a fogueira e a névoa — onde o Eco espera a corrida de volta.
-func _prev_sanctuary_echo_x(floor_n: int) -> float:
-	var fight := float(_levels.get(floor_n, {}).get("corridor_length", _corridor_length))
-	var fog_x := fight + SANCTUARY_LEN - FOG_BACK
-	return fog_x - 160.0     # um tanto antes da névoa: enfrenta o Eco e então atravessa
+## A marca de sangue espera no ponto EXATO onde você caiu (inclusive numa arena de chefe). Não é um
+## inimigo: é um marcador passivo que se recolhe ao passar por cima (_update_bloodstain).
+func _spawn_bloodstain_if_here() -> void:
+	if not _run.has_bloodstain_on(_run.current_floor):
+		return
+	var bs := BloodstainView.new()
+	bs.position = Vector2(_run.bloodstain_x, GROUND_Y)
+	_env.add_child(bs)                # filha do cenário: limpa junto ao remontar o nível
+	bs.setup(_run.bloodstain_x, _run.bloodstain_souls, _player_view)
+	_bloodstain = bs
+	_msg.text = "Sua marca de sangue aguarda — recupere %d almas." % _run.bloodstain_souls
 
-## O Eco espera onde você caiu. Por construção ele nunca está num nível de chefe, mas a guarda
-## fica: um Eco lá dentro seria inalcançável.
-func _spawn_echo_if_here() -> void:
-	if not _nemesis_on or not _run.has_echo_on(_run.current_floor):
-		return
-	if _is_boss_level(_run.current_floor):
-		return
-	var echo := GhostFactory.build(_run.echo, _run.player)
-	_add_view(GhostView.new(), echo, Vector2(_run.echo.death_x, GROUND_Y - 40.0))
-	_msg.text = "Seu Eco te espera — vença-o para reaver %d almas." % _run.echo.souls
+## Recolhe automático (sem tecla, como no Dark Souls) ao passar por cima da marca — em qualquer fase,
+## inclusive dentro da arena do chefe.
+func _update_bloodstain() -> void:
+	if is_instance_valid(_bloodstain) and is_instance_valid(_player_view) \
+			and _bloodstain.in_reach(_player_view):
+		_recover_bloodstain()
+
+func _recover_bloodstain() -> void:
+	var back := _run.recover_bloodstain()
+	if is_instance_valid(_bloodstain):
+		_bloodstain.queue_free()
+	_bloodstain = null
+	Juice.burst(self, _player_view.global_position, Color(0.85, 0.92, 1.0), 18, 130.0)
+	_msg.text = "Marca recolhida — %d almas de volta." % back
 
 ## O letreiro entra na camada do FADE (não no HUD): ali ele fica por cima do preto, e não debaixo
 ## dele. Aparece junto com o escurecimento, no mesmo compasso.
@@ -1234,7 +1526,7 @@ func _show_death_banner(souls_perdidas: int) -> void:
 	_death_banner = Label.new()
 	_death_banner.text = "VOCÊ MORREU"
 	if souls_perdidas > 0:
-		_death_banner.text += "\n%d almas ficaram com o seu Eco" % souls_perdidas
+		_death_banner.text += "\n%d almas ficaram na sua marca de sangue" % souls_perdidas
 	_death_banner.add_theme_font_size_override("font_size", 28)
 	_death_banner.add_theme_color_override("font_color", Palette.ENEMY)
 	_death_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1323,6 +1615,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	# Cada uma só age se o player estiver perto do objeto; longe de todos, não faz nada. Bloqueadas
 	# durante transição/morte/cutscene, quando o player não tem controle.
 	if event.is_action_pressed("interact"):
+		if _tip_time > 0.0:            # há uma dica na tela: E fecha ela antes de qualquer outra coisa
+			_hide_tip()
+			return
 		if _phase in ["transition", "dead", "boss_intro", "victory"]:
 			return
 		if _try_pull_lever() or _try_rest() or _try_cross_fog():
@@ -1355,9 +1650,7 @@ func _apply_debug_start() -> void:
 
 func _show_debug_legend() -> void:
 	var l := Label.new()
-	l.text = "[DEBUG]  K matar  |  M +1 nivel  |  L +nivel do player  |  P 2x dano arma  |  H curar  |  I god mode"
-	if _nemesis_on:
-		l.text += "  |  G invocar eco"
+	l.text = "[DEBUG]  K matar  |  M +1 nivel  |  L +nivel do player  |  P 2x dano arma  |  H curar  |  I god mode  |  G soltar marca"
 	l.position = Vector2(8, 342)
 	l.add_theme_font_size_override("font_size", 10)
 	l.add_theme_color_override("font_color", Color(1, 1, 0.4))
@@ -1371,7 +1664,7 @@ func _debug_input(event: InputEvent) -> void:
 		KEY_M: _debug_skip_floors(1)
 		KEY_L: _debug_level_up()
 		KEY_H: _run.player.heal(_run.player.stats.max_hp)
-		KEY_G: _debug_spawn_ghost()
+		KEY_G: _debug_drop_bloodstain()
 		KEY_I: _debug_toggle_god()
 		KEY_P: _debug_double_weapon_damage()
 
@@ -1401,12 +1694,11 @@ func _debug_level_up() -> void:
 	_msg.text = "[DEBUG] +almas → %d (nível %d custa %d)" % [
 		_run.player.souls, _run.player.level, Leveling.level_cost(_run.player.level)]
 
-## Larga um Eco AQUI mesmo, com as almas do bolso, e o invoca na hora (sem precisar morrer).
-func _debug_spawn_ghost() -> void:
-	if not _nemesis_on or _is_boss_level(_run.current_floor):
-		return
-	_run.drop_echo(_run.current_floor, _player_view.global_position.x + 90.0)
-	_spawn_echo_if_here()
+## Solta uma marca de sangue um pouco à frente, com as almas do bolso (sem precisar morrer).
+func _debug_drop_bloodstain() -> void:
+	_run.player.gain_souls(50)   # garante almas para a marca não nascer vazia
+	_run.drop_bloodstain(_run.current_floor, _player_view.global_position.x + 120.0)
+	_spawn_bloodstain_if_here()
 
 func _debug_toggle_god() -> void:
 	_player_view.god_mode = not _player_view.god_mode

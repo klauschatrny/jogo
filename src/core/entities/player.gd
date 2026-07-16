@@ -63,9 +63,10 @@ func refill_flask() -> void:
 	flask_max = flask_capacity()
 	flask_charges = flask_max
 
-## Pode beber agora? Precisa de carga, estar vivo e não estar com a vida cheia (não gasta à toa).
+## Pode beber agora? Precisa de carga e estar vivo. Beber com a vida CHEIA é permitido — a cura
+## satura no máximo (não adiciona nada), mas a carga é gasta assim mesmo: a decisão é do jogador.
 func can_drink() -> bool:
-	return flask_charges > 0 and is_alive() and stats.current_hp < stats.max_hp
+	return flask_charges > 0 and is_alive()
 
 ## Compromete uma carga e devolve quanto ela CURARÁ. A cura em si é aplicada por quem chama, ao
 ## fim da animação de beber (via heal()) — se um golpe interromper antes, a carga já foi: é o preço.
@@ -77,7 +78,7 @@ func drink_flask() -> int:
 	EventBus.flask_used.emit(flask_charges)
 	return flask_heal_amount()
 
-## Derruba TODAS as almas (morte). Devolve quantas caíram — quem chama as entrega ao Eco.
+## Derruba TODAS as almas (morte). Devolve quantas caíram — quem chama as deixa na marca de sangue.
 func lose_souls() -> int:
 	var caidas := souls
 	souls = 0

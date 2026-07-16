@@ -22,11 +22,14 @@ var bosses_seen: Array = []        # bosses cuja cutscene de entrada já rodou (
 var opened_gates: Array = []       # portões de mecanismo já abertos (por alavanca): abertos ficam abertos
 var deaths: int = 0
 
-# --- O Eco (marca de sangue) ---
-# Existe no máximo UM. Ele guarda as almas que você tinha no bolso ao morrer e espera no lugar da
-# queda. Vencê-lo devolve tudo. Morrer de novo antes de chegar nele o SUBSTITUI — e as almas
-# antigas se perdem para sempre. É a aposta que dá peso à morte.
-var echo: GhostData = null
+# --- A mancha de sangue (bloodstain, à la Dark Souls) ---
+# Existe no máximo UMA. Ao morrer, TODAS as almas do bolso ficam numa marca no ponto EXATO da queda
+# (inclusive dentro de uma arena de boss). Tocá-la devolve tudo. Morrer de novo antes de chegar nela
+# move a marca para o novo ponto e as almas antigas se perdem PARA SEMPRE. É a aposta que dá peso à
+# morte — e, ao contrário do antigo Eco, não é um inimigo: é só uma marca que se recolhe.
+var bloodstain_floor: int = 0     # 0 = nenhuma marca ativa
+var bloodstain_x: float = 0.0     # onde, dentro do nível (o ponto exato da queda)
+var bloodstain_souls: int = 0     # quantas almas esperam nela
 
 ## Inicia uma nova run. `available_augments` é a lista (hidratada) de todos os augments
 ## sorteáveis; `run_seed` semeia o RNG para tornar a run reproduzível.
@@ -71,37 +74,39 @@ func has_checkpoint() -> bool:
 	return checkpoint_floor > 0
 
 # ---------------------------------------------------------------------------
-# O Eco (marca de sangue)
+# A mancha de sangue (bloodstain)
 # ---------------------------------------------------------------------------
 
-## Deixa o Eco no lugar da queda, com TODAS as almas do jogador. Substitui um Eco anterior — as
-## almas dele se perdem, como em qualquer soulslike. Sem almas no bolso, não deixa marca nenhuma:
-## um Eco vazio seria só um inimigo a mais no caminho.
-##
-## `floor_n`/`x` já vêm ajustados por quem chama: o Eco NUNCA fica numa arena de chefe (não há como
-## voltar lá sem enfrentar o chefe de novo), então uma morte no chefe o deposita na porta do nível
-## anterior — ver floor_scene._echo_spot().
-func drop_echo(floor_n: int, x: float) -> void:
+## Deixa a marca no ponto EXATO da queda (`floor_n`/`x` vêm de onde o player caiu — sem ajuste
+## nenhum: pode ser dentro de uma arena de chefe), com TODAS as almas do bolso. Substitui uma marca
+## anterior — as almas dela se perdem, como em qualquer soulslike. Sem almas, não deixa marca.
+## Devolve quantas almas caíram (0 se nenhuma).
+func drop_bloodstain(floor_n: int, x: float) -> int:
 	var caidas := player.lose_souls()
 	if caidas <= 0:
-		echo = null
-		return
-	var coeff := float(BalanceConfig.nemesis.get("NEMESIS_COEFF", 0.65))
-	echo = GhostData.from_snapshot(player.snapshot(), floor_n, player.run_id, coeff)
-	echo.souls = caidas
-	echo.death_x = x
-
-func has_echo_on(floor_n: int) -> bool:
-	return echo != null and not echo.defeated and echo.death_floor == floor_n
-
-## Venceu o Eco: as almas voltam para o bolso e a marca some.
-func recover_echo() -> int:
-	if echo == null:
+		bloodstain_floor = 0
+		bloodstain_souls = 0
 		return 0
-	var recuperadas := echo.souls
+	bloodstain_floor = floor_n
+	bloodstain_x = x
+	bloodstain_souls = caidas
+	return caidas
+
+func has_bloodstain() -> bool:
+	return bloodstain_souls > 0
+
+func has_bloodstain_on(floor_n: int) -> bool:
+	return bloodstain_souls > 0 and bloodstain_floor == floor_n
+
+## Tocou a marca: as almas voltam para o bolso e ela some. Devolve quantas.
+func recover_bloodstain() -> int:
+	if bloodstain_souls <= 0:
+		return 0
+	var recuperadas := bloodstain_souls
 	player.gain_souls(recuperadas)
-	EventBus.echo_defeated.emit(recuperadas)
-	echo = null
+	EventBus.bloodstain_recovered.emit(recuperadas)
+	bloodstain_floor = 0
+	bloodstain_souls = 0
 	return recuperadas
 
 ## Morte: a run continua, mas você NUNCA renasce onde caiu. Ou na última fogueira em que

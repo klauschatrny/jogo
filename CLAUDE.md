@@ -62,7 +62,7 @@ door you walk into. *Inside* the dungeon there are two mechanism passages, both 
 - A **wooden gate** (`GateView`, a solid StaticBody2D on layer 4) closes the sanctuary off during
   the fight. The **lever** (`LeverView`) that opens it is **always present** (spawned in
   `_spawn_sanctuary`, just before the gate) but starts **disarmed** — it's inert scenery until the
-  Necromancer dies, when `_on_floor_cleared` calls `_lever.arm()` (disarmed: no prompt, `pull()` is a
+  room is cleared, when `_on_floor_cleared` calls `_lever.arm()` (disarmed: no prompt, `pull()` is a
   no-op, and `_try_pull_lever` returns false, so you can't open the gate — and thus can't rest —
   mid-fight). Pulling the armed lever (`interact`) opens the gate and records
   `RunState.open_gate(id)` — **open stays open forever**, across deaths (`opened_gates`,
@@ -75,23 +75,45 @@ door you walk into. *Inside* the dungeon there are two mechanism passages, both 
 All three sanctuary interactions (lever, rest, fog) share the `interact` key and are disambiguated
 purely by proximity — they sit far enough apart that only one is ever in reach.
 
-**Done — souls and the Echo (the bloodstain).** `Player.souls` is the only currency. Every kill
-pays straight into the pocket (`"souls"` in each enemy's `loot`) — including the skeletons the
-Necromancer keeps reviving, which used to be XP-blocked to stop farming. Farming polices itself now,
+**Done — the bonfire respawns enemies (the run-back).** Resting is not free: it **re-arms the
+world**. Once a room level is cleared, a small **guard** of skeletons (data-driven,
+`levels.json → guard = { ids, count }`, `_spawn_guard`) reoccupies the refuge stretch *between the
+bonfire and the fog gate* — so the path back to the boss reads `bonfire → [guard] → fog → boss`, not
+an empty corridor. Resting at the fire **respawns the whole guard** (`_on_bonfire_rested →
+_reset_guard`, classic soulslike), and so does dying-and-returning (the cleared branch of
+`_start_floor` calls `_spawn_guard`). Killing a guard pays souls like any enemy, which is what makes
+the run-back worth walking instead of sprinting. The guard is tracked in `_guard` (separate from the
+Necromancer's `_alive`/revival loop — these are plain `EnemyView`s, they never touch room-clear
+logic), and its views live in `_enemies` too, so `_clear_entities` frees them; `_on_enemy_died`
+erases from both lists. To make room, the refuge was widened (`SANCTUARY_LEN` 620→980, `BONFIRE_IN`
+240→160). **Guards spawn dormant and wake by proximity** (`_update_guard_wake`, `GUARD_WAKE`): the
+instant the room clears, the guard is spawned *behind the still-closed gate* — dormant means
+they wait at their posts instead of marching into the gate, and they animate to life only when you
+walk up to them (which also keeps a safe bubble around the fire, since the nearest post is >
+`GUARD_WAKE` from the bonfire). A boss level has no `guard` key, so `_spawn_guard` is a no-op there.
+
+**Done — souls and the bloodstain.** `Player.souls` is the only currency. Every kill pays straight
+into the pocket (`"souls"` in each enemy's `loot`) — including the skeletons the Necromancer revives
+(when a level has one), which used to be XP-blocked to stop farming. Farming polices itself now,
 because **souls in the pocket are risk**: they buy nothing until spent, and dying drops *all* of
 them. Levels are no longer automatic — they're **bought** at the bonfire (`Leveling.level_cost`,
 `SOULS_BASE`/`SOULS_GROWTH`), and each level grants an attribute point. `AttributePanel` folds both
 steps into one keypress: raise an attribute and, if no point is banked, the level is purchased on
 the spot.
 
-On death, `RunState.drop_echo()` leaves a **single** `GhostData` holding every soul you carried,
-built from a snapshot of you (`GhostFactory` → nerfed ELITE with "echo" AI, now tinted **red**).
-Beat it and `recover_echo()` pays the souls back; **die again first and it is replaced — the old
-souls are gone forever.** No souls, no echo (an empty one would be a pointless fight). The boss no
-longer summons anything: `_echo_spot()` guarantees the echo **never lands in a boss arena** (you'd
-have to beat the boss to recover the souls it took from you) — a death at the boss deposits it at
-the **exit door of the previous level**, so the run-back walks straight through it.
-`GhostRepository`'s disk persistence is unused: the echo lives in the run, not across runs.
+On death, `RunState.drop_bloodstain(floor, x)` leaves a **passive marker** (the classic Dark Souls
+bloodstain — *not* an enemy) holding every soul you carried, at the **exact spot you fell** — `x` is
+the death position with **no adjustment, including inside a boss arena**. Walk onto it and it's
+absorbed automatically (`_update_bloodstain` in `_process`, no keypress, works in every phase — the
+`BloodstainView.in_reach` check), and `recover_bloodstain()` pays the souls back. **Die again first
+and the mark moves to the new spot — the old souls are gone forever.** No souls, no mark. State is
+three fields on `RunState` (`bloodstain_floor/x/souls`), the view is `BloodstainView` (a child of
+`_env`, respawned by `_spawn_bloodstain_if_here` in every `_start_floor` branch — room, cleared,
+*and* boss — so it reappears wherever you left it). This **replaced the old Echo/Nemesis ghost**: the
+boss never summoned anything anyway, and the ghost-fight (`GhostData`/`GhostFactory`/`GhostView`/
+`NemesisRules`) is now fully unused in gameplay — the classes still compile and are unit-tested, same
+treatment as the tower. `balance.json → nemesis.ENABLED` no longer gates anything (the bloodstain is
+always on; it's the base death mechanic, not the optional Nemesis).
 
 **Done — the flask (the Estus).** The **only on-demand heal** in the game: `Player.flask_charges`
 (capacity + heal fraction are data, `balance.json → flask`). Each gulp heals `HEAL_FRACTION` of
@@ -103,7 +125,10 @@ what turns every trade of blows into a resource calculation. Drinking is a **com
 hit mid-gulp calls `_interrupt_drink()` — the heal is cancelled but the charge is already gone.
 There are **no i-frames** while drinking (unlike the dodge): it's a bet that a safe window exists,
 and because enemies are telegraphed, one always does. Bound to **R/1** (`flask`). `can_drink()`
-refuses at full HP so a charge is never wasted.
+only needs a charge + being alive — **drinking at full HP is allowed** (the heal saturates at max, but
+the charge is spent anyway; the player's call). The gulp has an **orange glow** (`PlayerView._drink_glow`,
+a `z=-1` aura that builds/pulses over the drink, orange embers, and a bright burst the instant the
+heal lands — `_update_drink_glow`/`_drink_finish_fx`); it fades out on finish or interrupt.
 
 **Still roguelike, still to convert**: the geometric per-floor enemy scaling — a soulslike
 hand-tunes fixed stats per area.
@@ -131,8 +156,14 @@ mitigation via `defense_curve`), keyboard-only `PlayerView` (move + melee), `Ene
 (ADD<PCT_ADD<MULT), weighted `AugmentPool`, `Boss`/`BossPhase` (phased), `RunState`/`FloorManager`,
 and the playable `floor_scene` (waves → boss → card reward → next floor) with `CardSelect`.
 
-**Scope right now**: the playable dungeon is **2 hand-authored levels** — level 1 (Necromancer's
-skeleton room) and level 2 (Ogre boss arena) — plus the tutorial village. `data/floors/levels.json`
+**Scope right now**: the playable dungeon is **2 hand-authored levels** — level 1 (a skeleton room:
+dormant minions that wake by proximity, cleared by killing them all) and level 2 (Ogre boss arena) —
+plus the tutorial village. **The Necromancer was pulled out of level 1** (he'll be placed in a later
+level); his machinery — the static ranged elite, the revival loop, the heavy a/b/c chain — stays in
+`floor_scene` intact and fires only when a level's `room` declares `elites`. A `room` without a
+Necromancer is just "kill everything": `_check_room_cleared` clears it by count, and the scattered
+minions spawn **dormant**, waking within `MINION_WAKE` of the player (`_update_room_wake`, the same
+feel as the refuge guard). `data/floors/levels.json`
 is the whole content list and `TOTAL_LEVELS` in `floor_scene.gd` must match it; there is **no
 fallback level and no procedural repetition** (a missing level ends the run with a warning).
 **Environmental hazards** (`HazardView` + `data/hazards.json`) are the first non-combat content:
@@ -146,9 +177,28 @@ once you're already inside.) A hazard without `instakill` falls back to the norm
 `apply_flat_damage` path, so non-lethal traps stay possible. Enemies don't jump, so
 `EnemyView._ledge_ahead()` stops them at the rim (`LEDGE_DEPTH` must stay smaller than any pit's
 `depth`) and `_off_pit()` keeps spawns out of the hole — without those two, a skeleton falls in and
-is stuck forever. Right now the only pit is the tutorial one, which teaches the rule where it costs
-20 seconds; the Necromancer's room has none. The
-old 50-floor tower (`TowerManager`, `data/floors/tower.json`, the 5 great-boss + King JSONs) is
+is stuck forever. **Right now there is no pit anywhere** (the tutorial's was removed on request):
+`_TUTORIAL_HAZARDS` is empty and no level declares `"hazards"`, so the whole hazard machinery
+(`HazardView`, `_off_pit`, `_ledge_ahead`) sits idle, ready for a level that places one.
+
+**Scenery decoration** (`_decorate_scenery`, called from `_build_environment`) scatters placeholder
+background props — dead trees, rocks, wooden fences, ruined buildings (ColorRect/Polygon2D, no art
+yet, no collision, `z = DECO_Z = -4`, behind entities and in front of the ground) — so levels don't
+read as bare corridors. Placement is **deterministic** (a local `RandomNumberGenerator` seeded by
+level width, *not* `RNGService` — it's purely cosmetic), so the layout is identical every rebuild
+and never reshuffles on death/respawn. The tutorial village keeps its houses (`_decorate_village`)
+*and* gets the same scatter.
+
+**Tutorial teaching is a HUD toast, not world signs.** The old wooden control signs are gone. The
+lessons live in `_TUTORIAL_TIPS` (`[trigger_x, text]`) and surface as a centered bottom-of-screen toast
+(`_build_tip_ui`/`_show_tip`, a `Control` in `_layer`) as the player walks past each `x`
+(`_update_tutorial_tips`, once each). A tip auto-dismisses after `TIP_SECONDS` (10s) or the instant
+the player presses `interact` (E/F) — that dismissal takes priority over every other `interact`
+action, but the village has no lever/bonfire/fog so there's no conflict. The first tip is fired
+explicitly at the end of `_start_tutorial` (not left to frame-1 `_process`) so it's up the moment the
+village loads; `_tips_done` resets each village visit and `_begin_dungeon` hides any open tip.
+
+The old 50-floor tower (`TowerManager`, `data/floors/tower.json`, the 5 great-boss + King JSONs) is
 **no longer wired into gameplay** — it still exists and is still unit-tested, awaiting the redesign.
 
 **Phase 4 (A Torre Completa & Nemesis System) is done**: `TowerManager` + `data/floors/tower.json`

@@ -41,11 +41,11 @@ func test_sem_carga_nao_bebe() -> void:
 	assert_false(p.can_drink())
 	assert_eq(p.drink_flask(), 0, "frasco vazio não devolve cura")
 
-func test_vida_cheia_nao_desperdica_carga() -> void:
+func test_vida_cheia_bebe_assim_mesmo() -> void:
 	var p := _player()                          # nasce com HP cheio
-	assert_false(p.can_drink(), "com a vida cheia não dá para beber (não gasta à toa)")
-	assert_eq(p.drink_flask(), 0)
-	assert_eq(p.flask_charges, p.flask_max, "nenhuma carga foi tocada")
+	assert_true(p.can_drink(), "beber com a vida cheia é permitido")
+	assert_true(p.drink_flask() > 0, "devolve a cura mesmo cheio (satura ao aplicar)")
+	assert_eq(p.flask_charges, p.flask_max - 1, "a carga é gasta assim mesmo — decisão do jogador")
 
 func test_morto_nao_bebe() -> void:
 	var p := _player()

@@ -9,8 +9,8 @@ signal weapon_upgraded(weapon)
 
 # --- Progressão (almas: moeda única; nível se COMPRA na fogueira) ---
 signal souls_gained(amount, total)
-signal souls_lost(amount)           # morreu: tudo foi para o Eco
-signal echo_defeated(souls_back)    # venceu o próprio Eco: as almas voltaram
+signal souls_lost(amount)                 # morreu: tudo foi para a marca de sangue
+signal bloodstain_recovered(souls_back)   # tocou a própria marca: as almas voltaram
 signal level_up(new_level)
 signal floor_changed(floor)
 
