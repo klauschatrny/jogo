@@ -8,8 +8,9 @@
 ## Gasto é definitivo. E é aqui que a aposta se fecha: alma no bolso é risco (morrer a entrega ao
 ## Eco); alma gasta é sua para sempre. A decisão de quando voltar à fogueira É o jogo.
 ##
-## Só-teclado, como o resto: ↑↓ escolhem, →/ENTER sobem, ESC levanta.
-## Roda com a árvore PAUSADA — quem o abre pausa e ouve `closed` para despausar.
+## Teclado ou mouse: W/S escolhem, D/ENTER sobem, B levanta — e cada atributo tem um botão "+"
+## clicável que sobe aquele, direto. Roda com a árvore PAUSADA — quem o abre pausa e ouve `closed`
+## para despausar.
 class_name AttributePanel
 extends Control
 
@@ -68,9 +69,11 @@ func _ready() -> void:
 	box.add_child(_points_lbl)
 	box.add_child(_spacer(8))
 
-	for s in Attributes.specs():
+	var specs := Attributes.specs()
+	for i in specs.size():
+		var s: Dictionary = specs[i]
 		box.add_child(_build_row(String(s.get("id", "")), String(s.get("name", "")),
-			String(s.get("desc", ""))))
+			String(s.get("desc", "")), i))
 
 	box.add_child(_spacer(8))
 	_hint_lbl = Label.new()
@@ -81,8 +84,9 @@ func _ready() -> void:
 
 	_refresh()
 
-## Uma linha: NOME  valor  (o que faz). O nome muda de cor quando é o selecionado.
-func _build_row(id: String, nome: String, desc: String) -> Control:
+## Uma linha: NOME  valor  [+]  (o que faz). O nome muda de cor quando é o selecionado; o botão
+## "+" sobe ESTE atributo com o mouse (e também o seleciona).
+func _build_row(id: String, nome: String, desc: String, index: int) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 
@@ -98,6 +102,15 @@ func _build_row(id: String, nome: String, desc: String) -> Control:
 	value_lbl.add_theme_font_size_override("font_size", 16)
 	row.add_child(value_lbl)
 
+	var plus := Button.new()
+	plus.text = "+"
+	plus.custom_minimum_size = Vector2(26, 22)
+	plus.focus_mode = Control.FOCUS_NONE          # a navegação é via _sel, não pelo foco do Godot
+	plus.process_mode = Node.PROCESS_MODE_ALWAYS  # o painel roda com a árvore pausada
+	plus.add_theme_font_size_override("font_size", 16)
+	plus.pressed.connect(_on_plus.bind(index))
+	row.add_child(plus)
+
 	var gain_lbl := Label.new()
 	gain_lbl.text = desc
 	gain_lbl.add_theme_font_size_override("font_size", 8)
@@ -105,8 +118,14 @@ func _build_row(id: String, nome: String, desc: String) -> Control:
 	gain_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(gain_lbl)
 
-	_rows.append({ "id": id, "name": name_lbl, "value": value_lbl })
+	_rows.append({ "id": id, "name": name_lbl, "value": value_lbl, "plus": plus })
 	return row
+
+## Clique no "+" de um atributo: seleciona-o e o sobe (mesma regra do teclado).
+func _on_plus(index: int) -> void:
+	_sel = index
+	_raise(String(_rows[index]["id"]))
+	_refresh()   # garante o realce da seleção mesmo se não deu para subir
 
 ## Dá para subir um atributo agora? Ou há um ponto guardado, ou há almas para comprar o nível.
 func _can_raise() -> bool:
@@ -128,15 +147,17 @@ func _refresh() -> void:
 		var sel := i == _sel
 		var name_lbl: Label = r["name"]
 		var value_lbl: Label = r["value"]
+		var plus: Button = r["plus"]
 		name_lbl.text = ("> " if sel else "  ") + String(Attributes.spec(r["id"]).get("name", ""))
 		name_lbl.add_theme_color_override("font_color",
 			Color(1.0, 0.72, 0.28) if sel else Palette.TEXT)
 		value_lbl.text = str(_player.attribute(String(r["id"])))
 		value_lbl.add_theme_color_override("font_color",
 			Palette.ACCENT if sel and pode else Palette.TEXT)
+		plus.disabled = not pode                 # sem almas/ponto, o "+" fica inerte e apagado
 
-	_hint_lbl.text = ("SETAS  escolher     DIREITA / ENTER  subir     ESC  levantar"
-		if pode else "almas insuficientes        SETAS  ver     ESC  levantar")
+	_hint_lbl.text = ("W / S  escolher     D / ENTER / clique +  subir     B  levantar"
+		if pode else "almas insuficientes        W / S  ver     B  levantar")
 
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
@@ -147,15 +168,16 @@ func _input(event: InputEvent) -> void:
 		return
 	if _rows.is_empty():
 		return
-	if event.is_action_pressed("ui_down"):
+	# Navegação por WASD (S desce, W sobe na lista); D ou ENTER sobem o atributo selecionado.
+	if event.is_action_pressed("move_down"):
 		get_viewport().set_input_as_handled()
 		_sel = (_sel + 1) % _rows.size()
 		_refresh()
-	elif event.is_action_pressed("ui_up"):
+	elif event.is_action_pressed("move_up"):
 		get_viewport().set_input_as_handled()
 		_sel = (_sel - 1 + _rows.size()) % _rows.size()
 		_refresh()
-	elif event.is_action_pressed("ui_right") or event.is_action_pressed("ui_accept"):
+	elif event.is_action_pressed("move_right") or event.is_action_pressed("ui_accept"):
 		get_viewport().set_input_as_handled()
 		_raise(String(_rows[_sel]["id"]))
 
