@@ -6,11 +6,10 @@ var state_machine: StateMachine
 
 func _ready() -> void:
 	_setup_input_actions()
-	# Tema retrô global (fonte bitmap) na janela raiz: vale para toda a UI e persiste
-	# entre trocas de cena. Em modo --script/--headless não há janela, então protege.
-	var root := get_tree().root
-	if root != null:
-		root.theme = RetroTheme.build()
+	# Tema retrô global (fonte bitmap): na janela raiz + no fallback do ThemeDB (este último é o
+	# que cobre os Controls sob CanvasLayer — HUD, pausa, painéis; ver RetroTheme.apply). Vale
+	# para toda a UI e persiste entre trocas de cena. Em --script/--headless não há janela.
+	RetroTheme.apply(get_tree().root)
 	print("[GameManager] Bootstrap iniciado")
 	print("[GameManager] Seed do RNG: %d" % RNGService.get_seed())
 	print("[GameManager] balance.json carregado (BASE_HP=%s, NEMESIS_COEFF=%s)" % [
@@ -34,19 +33,20 @@ func _on_state_changed(state_name: String) -> void:
 	EventBus.state_changed.emit(state_name)
 
 ## Registra as ações de input via código (mais robusto que editar o formato do
-## project.godot à mão). Side-scroller: A/D (ou setas) anda, Espaço/W/cima pula,
-## J ataca, Shift/L esquiva. move_up/down ficam registradas (não usadas no movimento
-## lateral) para não quebrar menus/UI que dependam delas.
+## project.godot à mão). Side-scroller: A/D anda, Espaço/W pula, J ataca, Shift/L
+## esquiva. SEM setas: o layout padrão é mão esquerda no WASD, mão direita nos golpes
+## (e tudo é remapeável na aba CONTROLES — KeyBinds). move_up/down ficam registradas
+## (não usadas no movimento lateral) para não quebrar menus/UI que dependam delas.
 func _setup_input_actions() -> void:
-	_ensure_action("move_up", [KEY_W, KEY_UP])
-	_ensure_action("move_down", [KEY_S, KEY_DOWN])
-	_ensure_action("move_left", [KEY_A, KEY_LEFT])
-	_ensure_action("move_right", [KEY_D, KEY_RIGHT])
+	_ensure_action("move_up", [KEY_W])
+	_ensure_action("move_down", [KEY_S])
+	_ensure_action("move_left", [KEY_A])
+	_ensure_action("move_right", [KEY_D])
 	_ensure_action("attack", [KEY_J])
-	_ensure_action("jump", [KEY_SPACE, KEY_W, KEY_UP])
-	_ensure_action("dodge", [KEY_SHIFT, KEY_L])
-	_ensure_action("interact", [KEY_E, KEY_F])   # descansar na fogueira
-	_ensure_action("flask", [KEY_R, KEY_1])      # beber o frasco de cura (o Estus)
+	_ensure_action("jump", [KEY_SPACE, KEY_W])
+	_ensure_action("dodge", [KEY_SHIFT])
+	_ensure_action("interact", [KEY_E])          # descansar na fogueira
+	_ensure_action("flask", [KEY_R])             # beber o frasco de cura (o Estus)
 	# ui_cancel (pausar/fechar painéis) sai do ESC padrão e passa para B.
 	_rebind_action("ui_cancel", [KEY_B])
 

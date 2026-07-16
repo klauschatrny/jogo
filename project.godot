@@ -28,6 +28,7 @@ AudioSettings="*res://src/autoload/audio_settings.gd"
 Music="*res://src/autoload/music.gd"
 Sfx="*res://src/autoload/sfx.gd"
 GameManager="*res://src/autoload/game_manager.gd"
+KeyBinds="*res://src/autoload/keybinds.gd"
 
 [display]
 
