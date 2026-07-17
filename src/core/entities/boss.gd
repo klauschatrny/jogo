@@ -13,6 +13,7 @@ var tired_sfx: String = ""              # id do som do stun pós-investida. "" =
 var steps_sfx: String = ""              # id do som dos passos (enquanto anda). "" = mudo
 var charge_steps_sfx: String = ""       # id do som das passadas na investida. "" = mudo
 var wall_hit_sfx: String = ""           # id do som ao se espatifar na parede. "" = mudo
+var slam_sfx: String = ""               # id do som do soco no chão (slam da fase 2). "" = mudo
 var _summoned: bool = false
 
 static func from_dict(d: Dictionary) -> Boss:
@@ -26,6 +27,7 @@ static func from_dict(d: Dictionary) -> Boss:
 	b.steps_sfx = String(d.get("steps_sfx", ""))
 	b.charge_steps_sfx = String(d.get("charge_steps_sfx", ""))
 	b.wall_hit_sfx = String(d.get("wall_hit_sfx", ""))
+	b.slam_sfx = String(d.get("slam_sfx", ""))
 	var phs: Array = d.get("phases", [])
 	for pd in phs:
 		b.phases.append(BossPhase.from_dict(pd))

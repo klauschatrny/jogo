@@ -799,7 +799,7 @@ func _clear_entities() -> void:
 	# mesmos, então não morrem junto com quem os atirou: sem isto, um tiro disparado um instante
 	# antes de a sala ser demolida continua voando e vai te encontrar na sala da fogueira.
 	for c in get_children():
-		if c is NecroProjectile or c is OgreRock:
+		if c is NecroProjectile or c is OgreRock or c is OgreShockwave:
 			remove_child(c)
 			c.queue_free()
 	_boss_view = null

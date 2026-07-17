@@ -15,6 +15,7 @@
   "steps_sfx": "ogre_steps",
   "charge_steps_sfx": "ogre_charge_steps",
   "wall_hit_sfx": "ogre_wall_hit",
+  "slam_sfx": "ogre_landing",
   "hurt_sfx": "ogre_hurt",
   "abilities": ["abil_ground_slam"],
   "phases": [

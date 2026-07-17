@@ -18,6 +18,10 @@
 ## ÚNICA — no windup rastreia o lado do player e TRAVA a direção a 200 ms do fim; corre cegamente
 ## (200% da vel. do player) e causa dano UMA vez quando a hitbox toca a do player, SEM parar por
 ## isso (atravessa); depois fica imóvel e cansado por 3s (encerra ao bater na parede ou por timeout).
+## FASE 2 (cruzou o 1º limiar, HP ≤ 50%): ganha o SLAM — soco no chão que solta uma ONDA rasteira
+## (OgreShockwave) na direção do player. Dispara de perto/média distância (100–420px), cobrindo a
+## zona morta 140–250 onde nenhuma habilidade existia; cooldown próprio, como as rochas. A onda é
+## baixa: a resposta é PULAR por cima — o único golpe do jogo que exige o pulo.
 class_name OgreView
 extends BossView
 
@@ -52,12 +56,21 @@ const MELEE_BETWEEN := 0.35            # windup (telegrafo) de cada golpe seguin
 const MELEE_STEP_SPEED := 160.0        # velocidade do passo à frente ao golpear
 const MELEE_STEP_TIME := 0.15          # duração do passo (≈ 24px por golpe)
 
+# Slam (fase 2): soco no chão + onda rasteira. Windup mais longo que o melee — é leitura nova,
+# o player precisa de tempo pra entender que a resposta é outra (pular).
+const SLAM_WINDUP := 0.9
+const SLAM_DAMAGE := 35
+const SLAM_CD := 8.0                    # cooldown próprio (além do global), como as rochas
+const SLAM_MIN_RANGE := 100.0           # colado no corpo não: ali melee/baderna reinam
+const SLAM_MAX_RANGE := 420.0           # cobre a zona morta (140–250) e o começo da zona de rochas
+const WAVE_SPEED := 240.0               # velocidade da onda rasteira
+
 const ROCK_MIN_RANGE := 250.0           # distância mínima p/ arremessar rochas
 const ROCK_RANGE := 560.0               # distância máxima da zona de rochas
 const ROCK_VRANGE := 200.0             # alcance vertical p/ arremessar (arena plana: quase irrestrito)
 const BADERNA_RANGE := 140.0            # gatilho da baderna (≤ isto entra no sorteio com o melee) = attack_range
 
-var _special := ""                      # "" | "windup" | "charge" | "tired" | "rocks" | "baderna" | "melee"
+var _special := ""                      # "" | "windup" | "charge" | "tired" | "rocks" | "baderna" | "melee" | "slam"
 var _sp_windup := 0.0
 var _charge_dir := 1.0
 var _dir_locked := false
@@ -77,6 +90,7 @@ var _lunge_dir := 1.0                    # direção do passo à frente do golpe
 var _gcd := 0.0                         # cooldown global: bloqueia novo cast por ABILITY_GCD
 var _rock_cd := 0.0                     # cooldown próprio das rochas (ROCK_CD)
 var _baderna_cd := 0.0                  # cooldown próprio da baderna (BADERNA_CD) — só melee enquanto ativo
+var _slam_cd := 0.0                     # cooldown próprio do slam (SLAM_CD) — fase 2
 var _walking := false                   # anda NESTE frame? (só p/ o som dos passos — ver _process)
 var _charge_step_t := 0.0               # tempo até a próxima passada da corrida
 var _charge_step_i := 0                 # qual passada do ciclo (rodízio: não repete a mesma)
@@ -114,14 +128,18 @@ func _physics_process(delta: float) -> void:
 	if dormant:
 		super._physics_process(delta)
 		return
-	_rock_cd = maxf(0.0, _rock_cd - delta)         # cooldowns próprios (rochas/baderna) correm em qualquer estado
+	_rock_cd = maxf(0.0, _rock_cd - delta)         # cooldowns próprios (rochas/baderna/slam) correm em qualquer estado
 	_baderna_cd = maxf(0.0, _baderna_cd - delta)
+	_slam_cd = maxf(0.0, _slam_cd - delta)
 	if _special == "":
 		_gcd = maxf(0.0, _gcd - delta)   # cooldown global entre habilidades
-		# Seleção por DISTÂNCIA: em média distância (zona de rochas) fica parado e arremessa;
-		# perto/longe cai no super (aproxima e, ao alcance, sorteia melee/baderna).
-		if data != null and is_instance_valid(target) and _handle_ranged(delta):
-			return
+		# Seleção por DISTÂNCIA: o slam (fase 2) tem prioridade — cobre perto E média distância;
+		# depois a zona de rochas; perto/longe cai no super (aproxima e sorteia melee/baderna).
+		if data != null and is_instance_valid(target):
+			if _handle_slam():
+				return
+			if _handle_ranged(delta):
+				return
 		super._physics_process(delta)
 		return
 	if data == null or not is_instance_valid(target):
@@ -133,6 +151,7 @@ func _physics_process(delta: float) -> void:
 		"rocks": _tick_rocks(delta)
 		"baderna": _tick_baderna(delta)
 		"melee": _tick_melee(delta)
+		"slam": _tick_slam(delta)
 
 func _start_special() -> void:
 	_special = "windup"
@@ -399,6 +418,59 @@ func _baderna_hit(side: float) -> void:
 				target.apply_enemy_hit(data.stats)
 	_spawn_attack_fx(side)
 	Juice.hit_stop(get_tree(), 0.03)
+
+## --- Slam (FASE 2): soco no chão + onda rasteira (OgreShockwave) na direção do player. ---
+## Só depois de cruzar o 1º limiar de fúria (HP ≤ 50%). Dispara de perto/média distância com o
+## cooldown próprio pronto — inclusive na zona morta (140–250px) onde antes ele só aproximava.
+func _handle_slam() -> bool:
+	if not _phase2() or _gcd > 0.0 or _slam_cd > 0.0:
+		return false
+	var dist := absf(target.global_position.x - global_position.x)
+	if dist < SLAM_MIN_RANGE or dist > SLAM_MAX_RANGE:
+		return false
+	_start_slam()
+	return true
+
+## Fase 2 = já cruzou o 1º limiar da investida (50% de vida) — o mesmo relógio da fúria.
+func _phase2() -> bool:
+	return _next_threshold >= 1
+
+func _start_slam() -> void:
+	_special = "slam"
+	_ability_timer = SLAM_WINDUP
+	_slam_cd = SLAM_CD   # dispara o cooldown já no windup (como as rochas)
+	_show_warn()
+
+## Windup parado, encarando o player; ao fim, soca o chão e solta a onda pro lado dele.
+func _tick_slam(delta: float) -> void:
+	if not is_on_floor():
+		velocity.y += GRAVITY * delta
+	velocity.x = 0.0
+	move_and_slide()
+	_update_sprite(target.global_position.x - global_position.x, false)
+	_ability_timer -= delta
+	if _ability_timer > 0.0:
+		return
+	_hide_warn()
+	_do_slam()
+	_end_normal_ability()
+
+## O soco: impacto (anim + som de baque + poeira + tremor) e a onda nascendo aos pés dele.
+func _do_slam() -> void:
+	var dir := _facing()                          # o lado do player NO IMPACTO (windup rastreia)
+	_play_attack_anim()
+	var feet_y := global_position.y + box_h * 0.5
+	var wave := OgreShockwave.new()
+	get_parent().add_child(wave)
+	wave.global_position = Vector2(global_position.x + dir * (box_w * 0.5 + 10.0), feet_y)
+	wave.setup(dir, WAVE_SPEED, SLAM_DAMAGE, target)
+	Sfx.play((data as Boss).slam_sfx if data is Boss else "")   # baque do soco (id no JSON do boss)
+	Juice.burst(get_parent(), Vector2(global_position.x + dir * box_w * 0.5, feet_y),
+			Color(0.5, 0.42, 0.3), 12, 120.0)
+	Juice.hit_stop(get_tree(), 0.04)
+	var cam := get_viewport().get_camera_2d()
+	if cam is GameCamera:
+		(cam as GameCamera).add_trauma(0.35)
 
 ## Passos: pegam carona no MESMO `moving` que escolhe a animação de andar — assim tocam em toda
 ## situação em que ele anda (perseguindo, ou avançando durante o windup do melee). Só REGISTRA a
