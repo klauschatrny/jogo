@@ -61,9 +61,9 @@ const MELEE_STEP_TIME := 0.15          # duração do passo (≈ 24px por golpe)
 const SLAM_WINDUP := 0.9
 const SLAM_DAMAGE := 35
 const SLAM_CD := 8.0                    # cooldown próprio (além do global), como as rochas
-const SLAM_MIN_RANGE := 100.0           # colado no corpo não: ali melee/baderna reinam
-const SLAM_MAX_RANGE := 420.0           # cobre a zona morta (140–250) e o começo da zona de rochas
-const WAVE_SPEED := 240.0               # velocidade da onda rasteira
+const SLAM_MIN_RANGE := 140.0           # colado no corpo não: ali melee/baderna reinam
+const SLAM_MAX_RANGE := 300.0           # cobre a zona morta (140–250) e o começo da zona de rochas
+const WAVE_SPEED := 300.0               # velocidade da onda rasteira
 
 const ROCK_MIN_RANGE := 250.0           # distância mínima p/ arremessar rochas
 const ROCK_RANGE := 560.0               # distância máxima da zona de rochas
@@ -464,7 +464,6 @@ func _do_slam() -> void:
 	get_parent().add_child(wave)
 	wave.global_position = Vector2(global_position.x + dir * (box_w * 0.5 + 10.0), feet_y)
 	wave.setup(dir, WAVE_SPEED, SLAM_DAMAGE, target)
-	Sfx.play((data as Boss).slam_sfx if data is Boss else "")   # baque do soco (id no JSON do boss)
 	Juice.burst(get_parent(), Vector2(global_position.x + dir * box_w * 0.5, feet_y),
 			Color(0.5, 0.42, 0.3), 12, 120.0)
 	Juice.hit_stop(get_tree(), 0.04)
