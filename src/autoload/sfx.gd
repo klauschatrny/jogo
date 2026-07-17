@@ -20,6 +20,8 @@ var _next := 0
 var _sustained: Dictionary = {}  # id -> { player, stop_at, last_pos } — ciclos de passadas (sustain)
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS   # toca com o jogo pausado (cliques do menu de pausa),
+	                                           # igual ao autoload Music; as vozes herdam por INHERIT
 	var cfg: Variant = JsonLoader.load_file(CONFIG)
 	var block: Dictionary = ((cfg as Dictionary).get("sfx", {}) if typeof(cfg) == TYPE_DICTIONARY else {})
 	for id in block:

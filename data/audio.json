@@ -1,6 +1,14 @@
 {
   "_comment": "Catálogo de áudio. Trilha: Music.play(\"boss\"). Efeitos: Sfx.play(\"<id>\") — cada sfx tem uma LISTA de variações e, sem variação explícita, elas são intercaladas a cada toque. volume_db = ganho (0 = original, negativo abaixa); loop = repete ao chegar no fim.",
   "music": {
+    "menu": {
+      "_comment": "Trilha do menu principal (savfk - The Travelling Symphony). Tocada em main_menu.gd -> Music.play(\"menu\"); some no JOGAR (Music.stop) para não vazar na vila.",
+      "stream": "res://assets/audio/music/menu_travelling_symphony.mp3",
+      "volume_db": -14.0,
+      "loop": true,
+      "fade_in": 0.0,
+      "fade_out": 0.0
+    },
     "boss": {
       "_comment": "A alternativa testada (boss_iron_keep.mp3) segue no repo, reprovada por ora.",
       "stream": "res://assets/audio/music/boss_makai_symphony.mp3",
@@ -11,6 +19,12 @@
     }
   },
   "sfx": {
+    "ui_click": {
+      "_comment": "Clique de botão do menu (principal e pausa). PLACEHOLDER sintetizado (_gen_click.gd): tick curto. O pitch varia de leve a cada toque pra clicar em sequência não soar mecânico. Trocar por um som de verdade = só substituir o stream.",
+      "streams": ["res://assets/audio/sfx/ui_click.wav"],
+      "pitch": [1.0, 1.06, 0.96],
+      "volume_db": -10.0
+    },
     "player_attack": {
       "_comment": "UM arquivo, DUAS variações: a 2ª é o mesmo golpe num tom mais grave (pitch). A variação é o passo do combo (3 golpes), então a sequência sai tom normal, grave, normal. Parar deixa o combo expirar e o próximo golpe volta ao 1º. Um 3º valor em 'pitch' (ou um 2º stream) daria ao finisher um som próprio.",
       "streams": ["res://assets/audio/sfx/player_attack1.mp3"],

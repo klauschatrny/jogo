@@ -3,10 +3,16 @@
 ## A navegação definitiva via FSM (CharacterCreation → WeaponSelection) ainda não existe.
 extends Control
 
+const Backdrop := preload("res://src/presentation/ui/menu_backdrop.gd")
+
 var _options: OptionsPanel
 
 func _ready() -> void:
 	print("[MainMenu] Cena de apresentação pronta")
+	Music.play("menu")                        # trilha do menu (some no JOGAR — ver _on_play)
+	var bg: Control = Backdrop.new()          # arte de fundo procedural (placeholder)
+	add_child(bg)
+	move_child(bg, 0)                         # atrás do título e dos botões
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)
 	box.position = Vector2(230, 198)          # centrado (base 640×360), abaixo do título
@@ -21,10 +27,17 @@ func _add_button(box: VBoxContainer, text: String, cb: Callable) -> void:
 	b.custom_minimum_size = Vector2(180, 28)
 	b.focus_mode = Control.FOCUS_NONE
 	b.add_theme_font_size_override("font_size", 16)
-	b.pressed.connect(cb)
+	b.pressed.connect(_on_button_pressed.bind(cb))   # clique: som + ação
 	box.add_child(b)
 
+## Toca o clique de UI e então dispara a ação do botão (o som primeiro, para valer mesmo quando a
+## ação troca de cena — o Sfx é autoload e persiste).
+func _on_button_pressed(cb: Callable) -> void:
+	Sfx.play("ui_click")
+	cb.call()
+
 func _on_play() -> void:
+	Music.stop(3.0)                           # a vila é silenciosa: fade gradual de 3s ao entrar
 	get_tree().change_scene_to_file("res://src/presentation/scenes/floor_scene.tscn")
 
 func _open_panel(tab: int) -> void:

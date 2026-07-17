@@ -78,9 +78,16 @@ func _ready() -> void:
 	voltar.position = Vector2(260, 298)       # centrado na moldura (110..530), rente à base (338)
 	voltar.focus_mode = Control.FOCUS_NONE
 	voltar.pressed.connect(_close)
+	voltar.pressed.connect(_play_click)
 	add_child(voltar)
 
 	_show_tab(initial_tab)
+
+## Clique de UI dos botões (abas, VOLTAR, MUDAR) — mesmo som do menu principal e da pausa. Ligado
+## como conexão EXTRA ao `pressed`, à parte da ação: nenhum destes troca de cena, então a ordem
+## entre som e ação não importa.
+func _play_click() -> void:
+	Sfx.play("ui_click")
 
 ## Fecha o painel (o botão VOLTAR e a tecla PAUSAR/FECHAR caem aqui).
 func _close() -> void:
@@ -98,6 +105,7 @@ func _build_tabs() -> Control:
 		b.custom_minimum_size = Vector2(112, 24)
 		b.focus_mode = Control.FOCUS_NONE
 		b.pressed.connect(_show_tab.bind(i))
+		b.pressed.connect(_play_click)
 		row.add_child(b)
 		_tab_btns.append(b)
 	return row
@@ -242,6 +250,7 @@ func _add_bind_row(parent: Container, action: String, label: String) -> void:
 	btn.custom_minimum_size = Vector2(72, 22)
 	btn.focus_mode = Control.FOCUS_NONE
 	btn.pressed.connect(_on_change.bind(action))
+	btn.pressed.connect(_play_click)
 	row.add_child(btn)
 
 	_bind_rows.append({ "action": action, "keys": keys_lbl, "btn": btn })

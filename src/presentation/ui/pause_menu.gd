@@ -50,8 +50,14 @@ func _add_button(box: VBoxContainer, text: String, cb: Callable) -> void:
 	b.custom_minimum_size = Vector2(180, 28)
 	b.focus_mode = Control.FOCUS_NONE
 	b.add_theme_font_size_override("font_size", 16)
-	b.pressed.connect(cb)
+	b.pressed.connect(_on_button_pressed.bind(cb))   # clique: som + ação
 	box.add_child(b)
+
+## Toca o clique de UI e então dispara a ação do botão (o som antes — o Sfx é autoload e persiste
+## à troca de cena de MENU PRINCIPAL).
+func _on_button_pressed(cb: Callable) -> void:
+	Sfx.play("ui_click")
+	cb.call()
 
 func _close() -> void:
 	closed.emit()
