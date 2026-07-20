@@ -79,7 +79,7 @@ var _exit_door_x := 0.0              # saída LIVRE no fim do nível (a névoa j
 # muito mais curto. Nasce FECHADO e só se destranca do lado de LÁ (o refúgio), o que é o que dá
 # sentido à primeira travessia longa: você abre a porta pelas costas dela. Aberto, fica aberto para
 # sempre (persiste em RunState.opened_gates, como o portão da alavanca).
-var _shortcut: Node2D                # a boca do poço no cenário (null onde não há)
+var _shortcut: ShortcutView          # a boca do poço no cenário (null onde não há)
 var _shortcut_x := 0.0
 var _shortcut_id := ""               # id em opened_gates; "" = este nível não tem atalho
 var _shortcut_na_vila := false       # de que ponta estamos: a vila leva à fogueira, o refúgio à vila
@@ -98,7 +98,6 @@ const L1_NECRO_ONLY := false    # TESTE: andar 1 só com o necromante (sem horda
 const BOSS_ROOM_W := 640.0     # sala do boss = uma tela fechada (base 640×360)
 const DOOR_REACH := 30.0       # distância para "entrar" na porta / abrir o baú (base 640×360)
 const VILLAGE_SHORTCUT_X := 30.0   # a boca do poço na vila: atrás do início (PLAYER_START_X)
-const SHORTCUT_REACH := 34.0       # alcance do INTERAGIR no atalho (um pouco mais que a porta)
 const FADE_TIME := 0.35
 const DEATH_FADE_OUT := 0.45   # a tela apaga assim que ele cai (o letreiro entra junto)
 const DEATH_HOLD := 1.8        # e FICA preta, com o letreiro, enquanto o mundo se refaz por baixo
@@ -489,13 +488,15 @@ func _try_rest() -> bool:
 func _try_shortcut() -> bool:
 	if _shortcut_id == "" or not is_instance_valid(_player_view) or not is_instance_valid(_shortcut):
 		return false
-	if absf(_player_view.global_position.x - _shortcut_x) > SHORTCUT_REACH:
+	if not _shortcut.in_reach(_player_view):
 		return false
 	if _shortcut_na_vila:
 		_transition(_descer_pelo_atalho)
 		return true
 	if not _run.is_gate_open(_shortcut_id):
 		_run.open_gate(_shortcut_id)       # aberto é para sempre, inclusive através da morte
+		_shortcut.abrir()                  # as tábuas caem: o poço deixa de ser entulho
+		_show_tip("O poço se abriu. Ele desce da Cidade direto até aqui.")
 	_transition(_subir_pelo_atalho)
 	return true
 
@@ -561,7 +562,10 @@ func _start_tutorial() -> void:
 		_shortcut_id = sc_id
 		_shortcut_na_vila = true
 		_shortcut_x = VILLAGE_SHORTCUT_X
-		_shortcut = _spawn_door(_shortcut_x, Palette.ACCENT.darkened(0.5))
+		_shortcut = ShortcutView.new()
+		_shortcut.position = Vector2(_shortcut_x, GROUND_Y)
+		_env.add_child(_shortcut)
+		_shortcut.setup(_shortcut_x, _player_view, true, true)
 	_tips_done.clear()          # as dicas recomeçam a cada visita à vila
 	_hide_tip()
 	_msg.text = "Cidade: siga até o Portão →"
@@ -1478,10 +1482,12 @@ func _update_boss_doors() -> void:
 	elif _boss_door_right_x > 0.0 and absf(px - _boss_door_right_x) <= DOOR_REACH:
 		_transition(_next_floor)
 
-## A porta LIVRE no fim de um nível de sala/descanso (só existe quando o chefe adiante já caiu —
-## ver _spawn_exit_passage): cruza andando, como as portas da arena. A _transition trava re-disparo.
+## A porta no fim de um nível de sala/descanso (toda saída que NÃO seja o selo de uma arena de
+## chefe — ver _spawn_exit_passage): cruza andando, como as portas da arena e a da Cidade. Só
+## responde na fase "cleared", senão daria para sair sem resolver a sala. A _transition trava
+## o re-disparo.
 func _update_exit_door() -> void:
-	if _exit_door_x <= 0.0 or not is_instance_valid(_player_view):
+	if _exit_door_x <= 0.0 or _phase != "cleared" or not is_instance_valid(_player_view):
 		return
 	if absf(_player_view.global_position.x - _exit_door_x) <= DOOR_REACH:
 		_transition(_next_floor)
@@ -1503,20 +1509,24 @@ func _spawn_rest_area(level_id: String) -> void:
 
 	_spawn_exit_passage(level_id)
 
-## A saída no extremo do nível: a névoa do chefe (atravessa com INTERAGIR) — ou, se o nível
-## adiante JÁ FOI VENCIDO, uma porta livre que se cruza andando (_update_exit_door), como as da
-## arena: a névoa se dissipou junto com o chefe e não volta mais.
+## A saída no extremo do nível. A NÉVOA é o selo de uma arena de chefe e nada mais: ela existe
+## só quando o que vem adiante é um nível "boss" ainda vivo. Névoa em passagem comum diluía o
+## sinal — se toda porta é névoa, a névoa deixa de anunciar que há um chefe do outro lado.
+## Qualquer outra saída (nível comum adiante, ou chefe já vencido) é porta, cruzada andando.
 func _spawn_exit_passage(_level_id: String) -> void:
 	var fog_x := _arena_width - FOG_BACK
 	var adiante := _exit("frente")
-	if not adiante.is_empty() and _run.is_cleared(String(adiante["level"])):
-		_spawn_door(fog_x, Palette.ACCENT.darkened(0.35))
-		_exit_door_x = fog_x
+	var alvo := String(adiante["level"]) if not adiante.is_empty() else ""
+	if alvo == "":
+		return               # fim do conteúdo: o nível simplesmente acaba, sem porta para lugar nenhum
+	if _is_boss_level(alvo) and not _run.is_cleared(alvo):
+		_fog = FogGateView.new()
+		_fog.position = Vector2(fog_x, GROUND_Y)
+		_env.add_child(_fog)
+		_fog.setup(fog_x, _player_view)
 		return
-	_fog = FogGateView.new()
-	_fog.position = Vector2(fog_x, GROUND_Y)
-	_env.add_child(_fog)
-	_fog.setup(fog_x, _player_view)
+	_spawn_door(fog_x, Palette.ACCENT.darkened(0.35))
+	_exit_door_x = fog_x
 
 ## Id estável do portão de mecanismo de um nível (persistido no RunState). Um por nível de sala.
 func _gate_id(level_id: String) -> String:
@@ -1528,21 +1538,28 @@ func _gate_id(level_id: String) -> String:
 func _spawn_sanctuary(level_id: String) -> void:
 	_bonfires.clear()
 
-	# A alavanca fica SEMPRE no lugar, já durante a luta — mas só destravada (puxável) quando o
-	# nível está vencido. Se o portão já foi aberto nesta run, ela nasce puxada.
-	var gate_open := _run.is_gate_open(_gate_id(level_id))
-	var lx := _fight_width - LEVER_BACK
-	_lever = LeverView.new()
-	_lever.position = Vector2(lx, GROUND_Y)
-	_env.add_child(_lever)
-	_lever.setup(lx, _player_view, gate_open, _run.is_cleared(level_id))
-	_lever.pulled.connect(_on_lever_pulled)
+	# O portão de madeira (e a alavanca que o abre) é OPCIONAL, por nível: levels.json → "gate".
+	# Sem ele, a fogueira não fica trancada atrás da luta — o jogador pode alcançá-la antes de
+	# limpar a sala, que é o comportamento soulslike normal. Só faz sentido onde trancar a
+	# passagem É o desenho do nível.
+	_lever = null
+	_gate = null
+	if bool(_floor_config.get("gate", false)):
+		# A alavanca fica SEMPRE no lugar, já durante a luta — mas só destravada (puxável) quando
+		# o nível está vencido. Se o portão já foi aberto nesta run, ela nasce puxada.
+		var gate_open := _run.is_gate_open(_gate_id(level_id))
+		var lx := _fight_width - LEVER_BACK
+		_lever = LeverView.new()
+		_lever.position = Vector2(lx, GROUND_Y)
+		_env.add_child(_lever)
+		_lever.setup(lx, _player_view, gate_open, _run.is_cleared(level_id))
+		_lever.pulled.connect(_on_lever_pulled)
 
-	var gate_x := _fight_width
-	_gate = GateView.new()
-	_gate.position = Vector2(gate_x, GROUND_Y)
-	_env.add_child(_gate)
-	_gate.setup(gate_x, gate_open)
+		var gate_x := _fight_width
+		_gate = GateView.new()
+		_gate.position = Vector2(gate_x, GROUND_Y)
+		_env.add_child(_gate)
+		_gate.setup(gate_x, gate_open)
 
 	# A fogueira: a ÚNICA do jogo. Já acesa se o jogador descansou nela antes nesta run.
 	var bf_x := _fight_width + BONFIRE_IN
@@ -1562,11 +1579,10 @@ func _spawn_sanctuary(level_id: String) -> void:
 		_shortcut_id = String(sc.get("id", ""))
 		_shortcut_na_vila = false
 		_shortcut_x = _fight_width + float(sc.get("at", 260.0))
-		_shortcut = _spawn_door(_shortcut_x, Palette.ACCENT.darkened(0.5))
-		# Fechado, é entulho: escuro e atrás das entidades. Aberto, ganha a cor de passagem.
-		if not _run.is_gate_open(_shortcut_id):
-			_shortcut.modulate = Color(0.42, 0.40, 0.44)
-			_shortcut.z_index = -3
+		_shortcut = ShortcutView.new()
+		_shortcut.position = Vector2(_shortcut_x, GROUND_Y)
+		_env.add_child(_shortcut)
+		_shortcut.setup(_shortcut_x, _player_view, _run.is_gate_open(_shortcut_id), false)
 
 	# A saída do refúgio, no extremo (encostada na parede do fim): a névoa do chefe — ou uma porta
 	# livre, se o chefe adiante já caiu (_spawn_exit_passage).

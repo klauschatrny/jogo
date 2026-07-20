@@ -77,7 +77,12 @@ parked Nemesis reads it (note left in `ghost_factory`).
 point: you open the door from behind it. Unlocked, it links the **village straight to that level's
 bonfire** (`entry: "fogueira"`), skipping the whole combat corridor, and stays open forever
 (`id` goes into `RunState.opened_gates`, surviving death — same machinery as the lever's gate).
-Both ends are **`interact`, never walk-through**: in the sanctuary the mouth sits on the mandatory
+It draws itself through **`ShortcutView`**, which has two visually distinct states — boarded
+(crossed planks) and open (a black shaft) — and **always shows a prompt in reach**
+(`destrancar / descer / subir o poço`). The first version reused the ordinary door with a dark
+`modulate` and no prompt, and it read as a *broken door*: a shortcut that does not announce itself
+is not a shortcut, it is scenery the player walks past. Both ends are **`interact`, never
+walk-through**: in the sanctuary the mouth sits on the mandatory
 path to the boss fog, so crossing it by walking would teleport the player to the village every time
 they went to fight. The village end sits **behind** the spawn point (`VILLAGE_SHORTCUT_X`) for the
 same reason. Today: `poco_portao` in `portao`.
@@ -97,9 +102,18 @@ pool-based revival (`_dead_pool`/`_respawn_cast`, deleted): that one spawned a *
 the Necromancer after a delay, so the room slowly refilled from one point. The new one is the *same*
 skeleton getting back up where you left it — you can't create safe ground, only spend the time.
 
-**Passages — lever/gate and fog, not walk-through doors.** The village entrance is still a plain
-door you walk into. *Inside* the dungeon there are two mechanism passages, both persisted in
-`RunState`:
+**Passages.** Three kinds, and each says something different — that is the point:
+- A **plain door** is any ordinary exit: walk into it (only in phase `cleared`). This is the
+  default now.
+- A **fog gate** is the **seal of a boss arena, and nothing else**. `_spawn_exit_passage` grows one
+  *only* when the `frente` exit leads to a `"boss"` level that is still alive. It used to cover
+  every exit, which diluted the signal: if every door is fog, fog stops announcing a boss.
+- A **wooden gate + lever** is now **opt-in per level** (`levels.json → "gate": true`). Without it
+  the bonfire is not locked behind the fight, which is the normal soulslike arrangement. Only
+  `cemiterio` declares it; `portao` deliberately does not.
+
+The village entrance is still a plain door you walk into. The two mechanism passages, both
+persisted in `RunState`:
 - A **wooden gate** (`GateView`, a solid StaticBody2D on layer 4) closes the sanctuary off during
   the fight. The **lever** (`LeverView`) that opens it is **always present** (spawned in
   `_spawn_sanctuary`, just before the gate) but starts **disarmed** — it's inert scenery until the
