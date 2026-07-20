@@ -151,16 +151,20 @@ purely by proximity — they sit far enough apart that only one is ever in reach
 
 **Done — the Necromancer's tower, and the first vertical geometry.** `cemiterio` lost its
 wooden gate + lever, and the Necromancer now stands on a raised stone tower (`room.tower =
-{ at, altura, largura, escada_em }`, a `StaticBody2D` on layer 4 with battlements, so player *and*
-enemies stand on it). The **only** way up is a **`LadderView`** — the game's first vertical
-traversal, in a world that was flat continuous ground until now. Climbing is `move_up`/`move_down`,
-gravity off, snapped to the ladder's axis, and while climbing you can neither attack nor dodge:
-that cost is the point, since a platform reachable by a free jump would be no decision at all.
-Two input traps handled: **`W` is bound to both `jump` and `move_up`**, so releasing on jump is
-gated on `move_up` *not* being held (otherwise climbing drops you the instant you grab); and
-walking sideways while not climbing releases the ladder, so nobody gets glued to it at the bottom.
-`_ladders` lives on `floor_scene` and is handed to `PlayerView.ladders`; it is cleared with the
-rest of `_env` on rebuild.
+{ at, altura, largura, perna, escada_em }`). **Only the deck collides** (a `StaticBody2D` on layer
+4, so player *and* enemies stand on it) — the two legs and the arch beneath are drawing, so the gap
+is walk-through for everyone. The first version was solid ground-to-top and became a **wall that
+cut the corridor in two**. The **only** way up is a **`LadderView`** — the game's first vertical
+traversal, in a world that was flat continuous ground until now. It stands just *outside* the
+deck's edge (inside, the deck itself would block the climb) and drops the player a few px inward on
+arrival (`saida_x`), or he would finish the climb in mid-air beside the tower. Climb with
+**`interact` (E)**, descend with `move_down`; gravity off, snapped to the ladder's axis, and while
+climbing you can neither attack nor dodge — that cost is the point, since a platform reachable by a
+free jump would be no decision at all. E was chosen over `move_up` because **`W` is bound to both
+`jump` and `move_up`**, so climbing released the ladder on the very frame it grabbed; E is also the
+same "use" verb as the bonfire, lever and well. Walking sideways while not climbing releases the
+ladder, so nobody gets glued to it at the bottom. `_ladders` lives on `floor_scene` and is handed
+to `PlayerView.ladders`; it is cleared with the rest of `_env` on rebuild.
 
 **Done — per-enemy attack rhythm, and the Necromancer telegraphs.** The three skeletons used to be
 timing-identical (code defaults 0.18 / 1.0); now each declares its own in JSON — minion
