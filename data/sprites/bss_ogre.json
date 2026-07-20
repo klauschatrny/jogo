@@ -1,12 +1,12 @@
 {
-  "_comment": "O idle sai do MODELO oficial (bss_ogre_model.png) — é o que aparece parado, atacando, cansado e em tudo que ainda não tem animação, já que play_safe cai no idle. Só o andar usa o sheet de ragdoll; conforme cada animação for desenhada, some a linha dela aqui.",
+  "_comment": "Linha 0 = andar (8 quadros), linha 1 = idle (7 quadros). O idle cobre TUDO que ainda não tem animação própria, porque play_safe cai nele quando a animação pedida não existe — atacando, no windup do slam, cansado. Conforme cada uma for desenhada, some a linha dela aqui. O bss_ogre_model.png (a pose de referência desenhada) não é mais carregado pelo jogo: ele serviu de idle enquanto o idle não existia.",
   "sheet": "bss_ogre_ragdoll_animations_sheet.png",
   "cell_w": 160, "cell_h": 160,
   "hitbox": [26, 52],
   "facing": "left",
   "scale": 2,
   "animations": {
-    "idle": { "sheet": "bss_ogre_model.png", "row": 0, "frames": 1, "fps": 1 },
+    "idle": { "row": 1, "frames": 7, "fps": 6 },
     "walk": { "row": 0, "frames": 8, "fps": 4 }
   }
 }
