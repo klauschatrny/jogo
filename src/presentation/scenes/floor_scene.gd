@@ -129,8 +129,9 @@ const FOG_BACK := 34.0         # a névoa, este tanto antes da parede do fim
 # A GUARDA do refúgio (run-back): postada no trecho entre a fogueira e a névoa, com folga dos dois.
 const GUARD_AFTER_BONFIRE := 180.0   # começa este tanto DEPOIS da fogueira (bolha segura ao redor do fogo)
 const GUARD_BEFORE_FOG := 120.0      # e termina este tanto ANTES da névoa
-const GUARD_WAKE := 140.0            # um esqueleto dormente da guarda desperta a esta distância do player
-const MINION_WAKE := 150.0          # idem para os esqueletos DORMENTES espalhados numa sala (sem Necromante)
+# O raio de despertar é DE CADA INIMIGO agora (data/enemies/<id>.json → "aggro_range", padrão
+# EnemyView.AGGRO_RANGE): um Necromante enxerga muito mais longe que um lacaio, e isso é
+# característica dele, não do lugar onde ele está.
 
 # --- Vila de tutorial (fora da dungeon; roda uma vez antes do nível 1) ---
 const TUTORIAL_LENGTH := 1920.0
@@ -1201,8 +1202,8 @@ func _update_room_wake() -> void:
 		if not is_instance_valid(v) or not v.dormant:
 			continue
 		if _guard.has(v):
-			continue          # a guarda do refúgio tem o alcance dela (_update_guard_wake)
-		if absf(px - v.global_position.x) <= MINION_WAKE:
+			continue          # a guarda do refúgio tem o passe dela (_update_guard_wake)
+		if absf(px - v.global_position.x) <= v.aggro_range:
 			v.dormant = false
 
 # --- A REMONTAGEM (esqueletos sob o Necromante) ---
@@ -1759,13 +1760,13 @@ func _reset_guard() -> void:
 	_spawn_guard()
 
 ## Desperta a guarda por proximidade: um esqueleto dormente ganha vida quando o player chega a
-## GUARD_WAKE dele. Comportamento soulslike — esperam imóveis e acordam quando você se aproxima.
+## aggro_range dele. Comportamento soulslike — esperam imóveis e acordam quando você se aproxima.
 func _update_guard_wake() -> void:
 	if _guard.is_empty() or not is_instance_valid(_player_view):
 		return
 	var px := _player_view.global_position.x
 	for v in _guard:
-		if is_instance_valid(v) and v.dormant and absf(px - v.global_position.x) <= GUARD_WAKE:
+		if is_instance_valid(v) and v.dormant and absf(px - v.global_position.x) <= v.aggro_range:
 			v.dormant = false
 
 # ---------------------------------------------------------------------------

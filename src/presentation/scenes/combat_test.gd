@@ -28,8 +28,8 @@ func _ready() -> void:
 
 	var enemies := EnemyRepository.new()
 	enemies.load_all()
-	_spawn(enemies, "enm_skeleton", Vector2(470, GROUND_Y - 40), pv)
-	_spawn(enemies, "enm_skeleton", Vector2(560, GROUND_Y - 40), pv)
+	_spawn(enemies, "enm_skeleton_minion", Vector2(470, GROUND_Y - 40), pv)
+	_spawn(enemies, "enm_skeleton_minion", Vector2(560, GROUND_Y - 40), pv)
 
 	var layer := CanvasLayer.new()
 	add_child(layer)

@@ -11,6 +11,10 @@ var stats: StatBlock
 var ai_profile: String = "aggressive"
 var abilities: Array = []
 var loot: Dictionary = {}
+## A que distância ele DESPERTA (px). Todo inimigo que não é chefe nasce dormente e só fica
+## agressivo quando o jogador entra neste raio — é o que deixa o jogador escolher a briga.
+## 0 = a view usa o padrão dela.
+var aggro_range: float = 0.0
 var attack_range: float = 0.0       # alcance de GATILHO do golpe melee (px). 0 = a view usa seu padrão
 var hit_range: float = 0.0          # alcance de DANO/efeito do golpe (px). 0 = usa attack_range
 var attack_style: String = ""       # estilo do efeito melee: "slash" | "thrust". "" = padrão (slash)
@@ -36,6 +40,7 @@ func _populate(d: Dictionary) -> void:
 	abilities = abil.duplicate()
 	var lt: Dictionary = d.get("loot", {})
 	loot = lt.duplicate(true)
+	aggro_range = float(d.get("aggro_range", 0.0))
 	attack_range = float(d.get("attack_range", 0.0))
 	hit_range = float(d.get("hit_range", 0.0))
 	attack_style = String(d.get("attack_style", ""))

@@ -32,4 +32,4 @@ func test_pool_vazio_usa_fallback() -> void:
 	var cfg := CFG.duplicate(true)
 	cfg["enemy_pool"] = []
 	var fm := FloorManager.build(1, cfg)
-	assert_eq(fm.waves[0][0], "enm_skeleton")
+	assert_eq(fm.waves[0][0], "enm_skeleton_minion")   # o fallback aponta para um inimigo que EXISTE

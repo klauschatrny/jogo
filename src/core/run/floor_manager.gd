@@ -16,9 +16,9 @@ static func build(floor: int, config: Dictionary) -> FloorManager:
 	fm.floor = maxi(floor, 1)
 	fm.boss_id = String(config.get("boss_id", "bss_guardian"))
 
-	var pool: Array = config.get("enemy_pool", ["enm_skeleton"])
+	var pool: Array = config.get("enemy_pool", ["enm_skeleton_minion"])
 	if pool.is_empty():
-		pool = ["enm_skeleton"]
+		pool = ["enm_skeleton_minion"]
 	var n_waves := int(config.get("waves_base", 2)) + (fm.floor - 1) / 10
 	var per_wave := int(config.get("enemies_per_wave", 3)) + (fm.floor - 1) / 5
 

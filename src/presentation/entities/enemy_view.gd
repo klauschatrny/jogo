@@ -7,6 +7,14 @@ extends CharacterBody2D
 signal died
 
 const ATTACK_RANGE := 30.0         # base 640×360
+const AGGRO_RANGE := 250.0         # padrão de despertar (data-driven via "aggro_range" no JSON)
+# O passo à frente do golpe: o inimigo AVANÇA ao atacar, em vez de bater parado. É o que dá peso
+# ao golpe e o que impede o jogador de ficar seguro parado a um pixel do alcance — para recuar,
+# ele tem de recuar de verdade. Fração do alcance de gatilho, então quem tem arma longa avança mais.
+# (nome _step_*, e não _lunge_*, porque o Ogro já tem um _lunge_dir próprio para a passada do
+# golpe dele — e uma subclasse não pode redeclarar membro do pai.)
+const STEP_FRACTION := 0.55       # do attack_range
+const STEP_TIME := 0.16           # duração do impulso (s)
 const ATTACK_VRANGE := 30.0        # alcance vertical: não acerta quem está acima (pogo)
 const ATTACK_INTERVAL := 1.0
 const WINDUP := 0.18               # 180 ms de aviso ("!") antes do golpe conectar (janela p/ desviar)
@@ -26,6 +34,7 @@ var dormant := false                # passivo: não persegue nem ataca até ser 
 # verdade (floor_scene chama final_death). 0 = morte normal, como qualquer inimigo.
 var reassemble_time := 0.0
 var _downed := 0.0                  # segundos restantes de "monte de ossos" (0 = de pé)
+var aggro_range := AGGRO_RANGE      # a que distância desperta (dormente → agressivo)
 var attack_range := ATTACK_RANGE    # alcance de GATILHO/aproximação do golpe melee
 var hit_range := 0.0                # alcance de DANO/efeito do golpe (0 = usa attack_range)
 var attack_style := "slash"         # estilo do efeito melee: "slash" (arco) | "thrust" (estocada)
@@ -42,6 +51,8 @@ var sprite_id_override := ""        # id de sprite alternativo; vazio = usa data
 const KNOCKBACK_FORCE := 130.0     # base 640×360
 
 var _attack_cd := 0.0
+var _step := 0.0                   # impulso do passo à frente (px/s), decai em STEP_TIME
+var _step_dir := 0.0
 var _windup := 0.0                  # >0 = em windup (aviso "!" visível); ao zerar, resolve o golpe
 var _warn: Node2D                   # o "!" acima do inimigo durante o windup
 var _hp_bar: ColorRect
@@ -56,6 +67,8 @@ func setup(enemy: Enemy, target_node: Node2D) -> void:
 	target = target_node
 	if enemy != null and enemy.attack_range > 0.0:
 		attack_range = enemy.attack_range   # alcance de gatilho/aproximação data-driven
+	if enemy != null and enemy.aggro_range > 0.0:
+		aggro_range = enemy.aggro_range     # a que distância ele desperta (data-driven)
 	if enemy != null and enemy.hit_range > 0.0:
 		hit_range = enemy.hit_range         # alcance de dano/efeito (separado do gatilho)
 	if enemy != null and enemy.attack_style != "":
@@ -194,8 +207,9 @@ func _physics_process(delta: float) -> void:
 			if _attack_cd <= 0.0:
 				_attack_cd = attack_interval
 				_start_windup()   # mostra o aviso "!" e agenda o golpe (80 ms)
-	velocity.x += _knockback.x
+	velocity.x += _knockback.x + _step * _step_dir
 	_knockback = _knockback.lerp(Vector2.ZERO, 0.2)   # recuo decai rápido
+	_step = maxf(0.0, _step - (_step_v0() / STEP_TIME) * delta)   # decai linear até zerar em STEP_TIME
 	move_and_slide()
 	_update_sprite(dx, moving)
 
@@ -252,6 +266,11 @@ func _start_windup() -> void:
 ## alcance evita; a esquiva também, via i-frames em apply_enemy_hit). O swing/anim sempre tocam.
 func _resolve_attack(dx: float) -> void:
 	_hide_warn()
+	# O passo à frente: sai JUNTO com o golpe, não no windup — o windup é a janela de fuga, e um
+	# inimigo que já avançasse nela tiraria do jogador o tempo que o "!" promete.
+	if dx != 0.0:
+		_step_dir = signf(dx)
+		_step = _step_v0()
 	if is_instance_valid(target):
 		var in_range := absf(dx) <= _hit_range() \
 			and absf(target.global_position.y - global_position.y) <= ATTACK_VRANGE
@@ -263,6 +282,12 @@ func _resolve_attack(dx: float) -> void:
 	# rodízio das variações — golpes seguidos não repetem o mesmo som.
 	if data != null:
 		Sfx.play(data.attack_sfx)
+
+## Velocidade inicial do passo à frente. O impulso decai LINEAR até zerar, então a distância
+## percorrida é a área do triângulo (v0·t/2) — daí o fator 2, sem o qual o passo cobriria metade
+## do que a constante promete.
+func _step_v0() -> float:
+	return 2.0 * STEP_FRACTION * attack_range / STEP_TIME
 
 ## "!" vermelho acima da cabeça (feito com ColorRects — nítido no low-res). Só durante o windup.
 func _show_warn() -> void:

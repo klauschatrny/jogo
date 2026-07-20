@@ -149,6 +149,22 @@ persisted in `RunState`:
 All three sanctuary interactions (lever, rest, fog) share the `interact` key and are disambiguated
 purely by proximity — they sit far enough apart that only one is ever in reach.
 
+**Done — reach, aggro and the attack step.** Skeleton `attack_range` went 30/30/32 →
+**minion 40, armoured 50, heavy 70**, so reach now actually separates them (the player's sword is
+76, and before this every skeleton was interchangeable on that axis). Waking is data-driven per
+enemy — **`aggro_range`** in the enemy JSON (`EnemyView.AGGRO_RANGE` = 250 default): skeletons
+**250**, the Necromancer **400**, because seeing far is a trait of *his*, not of the room he stands
+in. The old single `MINION_WAKE`/`GUARD_WAKE` constants are gone. Attacks now **step forward**
+(`STEP_FRACTION` 0.55 of `attack_range` over `STEP_TIME` 0.16s — heavy ≈ 38px, measured 51 with
+approach): hitting from a standstill let the player camp one pixel outside reach, and the step
+means backing off has to be real backing off. It fires **on the hit, never during the windup** —
+the windup is the promised escape window. Named `_step_*` and not `_lunge_*` because `OgreView`
+already owns a `_lunge_dir` and a subclass cannot redeclare a parent member.
+
+**Removed: `enm_skeleton` (Esqueleto Guerreiro).** It was in no level. `floor_manager`'s fallback
+pool, `combat_test` and `sim_balance` were repointed to `enm_skeleton_minion` first, so nothing
+references a missing id.
+
 **Done — enemy spawns are FIXED, never rolled.** Each `room` tier declares its positions one by
 one (`"at": [x, x, …]`), and with several `ids` the one at each slot is chosen by **index**, not
 drawn. Random placement is a roguelike device; in a soulslike the level is a thing you *learn*, and

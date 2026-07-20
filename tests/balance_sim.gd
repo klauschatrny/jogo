@@ -81,7 +81,7 @@ func _enemy_dps(enemy_stats: StatBlock, p: Player) -> float:
 ## O eixo "andar" virou, portanto, uma pergunta diferente e mais soulslike: por quanto tempo estes
 ## stats fixos continuam relevantes conforme o jogador sobe? Ver TTK matar caindo é o esperado.
 func _report_normal(floor: int, p: Player) -> void:
-	var e := EnemyFactory.build(_enemy_repo.get_by_id("enm_skeleton"))
+	var e := EnemyFactory.build(_enemy_repo.get_by_id("enm_skeleton_minion"))
 	_emit_row(floor, e.name, e.rank, e.stats, p)
 
 func _report_boss(floor: int, p: Player) -> void:
