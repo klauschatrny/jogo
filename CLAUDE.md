@@ -131,8 +131,25 @@ the charge is spent anyway; the player's call). The gulp has an **orange glow** 
 a `z=-1` aura that builds/pulses over the drink, orange embers, and a bright burst the instant the
 heal lands — `_update_drink_glow`/`_drink_finish_fx`); it fades out on finish or interrupt.
 
-**Still roguelike, still to convert**: the geometric per-floor enemy scaling — a soulslike
-hand-tunes fixed stats per area.
+**Done — fixed stats, no more per-floor scaling.** `EnemyFactory` used to multiply every enemy by
+a geometric per-floor curve (`GROWTH^(f-1)`) plus a rank multiplier; it now returns the enemy
+**exactly as the JSON declares it** (`build(base_dict)` / `build_boss(base_dict)` — the `floor`
+argument is gone). That curve was a roguelike device: it kept one skeleton relevant across 50
+procedural floors. A soulslike has no "floor 12 skeleton" — it has *that area's* skeleton, with
+numbers a designer chose. **To make an encounter harder, edit that enemy's JSON, or author a
+variant with its own id and use it only where you want it** — there is no global difficulty knob
+left, deliberately, because a global knob is what prevents tuning a single fight.
+
+The stats that the old formula produced were **baked into the JSONs** so nothing changed in feel:
+`bss_ogre` 180/25/10 → **1177/43/11** (it was fought on level 2, so it carried one step of growth
+plus the ×6 BOSS multiplier), `enm_skeleton_heavy` atk 11→15 and `enm_necromancer` atk 12→17 (the
+×1.4 ELITE multiplier). The NORMAL-rank skeletons were already at their effective values.
+`rank` survives as a **label** (HP bar, tier, AI), never as a multiplier. `Scaling.enemy_hp/atk/def`
+and `rank_mult` still exist but feed only the parked Nemesis/ghost code and `sim_balance`; the
+`enemy_scaling` GROWTH_* keys in `balance.json` **no longer affect any enemy in gameplay**. The
+**parked tower bosses** (`gbs_*`, `king_tyrant`, `bss_guardian`) were deliberately **left at their
+authored values** — baking their curve output would have written 133k-HP "tuning" into a file, so
+they stay honest placeholders awaiting the tower redesign.
 
 ## Project status: Phase 4 implemented (Phases 1–4 done)
 

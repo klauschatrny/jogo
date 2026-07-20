@@ -3,7 +3,7 @@
   "name": "Esqueleto Pesado",
   "archetype": "MELEE",
   "rank": "ELITE",
-  "base_stats": { "max_hp": 70, "attack": 11, "defense": 4, "move_speed": 61 },
+  "base_stats": { "max_hp": 70, "attack": 15, "defense": 4, "move_speed": 61 },
   "attack_range": 32,
   "attack_style": "thrust",
   "ai_profile": "aggressive",

@@ -3,7 +3,7 @@
   "name": "Necromante",
   "archetype": "CASTER",
   "rank": "ELITE",
-  "base_stats": { "max_hp": 45, "attack": 12, "defense": 3, "move_speed": 0 },
+  "base_stats": { "max_hp": 45, "attack": 17, "defense": 3, "move_speed": 0 },
   "ai_profile": "necromancer",
   "abilities": ["abil_raise_dead"],
   "loot": { "gold_min": 30, "gold_max": 60, "souls": 80 },

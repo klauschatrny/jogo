@@ -1,35 +1,19 @@
-## Cria inimigos/bosses ESCALADOS para um andar (§1.2.1). Trata o base_stats do JSON como
-## o baseline do andar 1 e aplica a curva geométrica (GROWTH^(f-1)). O multiplicador de rank
-## de HP vale SÓ para bosses (comuns usam o HP base puro); o de ATK vale para todos.
+## Cria inimigos/bosses a partir do JSON. Os stats são os que o arquivo declara — ponto.
+##
+## Já houve aqui uma curva geométrica por andar (GROWTH^(f-1)) mais um multiplicador de rank:
+## herança do roguelike, onde o mesmo esqueleto reaparecia 50 vezes e só a matemática o mantinha
+## relevante. Num soulslike não existe "o esqueleto do andar 12" — existe o esqueleto DAQUELA
+## área, com os números que o designer escolheu para ele ali. Um inimigo mais duro é uma
+## ENTRADA NOVA em data/enemies/, não o mesmo bicho multiplicado.
+##
+## Consequência prática: para deixar algo mais forte, edite o JSON dele (ou crie uma variante com
+## outro id e use-a nos níveis que a pedirem). Não existe mais botão global de dificuldade — e é
+## de propósito, porque é justamente o botão global que impede afinar um encontro específico.
 class_name EnemyFactory
 extends RefCounted
 
-static func build(base_dict: Dictionary, floor: int) -> Enemy:
-	var e := Enemy.from_dict(base_dict)
-	_scale(e, floor)
-	return e
+static func build(base_dict: Dictionary) -> Enemy:
+	return Enemy.from_dict(base_dict)
 
-static func build_boss(base_dict: Dictionary, floor: int) -> Boss:
-	var b := Boss.from_dict(base_dict)
-	_scale(b, floor)
-	return b
-
-## Escala in-place os stats de um Enemy (ou Boss) para o andar.
-static func _scale(e: Enemy, floor: int) -> void:
-	var f := maxi(floor, 1)
-	var es: Dictionary = BalanceConfig.enemy_scaling
-	var gh := float(es.get("GROWTH_HP", 1.09))
-	var ga := float(es.get("GROWTH_ATK", 1.07))
-	var gd := float(es.get("GROWTH_DEF", 1.05))
-
-	# HP: mult de rank aplica-se SÓ a bosses; inimigos comuns usam o HP base puro (× curva do andar).
-	var hp := e.stats.max_hp * pow(gh, f - 1)
-	if e is Boss:
-		hp *= Scaling.rank_mult(e.rank, "hp")
-	var atk := e.stats.attack * pow(ga, f - 1) * Scaling.rank_mult(e.rank, "atk")
-	var df := e.stats.defense * pow(gd, f - 1)
-
-	e.stats.max_hp = int(round(hp))
-	e.stats.current_hp = e.stats.max_hp
-	e.stats.attack = int(round(atk))
-	e.stats.defense = int(round(df))
+static func build_boss(base_dict: Dictionary) -> Boss:
+	return Boss.from_dict(base_dict)

@@ -77,15 +77,18 @@ func _enemy_dps(enemy_stats: StatBlock, p: Player) -> float:
 
 # --- Linhas do relatório ---
 
+## Com o fim da escala geométrica, o inimigo NÃO muda de andar para andar — só o jogador cresce.
+## O eixo "andar" virou, portanto, uma pergunta diferente e mais soulslike: por quanto tempo estes
+## stats fixos continuam relevantes conforme o jogador sobe? Ver TTK matar caindo é o esperado.
 func _report_normal(floor: int, p: Player) -> void:
-	var e := EnemyFactory.build(_enemy_repo.get_by_id("enm_skeleton"), floor)
+	var e := EnemyFactory.build(_enemy_repo.get_by_id("enm_skeleton"))
 	_emit_row(floor, e.name, e.rank, e.stats, p)
 
 func _report_boss(floor: int, p: Player) -> void:
 	var d := _boss_repo.get_by_id(_tower.boss_for_floor(floor))
 	if d.is_empty():
 		return
-	var b := EnemyFactory.build_boss(d, floor)
+	var b := EnemyFactory.build_boss(d)
 	_emit_row(floor, b.name, b.rank, b.stats, p)
 
 func _emit_row(floor: int, label: String, rank: String, enemy_stats: StatBlock, p: Player) -> void:

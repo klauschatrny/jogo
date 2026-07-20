@@ -53,10 +53,10 @@ func test_atk_mult_aplicado() -> void:
 	b.on_damaged()
 	assert_eq(b.stats.attack, 20, "enrage dobra o ataque")
 
-func test_factory_escala_boss() -> void:
+func test_factory_constroi_boss() -> void:
 	var b := EnemyFactory.build_boss({
 		"id": "b", "rank": "BOSS", "base_stats": {"max_hp": 40, "attack": 8, "defense": 4},
 		"phases": [],
-	}, 1)
-	assert_eq(b.stats.max_hp, 240)   # 40 * 6.0 (rank BOSS)
+	})
+	assert_eq(b.stats.max_hp, 40)    # sem escala: o JSON manda
 	assert_true(b is Boss)

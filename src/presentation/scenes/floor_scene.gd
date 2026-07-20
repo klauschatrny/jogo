@@ -516,7 +516,7 @@ func _spawn_training_dummy(x: float) -> void:
 	var base := _enemy_repo.get_by_id("enm_skeleton_minion")
 	if base.is_empty():
 		return
-	var enemy := EnemyFactory.build(base, 1)
+	var enemy := EnemyFactory.build(base)
 	var view := EnemyView.new()
 	view.set_meta("tier", "minion")
 	view.dormant = true
@@ -891,7 +891,7 @@ func _start_floor() -> void:
 	if _run.is_cleared(floor):
 		_phase = "cleared"
 		_msg.text = "Nível vencido: a fogueira e a névoa do chefe aguardam adiante →"
-		_spawn_guard(floor)        # a guarda do run-back reocupa o caminho até a névoa
+		_spawn_guard()        # a guarda do run-back reocupa o caminho até a névoa
 		_spawn_bloodstain_if_here()  # ...e a sua marca ainda pode estar esperando no caminho
 		return
 
@@ -968,7 +968,7 @@ func _spawn_room_enemy(tier: String, id: String, pos: Vector2) -> EnemyView:
 	var base := _enemy_repo.get_by_id(id)
 	if base.is_empty():
 		return null
-	var enemy := EnemyFactory.build(base, _run.current_floor)
+	var enemy := EnemyFactory.build(base)
 	var view := EnemyView.new()
 	view.set_meta("tier", tier)
 	_alive[tier] += 1
@@ -982,7 +982,7 @@ func _spawn_necromancer(id: String) -> void:
 	var base := _enemy_repo.get_by_id(id)
 	if base.is_empty():
 		return
-	var enemy := EnemyFactory.build(base, _run.current_floor)
+	var enemy := EnemyFactory.build(base)
 	var view := NecromancerView.new()
 	view.set_meta("tier", "elite")
 	_alive["elite"] += 1
@@ -1355,7 +1355,7 @@ func _spawn_boss(at: Vector2) -> void:
 	if base.is_empty():
 		push_warning("[floor_scene] boss '%s' não encontrado no andar %d" % [_current_boss_id, floor])
 		return
-	var boss := EnemyFactory.build_boss(base, floor)
+	var boss := EnemyFactory.build_boss(base)
 
 	# O chefe NÃO invoca nada: a morte deixa uma marca de sangue passiva no ponto exato da queda
 	# (inclusive aqui na arena), que se recolhe ao tocar — ver _spawn_bloodstain_if_here.
@@ -1406,7 +1406,7 @@ func _on_floor_cleared() -> void:
 	_phase = "cleared"
 	if is_instance_valid(_lever):
 		_lever.arm()
-	_spawn_guard(_run.current_floor)   # o mundo reocupa o caminho ao chefe: a guarda toma o refúgio
+	_spawn_guard()   # o mundo reocupa o caminho ao chefe: a guarda toma o refúgio
 	_msg.text = "Sala limpa. Puxe a alavanca (E) para abrir o portão →"
 
 ## As duas portas da arena do chefe: atrás (à esquerda, volta ao nível anterior) e adiante (à
@@ -1568,7 +1568,7 @@ func _guard_zone() -> Vector2:
 
 ## (Re)cria a guarda a partir de floor_config["guard"] = { ids, count }. Espalha os esqueletos pela
 ## faixa do refúgio, todos dormentes. Sem "guard" no nível (ex.: arena de chefe), não faz nada.
-func _spawn_guard(floor_n: int) -> void:
+func _spawn_guard() -> void:
 	_clear_guard()
 	var spec: Dictionary = _floor_config.get("guard", {})
 	var ids: Array = spec.get("ids", [])
@@ -1581,7 +1581,7 @@ func _spawn_guard(floor_n: int) -> void:
 		var base := _enemy_repo.get_by_id(String(ids[i % ids.size()]))
 		if base.is_empty():
 			continue
-		var enemy := EnemyFactory.build(base, floor_n)
+		var enemy := EnemyFactory.build(base)
 		var view := EnemyView.new()
 		view.set_meta("tier", "guard")
 		view.dormant = true                    # imóvel até o player chegar perto (_update_guard_wake)
@@ -1606,7 +1606,7 @@ func _clear_guard() -> void:
 func _reset_guard() -> void:
 	if _phase != "cleared":
 		return
-	_spawn_guard(_run.current_floor)
+	_spawn_guard()
 
 ## Desperta a guarda por proximidade: um esqueleto dormente ganha vida quando o player chega a
 ## GUARD_WAKE dele. Comportamento soulslike — esperam imóveis e acordam quando você se aproxima.

@@ -1,12 +1,13 @@
 ## Curvas de escalonamento (§1.2.1, §1.2.2). Core puro, lê constantes do balance.json.
-## A tensão do jogo nasce da assimetria: inimigos crescem GEOMETRICAMENTE por andar,
-## o jogador cresce LINEARMENTE de base (e fecha a lacuna com arma + augments).
 class_name Scaling
 extends RefCounted
 
-# --- Curva dos inimigos (geométrica, §1.2.1) ---
-# Referência canônica NORMAL (baseada nos BASE_* globais). Usada em testes e no
-# simulador de balanceamento; a factory abaixo escala o base_stats de cada inimigo.
+# --- Curva dos inimigos (geométrica, §1.2.1) — NÃO GOVERNA MAIS O JOGO ---
+# Era a assimetria do roguelike: inimigos geométricos por andar, jogador linear. O pivô
+# soulslike a aposentou — hoje o inimigo vale o que o JSON dele diz (ver EnemyFactory) e o
+# jogador cresce por atributos. Estas funções (e rank_mult) sobrevivem só para o sistema de
+# ecos/Nemesis e o simulador de balanceamento, ambos desligados/parados. Nada que você mudar
+# nos GROWTH_* do balance.json afeta um inimigo em jogo: mude o JSON do inimigo.
 
 static func enemy_hp(floor: int) -> float:
 	var es: Dictionary = BalanceConfig.enemy_scaling
