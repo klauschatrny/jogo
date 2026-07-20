@@ -32,6 +32,8 @@ var _bloodstain: BloodstainView      # a marca de sangue na cena, quando present
 # Toast de dica do tutorial (substitui as antigas placas): aparece no HUD conforme o player anda.
 var _tip_root: Control               # a caixa da dica (no _layer); invisível quando não há dica
 var _tip_label: Label
+var _tip_key: Control                # indicador "[E] Avançar" (keycap), à direita do toast
+var _tip_key_label: Label            # o nome da tecla dentro do contorno
 var _tip_time := 0.0                 # segundos restantes da dica na tela (0 = nenhuma)
 var _tip_tween: Tween
 var _tips_done := {}                 # índices de _TUTORIAL_TIPS já mostrados nesta visita à vila
@@ -570,7 +572,7 @@ const KNIGHT_LOOP := [
 	"A luz há de prevalecer...",
 ]
 const KNIGHT_GIFT := 3            # depois desta fala (o "presente") entra o card do Frasco
-const KNIGHT_LINE_SECONDS := 3.6 # quanto cada fala base fica na tela antes de a próxima entrar
+const KNIGHT_LINE_SECONDS := 5.0 # quanto cada fala base fica na tela antes de a próxima entrar
 
 ## Falar com o Sir Big T. As falas BASE tocam em SEQUÊNCIA sozinhas (uma vez iniciada, o resto
 ## avança pelo tempo — não é preciso apertar INTERAGIR a cada frase). Esgotadas, cada INTERAGIR
@@ -581,11 +583,11 @@ func _on_npc_falado(_n: NpcView) -> void:
 	if _run.knight_line >= KNIGHT_LINES.size():
 		var j := (_run.knight_line - KNIGHT_LINES.size()) % KNIGHT_LOOP.size()
 		_run.knight_line += 1
-		_show_tip(KNIGHT_LOOP[j])
+		_show_tip(KNIGHT_LOOP[j], true)
 		return
 	# Inicia (ou retoma, se saiu no meio) a sequência base pela fala atual.
 	_knight_seq = true
-	_show_tip(KNIGHT_LINES[_run.knight_line])
+	_show_tip(KNIGHT_LINES[_run.knight_line], true)
 	_knight_timer = KNIGHT_LINE_SECONDS
 
 ## Chamado pelo _process quando o tempo da fala atual esgota: avança para a próxima. Na virada da
@@ -603,7 +605,7 @@ func _knight_avancar() -> void:
 	if _run.knight_line >= KNIGHT_LINES.size():
 		_knight_seq = false             # fim das falas base; a última linger na tela e some sozinha
 		return
-	_show_tip(KNIGHT_LINES[_run.knight_line])
+	_show_tip(KNIGHT_LINES[_run.knight_line], true)
 	_knight_timer = KNIGHT_LINE_SECONDS
 
 ## O CARD central do Frasco: um painel no meio da tela que o jogador CONFIRMA (INTERAGIR) para
@@ -687,7 +689,7 @@ func _fechar_card_frasco() -> void:
 	if _run.knight_line >= KNIGHT_LINES.size():
 		_knight_seq = false
 		return
-	_show_tip(KNIGHT_LINES[_run.knight_line])
+	_show_tip(KNIGHT_LINES[_run.knight_line], true)
 	_knight_timer = KNIGHT_LINE_SECONDS
 
 func _try_rest() -> bool:
@@ -841,12 +843,51 @@ func _build_tip_ui() -> void:
 	_tip_label.position = Vector2(x + 8.0, y + 2.0)
 	_tip_root.add_child(_tip_label)
 
+	# Indicador "[E] Avançar": a TECLA dentro de um contorno (keycap) para ficar claro que é uma
+	# tecla, não parte da frase. Fica à direita do toast; quando visível, o texto reserva espaço.
+	_tip_key = Control.new()
+	_tip_key.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tip_key.visible = false
+	_tip_root.add_child(_tip_key)
+	var cap_x := x + W - 96.0
+	var cap_y := y + 7.0
+	var borda := ColorRect.new()          # contorno claro do keycap
+	borda.color = Color(0.80, 0.82, 0.90)
+	borda.size = Vector2(18.0, 16.0)
+	borda.position = Vector2(cap_x, cap_y)
+	_tip_key.add_child(borda)
+	var dentro := ColorRect.new()         # fundo escuro dentro do contorno
+	dentro.color = Color(0.10, 0.09, 0.14)
+	dentro.size = Vector2(14.0, 12.0)
+	dentro.position = Vector2(cap_x + 2.0, cap_y + 2.0)
+	_tip_key.add_child(dentro)
+	_tip_key_label = Label.new()          # a tecla (E), centrada no contorno
+	_tip_key_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_tip_key_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_tip_key_label.size = Vector2(18.0, 16.0)
+	_tip_key_label.position = Vector2(cap_x, cap_y - 1.0)
+	_tip_key_label.add_theme_color_override("font_color", Color(0.92, 0.94, 1.0))
+	_tip_key.add_child(_tip_key_label)
+	var av := Label.new()                 # o rótulo "Avançar" ao lado da tecla
+	av.text = "Avançar"
+	av.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	av.size = Vector2(64.0, 16.0)
+	av.position = Vector2(cap_x + 22.0, cap_y - 1.0)
+	av.add_theme_color_override("font_color", Color(0.72, 0.74, 0.82))
+	_tip_key.add_child(av)
+
 ## Mostra uma dica no HUD por TIP_SECONDS (ou até o player apertar INTERAGIR). Uma nova substitui
 ## a atual.
-func _show_tip(text: String) -> void:
+func _show_tip(text: String, com_tecla := false) -> void:
 	if _tip_label == null:
 		return
 	_tip_label.text = text
+	# Com o indicador de tecla visível, o texto encolhe à esquerda para não passar por baixo dele.
+	_tip_label.size.x = (568.0 - 96.0) if com_tecla else 568.0
+	if _tip_key != null:
+		_tip_key.visible = com_tecla
+		if com_tecla and _tip_key_label != null:
+			_tip_key_label.text = KeyBinds.key_name("interact")
 	_tip_time = TIP_SECONDS
 	_tip_root.visible = true
 	if _tip_tween != null and _tip_tween.is_valid():
@@ -876,7 +917,7 @@ func _schedule_first_tip() -> void:
 	_tips_done[0] = true
 	await get_tree().create_timer(FIRST_TIP_DELAY).timeout
 	if _phase == "tutorial" and _tips_done.size() == 1:   # ainda no começo, nada mais disparou
-		_show_tip(String(_tutorial_tips()[0][1]))
+		_show_tip(String(_tutorial_tips()[0][1]), true)
 
 ## Dica do Frasco de Cura, na ÁREA DA FOGUEIRA: aparece uma única vez por run, quando o player
 ## chega perto da fogueira (que só é alcançável depois de limpar a sala — o portão abre então).
@@ -895,7 +936,7 @@ func _update_tutorial_tips() -> void:
 			continue
 		if px >= float(tips[i][0]):
 			_tips_done[i] = true
-			_show_tip(String(tips[i][1]))
+			_show_tip(String(tips[i][1]), true)
 
 ## Casinhas simples ao fundo, só pra dar cara de vila (placeholder, sem arte).
 func _decorate_village() -> void:
@@ -2335,8 +2376,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _knight_card_open:
 			_fechar_card_frasco()
 			return
-		# Falas base tocando sozinhas: E não faz nada (não fecha a linha nem re-fala com o NPC).
+		# Falas base tocando: E ADIANTA para a próxima (o indicador "[E] Avançar" anuncia isso).
 		if _knight_seq:
+			_knight_avancar()
 			return
 		if _tip_time > 0.0:            # há uma dica na tela: E fecha ela antes de qualquer outra coisa
 			_hide_tip()
