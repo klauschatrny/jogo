@@ -10,8 +10,8 @@ func _augs() -> Array:
 	]
 
 # Dois níveis quaisquer, para exercitar o grafo sem depender do conteúdo real do levels.json.
-const INICIO := "cripta"
-const ADIANTE := "arena"
+const INICIO := "nivel_a"
+const ADIANTE := "nivel_b"
 
 func _run() -> RunState:
 	var w := Weapon.from_dict({"id": "w", "base_damage": 15, "weapon_growth": 1.12})

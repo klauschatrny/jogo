@@ -78,7 +78,7 @@ func test_descansar_recarrega_o_frasco() -> void:
 	rs.player.take_damage(rs.player.stats.max_hp - 1)
 	rs.player.drink_flask()
 	assert_true(rs.player.flask_charges < rs.player.flask_max)
-	rs.rest_at("cripta", 100.0)
+	rs.rest_at("nivel_a", 100.0)
 	assert_eq(rs.player.flask_charges, rs.player.flask_max, "a fogueira reabastece a cura")
 
 func test_renascer_recarrega_o_frasco() -> void:

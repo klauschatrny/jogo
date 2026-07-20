@@ -6,7 +6,7 @@
   "facing": "left",
   "scale": 2,
   "animations": {
-    "idle": { "row": 1, "frames": 7, "fps": 6 },
+    "idle": { "row": 1, "frames": 7, "fps": 4 },
     "walk": { "row": 0, "frames": 8, "fps": 4 }
   }
 }

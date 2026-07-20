@@ -564,7 +564,7 @@ func _start_tutorial() -> void:
 		_shortcut = _spawn_door(_shortcut_x, Palette.ACCENT.darkened(0.5))
 	_tips_done.clear()          # as dicas recomeçam a cada visita à vila
 	_hide_tip()
-	_msg.text = "Vila: siga até a porta da Dungeon →"
+	_msg.text = "Cidade: siga até o Portão →"
 	_schedule_first_tip()       # a 1ª dica (mover) só entra 3s depois de começar
 
 ## Boneco de treino: esqueleto blindado passivo (dormant) pra praticar o ataque. Some se
@@ -1654,7 +1654,7 @@ func _update_guard_wake() -> void:
 
 ## Resolve uma saída do nível ATUAL. Devolve {} se ela não existir (o que é a maneira normal de
 ## dizer "não há caminho por aqui" — a névoa do fim do conteúdo, um beco). O destino aceita as
-## duas formas do JSON: o id cru ("arena_ogro") ou { level, entry }.
+## duas formas do JSON: o id cru ("bosque_ogro") ou { level, entry }.
 func _exit(nome: String) -> Dictionary:
 	var alvo: Variant = _floor_config.get("exits", {}).get(nome, null)
 	if typeof(alvo) == TYPE_STRING and String(alvo) != "":
