@@ -608,8 +608,13 @@ func _try_shortcut() -> bool:
 		if not _shortcut_unlocks:
 			_show_tip("O poço está travado — a tranca fica do outro lado.")
 			return true
+		# Destrancar e atravessar são DOIS gestos. Antes o mesmo aperto que abria o poço já jogava
+		# o jogador do outro lado, sem ele pedir — abrir um atalho é uma conquista para saborear,
+		# não um teletransporte-surpresa. Abre aqui e para; o próximo INTERAGIR é que desce.
 		_run.open_gate(_shortcut_id)
 		_shortcut.abrir()                  # as tábuas caem: o poço deixa de ser entulho
+		_show_tip("O poço se abriu. Interaja de novo para atravessar.")
+		return true
 	_transition(_atravessar_atalho)
 	return true
 

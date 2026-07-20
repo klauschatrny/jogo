@@ -90,7 +90,9 @@ run-back is the whole of both levels on foot.
 other sits: `{ id, at (absolute x), to: { level, x }, unlocks, oculto_travado }`. Opening either
 opens both, forever (`RunState.opened_gates`, survives death). Only the end with `unlocks: true` has
 the latch, and it sits on the **far** side — in `cemiterio`, right before the boss fog — so you
-never *find* the shortcut, you open it from inside after walking the hard way once. Its `portao`
+never *find* the shortcut, you open it from inside after walking the hard way once. Opening and
+crossing are **two separate `interact` presses** — the first drops the boards and stops, the second
+travels; the same press doing both used to teleport the player across without asking. Its `portao`
 mouth sits **right under Sir Big T.**, at his exact x, `oculto_travado: true` so it is **invisible
 and inert while locked** (hidden beneath him). Opening it from the far end dismisses the knight
 (`_spawn_entrance` skips him once the gate is open) and reveals the mouth — you descend and arrive
