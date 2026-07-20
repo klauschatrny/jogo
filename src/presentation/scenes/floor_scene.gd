@@ -1651,6 +1651,8 @@ func _on_lever_pulled(_l: LeverView) -> void:
 # ---------------------------------------------------------------------------
 
 ## Faixa (x_min, x_max) onde a guarda se posta: entre a fogueira e a névoa, com folga dos dois.
+## A faixa da guarda, por GEOMETRIA (não pela fogueira em si): vale mesmo num nível que não tem
+## fogueira no refúgio — o ponto de referência é onde ela ficaria.
 func _guard_zone() -> Vector2:
 	var bf_x := _fight_width + BONFIRE_IN
 	var fog_x := _arena_width - FOG_BACK
@@ -1939,7 +1941,7 @@ func _apply_debug_start() -> void:
 
 func _show_debug_legend() -> void:
 	var l := Label.new()
-	l.text = "[DEBUG]  K matar  |  M +1 nivel  |  L +nivel do player  |  P 2x dano arma  |  H curar  |  I god mode  |  G soltar marca"
+	l.text = "[DEBUG]  K matar  |  M proxima sala  |  L +nivel do player  |  P 2x dano arma  |  H curar  |  I god mode  |  G soltar marca"
 	l.position = Vector2(8, 342)
 	l.add_theme_font_size_override("font_size", 10)
 	l.add_theme_color_override("font_color", Color(1, 1, 0.4))
@@ -1950,7 +1952,7 @@ func _debug_input(event: InputEvent) -> void:
 		return
 	match (event as InputEventKey).physical_keycode:
 		KEY_K: _debug_kill_enemies()
-		KEY_M: _debug_skip_floors(1)
+		KEY_M: _debug_next_room()
 		KEY_L: _debug_level_up()
 		KEY_H: _run.player.heal(_run.player.stats.max_hp)
 		KEY_G: _debug_drop_bloodstain()
@@ -1968,19 +1970,28 @@ func _debug_clear_all() -> void:
 			v.queue_free()
 	_enemies.clear()
 
-## Pula níveis SEGUINDO o grafo (a saída "frente"), não somando índices: num mapa não existe
-## "andar n+2", existe o que estiver depois do que estiver depois daqui.
-func _debug_skip_floors(n: int) -> void:
-	if _phase == "dead":
+## Vai para a PRÓXIMA sala, seguindo o grafo (a saída "frente") — num mapa não existe "andar n+1",
+## existe o que a saída daqui apontar. Três coisas que a versão anterior errava:
+##   - na Cidade não funcionava: o tutorial não preenche _floor_config, então "frente" nunca
+##     resolvia. Da Cidade, "próxima sala" é a entrada da dungeon;
+##   - deixava cutscene de chefe no ar (o _start_floor novo corria por baixo dela);
+##   - no fim do mapa recarregava o nível em silêncio, sem dizer por quê.
+func _debug_next_room() -> void:
+	if _phase in ["dead", "transition"]:
 		return
+	_intro_token += 1               # mata qualquer cutscene de chefe ainda rodando
+	Music.stop()
 	_debug_clear_all()
-	for i in maxi(1, n):
-		if not _has_exit("frente"):
-			break
-		var e := _exit("frente")
-		_run.go_to(String(e["level"]))
-		_floor_config = _levels.get(_run.current_level, {})
-	_start_floor()
+
+	if _phase == "tutorial" or _run.current_level == "":
+		_begin_dungeon()
+		_msg.text = "[DEBUG] → %s" % _level_name()
+		return
+	if not _has_exit("frente"):
+		_msg.text = "[DEBUG] '%s' não tem saída 'frente' — fim do mapa" % _level_name()
+		return
+	_go_through("frente")
+	_msg.text = "[DEBUG] → %s" % _level_name()
 
 ## Dá almas de sobra para testar a fogueira sem precisar farmar.
 func _debug_level_up() -> void:

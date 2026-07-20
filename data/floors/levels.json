@@ -80,7 +80,8 @@
           "level": "portao",
           "x": 380
         }
-      }
+      },
+      "sanctuary_bonfire": false
     },
     "bosque_ogro": {
       "name": "Bosque do Ogro",

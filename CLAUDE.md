@@ -81,7 +81,10 @@ Right after it stands the **big city gate** (`entrance.gate`, 56×150 vs the ord
 lever is **armed from the start**: it marks *leaving a place*, so pulling it is a departure, not a
 reward for clearing a room. `portao` therefore sets `sanctuary_bonfire: false` — a level whose fire
 is at the door does not want a second one at the back — and has no `guard` (the guard exists for a
-boss run-back it does not have).
+boss run-back it does not have). **`cemiterio` has no bonfire either**, which makes the shortcut
+load-bearing rather than a convenience: the only fire before the Ogre is at the mouth of `portao`,
+so the run-back is *portão entrance → open the well → out right before the fog*. Closed, that same
+run-back is the whole of both levels on foot.
 
 **The shortcut is two well mouths in different levels sharing one `id`**, each pointing at where the
 other sits: `{ id, at (absolute x), to: { level, x }, unlocks }`. Opening either opens both, forever
