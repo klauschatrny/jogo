@@ -149,6 +149,19 @@ persisted in `RunState`:
 All three sanctuary interactions (lever, rest, fog) share the `interact` key and are disambiguated
 purely by proximity — they sit far enough apart that only one is ever in reach.
 
+**Done — the Necromancer's tower, and the first vertical geometry.** `cemiterio` lost its
+wooden gate + lever, and the Necromancer now stands on a raised stone tower (`room.tower =
+{ at, altura, largura, escada_em }`, a `StaticBody2D` on layer 4 with battlements, so player *and*
+enemies stand on it). The **only** way up is a **`LadderView`** — the game's first vertical
+traversal, in a world that was flat continuous ground until now. Climbing is `move_up`/`move_down`,
+gravity off, snapped to the ladder's axis, and while climbing you can neither attack nor dodge:
+that cost is the point, since a platform reachable by a free jump would be no decision at all.
+Two input traps handled: **`W` is bound to both `jump` and `move_up`**, so releasing on jump is
+gated on `move_up` *not* being held (otherwise climbing drops you the instant you grab); and
+walking sideways while not climbing releases the ladder, so nobody gets glued to it at the bottom.
+`_ladders` lives on `floor_scene` and is handed to `PlayerView.ladders`; it is cleared with the
+rest of `_env` on rebuild.
+
 **Done — per-enemy attack rhythm, and the Necromancer telegraphs.** The three skeletons used to be
 timing-identical (code defaults 0.18 / 1.0); now each declares its own in JSON — minion
 **0.2 / 1.0**, armoured **0.225 / 1.25**, heavy **0.35 / 1.5**. Remember the windup *freezes* the

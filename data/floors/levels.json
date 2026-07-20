@@ -76,7 +76,13 @@
             "count": 1
           }
         ],
-        "reassemble_time": 2.0
+        "reassemble_time": 2.0,
+        "tower": {
+          "at": 1482,
+          "altura": 96,
+          "largura": 132,
+          "escada_em": -82
+        }
       },
       "guard": {
         "ids": [
@@ -87,7 +93,6 @@
       "exits": {
         "frente": "bosque_ogro"
       },
-      "gate": true,
       "shortcut": {
         "id": "poco_cemiterio",
         "at": 2540,

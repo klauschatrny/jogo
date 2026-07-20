@@ -11,6 +11,7 @@ const SPRITE_ID := "player"      # arte: assets/sprites/player/player.png + data
 
 # Feel de movimento (constantes de apresentação no espaço base 640×360).
 const GRAVITY := 1400.0
+const CLIMB_SPEED := 70.0          # velocidade de subida/descida na escada (base 640×360)
 const JUMP_VELOCITY := -460.0
 const DODGE_SPEED := 430.0
 const DODGE_TIME := 0.20          # dash + i-frames: invencibilidade de 200 ms a partir do frame 0
@@ -173,6 +174,12 @@ func _physics_process(delta: float) -> void:
 
 	# (Encostar num inimigo NÃO fere: o dano vem só do golpe telegrafado dele — ver EnemyView.)
 
+	# ESCADA: sobe/desce com cima/baixo, sem gravidade, preso ao eixo dela. Enquanto escala não
+	# ataca nem esquiva — é o preço de estar numa escada, e é o que faz uma plataforma elevada
+	# ser um lugar que se escolhe ocupar em vez de um atalho de graça.
+	if _update_ladder(delta):
+		return
+
 	# Gravidade contínua; o chão (StaticBody2D) segura o player via is_on_floor().
 	if not is_on_floor():
 		velocity.y += GRAVITY * delta
@@ -317,6 +324,60 @@ func _drink_finish_fx() -> void:
 	Juice.burst(get_parent(), global_position + Vector2(0.0, -box_h * 0.25), Color(1.0, 0.70, 0.25), 20, 130.0)
 
 ## Vira o sprite conforme a direção (no-op sem sprite).
+## Escadas do nível (o floor_scene as entrega ao remontar o cenário).
+var ladders: Array = []
+var _on_ladder: LadderView = null
+
+## Devolve true se ESTE frame foi consumido pela escada (subindo/descendo).
+func _update_ladder(delta: float) -> bool:
+	if _dodge_time > 0.0 or _drink_time > 0.0:
+		return false                      # gestos comprometidos têm prioridade
+	var iy := Input.get_axis("move_up", "move_down")
+
+	if _on_ladder == null:
+		if iy == 0.0:
+			return false
+		for l in ladders:
+			if not is_instance_valid(l) or not l.contem(global_position):
+				continue
+			# Só AGARRA subindo; para descer é preciso estar no topo (senão qualquer toque em
+			# "baixo" perto do pé da escada colaria o player nela).
+			if iy < 0.0 or global_position.y <= l.topo_y() + 8.0:
+				_on_ladder = l
+				break
+		if _on_ladder == null:
+			return false
+
+	if not is_instance_valid(_on_ladder) or not _on_ladder.contem(global_position):
+		_on_ladder = null
+		return false
+
+	# Solta ao pular — mas só com um PULO de verdade. W é ao mesmo tempo "jump" e "move_up", então
+	# sem esta condição subir a escada soltaria dela no mesmo frame em que a agarrou.
+	if Input.is_action_just_pressed("jump") and not Input.is_action_pressed("move_up"):
+		_on_ladder = null
+		velocity.y = JUMP_VELOCITY
+		return false
+
+	# Andar para os lados sem estar subindo também solta: quem está no pé da escada e quer ir
+	# embora não pode ficar colado nela.
+	if iy == 0.0 and Input.get_axis("move_left", "move_right") != 0.0:
+		_on_ladder = null
+		return false
+
+	global_position.x = _on_ladder.eixo_x()   # alinha ao eixo: nada de subir raspando a parede
+	velocity.x = 0.0
+	velocity.y = iy * CLIMB_SPEED
+	# Chegou ao topo subindo: larga a escada em cima, para o chão da plataforma segurá-lo.
+	if iy < 0.0 and global_position.y <= _on_ladder.topo_y():
+		global_position.y = _on_ladder.topo_y() - 2.0
+		_on_ladder = null
+		velocity.y = 0.0
+		return false
+	move_and_slide()
+	_play_anim("idle" if iy == 0.0 else "run")
+	return true
+
 func _flip(dir: Vector2) -> void:
 	if _sprite != null and dir.x != 0.0:
 		# XOR com a direção em que a arte foi desenhada (_faces_left), igual ao EnemyView.

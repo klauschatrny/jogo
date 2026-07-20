@@ -22,6 +22,7 @@ var _start_level := ""               # onde a dungeon começa (levels.json → "
 var _hazards: Dictionary = {}        # id -> definição de armadilha (data/hazards.json)
 var _bonfires: Array = []            # fogueiras (checkpoints) do nível atual — BonfireView
 var _guard: Array = []               # a GUARDA do refúgio: esqueletos do run-back (nível vencido) — EnemyView
+var _ladders: Array = []             # escadas do nível (o PlayerView as consulta para escalar)
 var _bloodstain: BloodstainView      # a marca de sangue na cena, quando presente (passiva, recolhe ao tocar)
 # Toast de dica do tutorial (substitui as antigas placas): aparece no HUD conforme o player anda.
 var _tip_root: Control               # a caixa da dica (no _layer); invisível quando não há dica
@@ -267,6 +268,9 @@ func _build_environment(width: float, is_boss_room: bool, hazards := []) -> void
 	_lever = null
 	_fog = null
 	_exit_door_x = 0.0        # refeita por _spawn_exit_passage, quando o nível adiante já caiu
+	_ladders.clear()          # views eram filhas do _env (demolido); só solta as referências
+	if is_instance_valid(_player_view):
+		_player_view.ladders = _ladders
 	_shortcut = null
 	_shortcut_x = 0.0
 	_shortcut_id = ""
@@ -1102,6 +1106,69 @@ func _spawn_room_enemy(tier: String, id: String, pos: Vector2) -> EnemyView:
 	_add_view(view, enemy, pos)
 	return view
 
+## A TORRE do Necromante: uma plataforma de pedra elevada, acessível SÓ pela escada. Ele fica em
+## cima. Muda a luta inteira — de costas para uma parede você trocava golpes com ele; agora ele
+## bombardeia de um lugar que custa uma subida (e a subida tira do jogador o ataque e a esquiva).
+## Declarada em levels.json → room.tower = { at, altura, largura, escada_em }.
+## Devolve o y do TOPO (onde o Necromante pisa), ou 0 se este nível não tem torre.
+func _spawn_necro_tower(spec: Dictionary) -> float:
+	if spec.is_empty():
+		return 0.0
+	var tx := float(spec.get("at", _fight_width - 198.0))
+	var alt := float(spec.get("altura", 92.0))
+	var larg := float(spec.get("largura", 120.0))
+	var topo_y := GROUND_Y - alt
+
+	var torre := Node2D.new()
+	torre.position = Vector2(tx, GROUND_Y)
+	torre.z_index = DECO_Z + 1        # à frente do cenário de fundo, atrás das entidades
+	_env.add_child(torre)
+
+	# Corpo de pedra.
+	var corpo := ColorRect.new()
+	corpo.color = Color(0.29, 0.28, 0.33)
+	corpo.size = Vector2(larg, alt)
+	corpo.position = Vector2(-larg * 0.5, -alt)
+	torre.add_child(corpo)
+
+	# Ameias no topo (a silhueta é o que faz ler como torre de castelo, não como caixa).
+	var n_ameias := int(larg / 22.0)
+	for i in n_ameias:
+		var a := ColorRect.new()
+		a.color = Color(0.34, 0.33, 0.38)
+		a.size = Vector2(12.0, 10.0)
+		a.position = Vector2(-larg * 0.5 + 4.0 + i * 22.0, -alt - 10.0)
+		torre.add_child(a)
+
+	# Faixa mais clara marcando o piso onde se pisa.
+	var piso := ColorRect.new()
+	piso.color = Color(0.38, 0.37, 0.43)
+	piso.size = Vector2(larg, 4.0)
+	piso.position = Vector2(-larg * 0.5, -alt)
+	torre.add_child(piso)
+
+	# A colisão: camada 4, a mesma do chão, então player E inimigos pisam nela.
+	var corpo_fis := StaticBody2D.new()
+	corpo_fis.collision_layer = 4
+	corpo_fis.collision_mask = 0
+	var col := CollisionShape2D.new()
+	var r := RectangleShape2D.new()
+	r.size = Vector2(larg, alt)
+	col.shape = r
+	col.position = Vector2(0.0, -alt * 0.5)
+	corpo_fis.add_child(col)
+	torre.add_child(corpo_fis)
+
+	# A escada, encostada num dos lados: o ÚNICO acesso.
+	var lx := tx + float(spec.get("escada_em", -larg * 0.5 - 12.0))
+	var esc := LadderView.new()
+	_env.add_child(esc)
+	esc.setup(lx, GROUND_Y, alt)
+	_ladders.append(esc)
+	if is_instance_valid(_player_view):
+		_player_view.ladders = _ladders
+	return topo_y
+
 ## Necromante: estático no fim da sala (extremo direito), rastreado em _necro.
 func _spawn_necromancer(id: String) -> void:
 	if id == "":
@@ -1115,7 +1182,12 @@ func _spawn_necromancer(id: String) -> void:
 	view.dormant = true               # também espera: só começa a lançar quando o jogador se aproxima
 	_alive["elite"] += 1
 	_necro = view
-	_add_view(view, enemy, Vector2(_fight_width - 198.0, GROUND_Y - 40.0))   # 150px à esquerda do fim do COMBATE
+	# Se o nível declara torre, ele nasce EM CIMA dela; senão, no chão como antes.
+	var torre: Dictionary = _room.get("tower", {})
+	var topo := _spawn_necro_tower(torre)
+	var nx := float(torre.get("at", _fight_width - 198.0)) if not torre.is_empty() else _fight_width - 198.0
+	var ny := (topo - 40.0) if topo != 0.0 else (GROUND_Y - 40.0)
+	_add_view(view, enemy, Vector2(nx, ny))
 
 ## Heavies a<b<c EM ORDEM de proximidade, nas posições fixas do nível, dormentes.
 ## Acordam em cadeia — ver _update_heavy_chain.
