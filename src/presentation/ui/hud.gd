@@ -128,6 +128,49 @@ func _build_souls() -> void:
 	_souls.add_theme_constant_override("outline_size", 4)
 	add_child(_souls)
 
+## Desenha o ÍCONE do frasco (moldura + gargalo + rolha + corpo + núcleo) como filhos de `host`,
+## na origem dele (topo-centro do quadro). É a MESMA arte do slot da HUD — extraída para o card
+## de aquisição usar exatamente o mesmo desenho, em vez de um frasco próprio que divergiria.
+## `cheio` = estado com carga (âmbar); false = vazio (cinza). Devolve { border, inner, cork, neck,
+## body, core } para quem precisa recolorir/esconder depois (a HUD guarda; o card ignora).
+static func draw_flask_icon(host: Node2D, cheio := true) -> Dictionary:
+	var border := ColorRect.new()
+	border.color = Color(0.42, 0.33, 0.16)
+	border.position = Vector2(-15, 0)
+	border.size = Vector2(30, 34)
+	host.add_child(border)
+	var inner := ColorRect.new()
+	inner.color = Color(0.06, 0.05, 0.04, 0.9)
+	inner.position = Vector2(-13, 2)
+	inner.size = Vector2(26, 30)
+	host.add_child(inner)
+
+	var cork := ColorRect.new()
+	cork.color = Color(0.35, 0.22, 0.10)
+	cork.position = Vector2(-4, 4)
+	cork.size = Vector2(8, 4)
+	host.add_child(cork)
+	var neck := ColorRect.new()
+	neck.color = Color(0.72, 0.46, 0.14)
+	neck.position = Vector2(-3, 7)
+	neck.size = Vector2(6, 5)
+	host.add_child(neck)
+
+	var body := Polygon2D.new()
+	body.polygon = PackedVector2Array([
+		Vector2(-4, 12), Vector2(4, 12), Vector2(8, 18), Vector2(8, 25),
+		Vector2(4, 30), Vector2(-4, 30), Vector2(-8, 25), Vector2(-8, 18),
+	])
+	body.color = Color(0.95, 0.62, 0.16) if cheio else Color(0.32, 0.32, 0.34)
+	host.add_child(body)
+	var core := Polygon2D.new()
+	core.polygon = PackedVector2Array([
+		Vector2(-3, 18), Vector2(3, 18), Vector2(4, 23), Vector2(0, 28), Vector2(-4, 23),
+	])
+	core.color = Color(1.0, 0.85, 0.45) if cheio else Color(0.42, 0.42, 0.44)
+	host.add_child(core)
+	return { "border": border, "inner": inner, "cork": cork, "neck": neck, "body": body, "core": core }
+
 ## Ícone do frasco (placeholder, sem arte): um quadro estilo Estus com o frasco âmbar dentro e o
 ## número da carga ATUAL logo abaixo (não "3/3"). O corpo âmbar é recolorido para cinza quando vazio.
 func _build_flask() -> void:
@@ -137,42 +180,13 @@ func _build_flask() -> void:
 	_flask_icon.position = Vector2(608, 300)
 	add_child(_flask_icon)
 
-	# Quadro (slot): borda dourada escura + fundo quase preto.
-	var border := ColorRect.new()
-	border.color = Color(0.42, 0.33, 0.16)
-	border.position = Vector2(-15, 0)
-	border.size = Vector2(30, 34)
-	_flask_icon.add_child(border)
-	var inner := ColorRect.new()
-	inner.color = Color(0.06, 0.05, 0.04, 0.9)
-	inner.position = Vector2(-13, 2)
-	inner.size = Vector2(26, 30)
-	_flask_icon.add_child(inner)
-
-	# Rolha e gargalo — guardados para SUMIR com o resto do vidro quando não se tem o frasco.
-	_flask_cork = ColorRect.new()
-	_flask_cork.color = Color(0.35, 0.22, 0.10)
-	_flask_cork.position = Vector2(-4, 4)
-	_flask_cork.size = Vector2(8, 4)
-	_flask_icon.add_child(_flask_cork)
-	_flask_neck = ColorRect.new()
-	_flask_neck.color = Color(0.72, 0.46, 0.14)
-	_flask_neck.position = Vector2(-3, 7)
-	_flask_neck.size = Vector2(6, 5)
-	_flask_icon.add_child(_flask_neck)
-
-	# Corpo (âmbar) + núcleo brilhante — guardados para recolorir quando o frasco esvazia.
-	_flask_body = Polygon2D.new()
-	_flask_body.polygon = PackedVector2Array([
-		Vector2(-4, 12), Vector2(4, 12), Vector2(8, 18), Vector2(8, 25),
-		Vector2(4, 30), Vector2(-4, 30), Vector2(-8, 25), Vector2(-8, 18),
-	])
-	_flask_icon.add_child(_flask_body)
-	_flask_core = Polygon2D.new()
-	_flask_core.polygon = PackedVector2Array([
-		Vector2(-3, 18), Vector2(3, 18), Vector2(4, 23), Vector2(0, 28), Vector2(-4, 23),
-	])
-	_flask_icon.add_child(_flask_core)
+	# O ícone em si (moldura + gargalo + rolha + corpo + núcleo) vem do MESMO desenho que o card
+	# de aquisição usa — draw_flask_icon. Guardamos as peças para recolorir/esconder no _refresh.
+	var pecas := draw_flask_icon(_flask_icon, true)
+	_flask_body = pecas["body"]
+	_flask_core = pecas["core"]
+	_flask_cork = pecas["cork"]
+	_flask_neck = pecas["neck"]
 
 	# Número da carga ATUAL, centrado logo abaixo do quadro.
 	_flask_count = Label.new()

@@ -626,7 +626,7 @@ func _abrir_card_frasco() -> void:
 
 	# Painel centrado (640×360): moldura dourada + fundo escuro.
 	var W := 260.0
-	var H := 132.0
+	var H := 148.0
 	var cx := 320.0 - W * 0.5
 	var cy := 180.0 - H * 0.5
 	var moldura := ColorRect.new()
@@ -648,25 +648,18 @@ func _abrir_card_frasco() -> void:
 	titulo.add_theme_color_override("font_color", Color(0.86, 0.72, 0.34))
 	layer.add_child(titulo)
 
-	# Um frasquinho desenhado (âmbar), como o da HUD, para o card não ser só texto.
-	var frasco := Polygon2D.new()
-	frasco.polygon = PackedVector2Array([
-		Vector2(-6, -9), Vector2(6, -9), Vector2(11, 0), Vector2(11, 12),
-		Vector2(6, 20), Vector2(-6, 20), Vector2(-11, 12), Vector2(-11, 0),
-	])
-	frasco.color = Color(0.95, 0.62, 0.16)
-	frasco.position = Vector2(320.0, cy + 58.0)
-	layer.add_child(frasco)
-	var rolha := ColorRect.new()
-	rolha.color = Color(0.35, 0.22, 0.10)
-	rolha.size = Vector2(8, 6)
-	rolha.position = Vector2(316.0, cy + 43.0)
-	layer.add_child(rolha)
+	# O MESMO ícone do slot de item (Hud.draw_flask_icon), só maior — para o card não inventar um
+	# frasco próprio que divergiria do da HUD. Origem = topo-centro do quadro do ícone.
+	var icone := Node2D.new()
+	icone.position = Vector2(320.0, cy + 32.0)
+	icone.scale = Vector2(1.5, 1.5)
+	layer.add_child(icone)
+	Hud.draw_flask_icon(icone, true)
 
 	var nome := Label.new()
 	nome.text = "Frasco de Cura"
 	nome.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	nome.position = Vector2(cx, cy + 84.0)
+	nome.position = Vector2(cx, cy + 98.0)
 	nome.size = Vector2(W, 16.0)
 	nome.add_theme_color_override("font_color", Palette.TEXT)
 	layer.add_child(nome)
