@@ -357,11 +357,13 @@ always on; it's the base death mechanic, not the optional Nemesis).
 differently from *an empty flask* (dim glass and a `0`) — and `can_drink()` refuses. A knight NPC
 (`NpcView`, plate + red cloak + plumed helm + greatsword planted in the ground) sits beside the
 **first bonfire** and hands it over when you talk to him (`interact`, prompt *"E falar com Sir Big
-T."*). `receive_flask()` is idempotent, so talking again never yields a second one. He is also who
-**teaches the bonfire and the flask** — that lesson used to be a toast fired by walking near the
+T."*). `receive_flask()` is idempotent, so talking again never yields a second one. His dialogue is a **sequence** — one line per `interact`, tracked in `RunState.knight_line` so it
+survives level rebuilds; the flask is handed over on the 4th line (`KNIGHT_GIFT`, with a
+`(Frasco de Cura adquirido)` notice), and once the base lines run out he repeats two loop lines. He
+is also who **teaches the bonfire and the flask** — that lesson used to be a toast fired by walking near the
 fire (`_update_flask_tip`, now deleted); a rule spoken by a character sticks better than a box that
-appears on its own when you step on the right tile. He is placed `entrance.npc_offset` (56px) from
-the fire so `interact` is never ambiguous — all interactions in this game disambiguate purely by
+appears on its own when you step on the right tile. He stands `entrance.npc_offset` (56px) to the **left** of the fire (knight left, bonfire right) so
+`interact` is never ambiguous — all interactions in this game disambiguate purely by
 proximity.
 
 **Done — the flask (the Estus).** The **only on-demand heal** in the game: `Player.flask_charges`

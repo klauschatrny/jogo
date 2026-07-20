@@ -543,16 +543,44 @@ func _try_npc() -> bool:
 ## O Sir Big T. entrega o Estus — e é ele quem ensina a fogueira e o frasco. A lição saiu de um
 ## toast disparado por proximidade e virou fala de alguém: uma regra dita por um personagem gruda
 ## melhor do que uma caixa de texto que aparece sozinha quando você pisa no lugar certo.
+## As falas base do Sir Big T., em ordem. Uma frase por vez, a cada INTERAGIR. A entrega do
+## Frasco acontece na fala de índice KNIGHT_GIFT. Esgotadas, ele passa a repetir as de KNIGHT_LOOP.
+const KNIGHT_LINES := [
+	"Olá plebeu, vejo que decidiu adotar a espada.",
+	"Além deste portão apenas a morte o aguarda.",
+	"O quê? Ainda assim quer ir em frente?",
+	"Pois bem, tenho um presente que vai ajudá-lo.",
+	"Agora, vê essa fogueira?",
+	"Descanse nela e recuperará suas forças.",
+	"Porém, os monstros se levantam novamente.",
+	"Agora vá em frente e encontre o seu fim.",
+]
+const KNIGHT_LOOP := [
+	"O medo é apenas uma escolha...",
+	"A luz há de prevalecer...",
+]
+const KNIGHT_GIFT := 3
+
 func _on_npc_falado(_n: NpcView) -> void:
-	if _run.player.receive_flask():
+	var i := _run.knight_line
+	_run.knight_line += 1
+
+	# Falas base esgotadas: repete as de loop, alternando.
+	if i >= KNIGHT_LINES.size():
+		var j := (i - KNIGHT_LINES.size()) % KNIGHT_LOOP.size()
+		_show_tip(KNIGHT_LOOP[j])
+		return
+
+	# A fala do presente ENTREGA o Frasco. receive_flask é idempotente; a mensagem de aquisição só
+	# sai se ele foi de fato recebido agora (nunca numa segunda passada por esta fala).
+	if i == KNIGHT_GIFT and _run.player.receive_flask():
 		_run.flask_tutorial_seen = true
-		_show_tip("Sir Big T.: \"Tome o Frasco, andarilho. Beba com %s; o fogo o enche de novo.\""
-			% KeyBinds.key_name("flask"))
 		Juice.burst(_env, _npc.global_position + Vector2(0, -30), Color(1.0, 0.72, 0.28), 16, 110.0)
-		return                          # a HUD se atualiza sozinha todo frame (Hud._process)
-	# Já deu o frasco: daqui em diante ele lembra do essencial da fogueira.
-	_show_tip("Sir Big T.: \"Descanse no fogo (%s) e ele devolve vida e frasco — mas os mortos voltam com você.\""
-		% KeyBinds.key_name("interact"))
+		_show_tip("%s
+(Frasco de Cura adquirido)" % KNIGHT_LINES[i])
+		return
+
+	_show_tip(KNIGHT_LINES[i])
 
 func _try_rest() -> bool:
 	if not is_instance_valid(_player_view):
@@ -1767,9 +1795,9 @@ func _spawn_entrance(level_id: String) -> void:
 		bf.rested.connect(_on_bonfire_rested)
 		_bonfires.append(bf)
 
-		# O Sir Big T., ao lado da fogueira. Fica LONGE o bastante dela para que INTERAGIR nunca
-		# seja ambíguo (as interações do jogo se desambiguam só por proximidade).
-		var nx := bx + float(ent.get("npc_offset", 56.0))
+		# O Sir Big T., à ESQUERDA da fogueira (ela fica à direita dele). Longe o bastante para que
+		# INTERAGIR nunca seja ambíguo — as interações do jogo se desambiguam só por proximidade.
+		var nx := bx - float(ent.get("npc_offset", 56.0))
 		_npc = NpcView.new()
 		_env.add_child(_npc)
 		_npc.setup(nx, GROUND_Y, _player_view, "Sir Big T.")

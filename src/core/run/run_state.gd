@@ -34,6 +34,7 @@ var bosses_seen: Array = []        # bosses cuja cutscene de entrada já rodou (
 var opened_gates: Array = []       # portões de mecanismo já abertos (por alavanca): abertos ficam abertos
 var deaths: int = 0
 var flask_tutorial_seen: bool = false   # a dica do frasco (na área da fogueira) já apareceu nesta run
+var knight_line: int = 0                # em que fala do Sir Big T. o jogador está (persiste na run)
 
 # --- A mancha de sangue (bloodstain, à la Dark Souls) ---
 # Existe no máximo UMA. Ao morrer, TODAS as almas do bolso ficam numa marca no ponto EXATO da queda
