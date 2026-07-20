@@ -23,6 +23,7 @@ var _hazards: Dictionary = {}        # id -> definição de armadilha (data/haza
 var _bonfires: Array = []            # fogueiras (checkpoints) do nível atual — BonfireView
 var _guard: Array = []               # a GUARDA do refúgio: esqueletos do run-back (nível vencido) — EnemyView
 var _ladders: Array = []             # escadas do nível (o PlayerView as consulta para escalar)
+var _npc: NpcView                    # o Sir Big T., ao lado da primeira fogueira
 var _bloodstain: BloodstainView      # a marca de sangue na cena, quando presente (passiva, recolhe ao tocar)
 # Toast de dica do tutorial (substitui as antigas placas): aparece no HUD conforme o player anda.
 var _tip_root: Control               # a caixa da dica (no _layer); invisível quando não há dica
@@ -268,6 +269,7 @@ func _build_environment(width: float, is_boss_room: bool, hazards := []) -> void
 	_lever = null
 	_fog = null
 	_exit_door_x = 0.0        # refeita por _spawn_exit_passage, quando o nível adiante já caiu
+	_npc = null               # view era filha do _env (demolida); só solta a referência
 	_ladders.clear()          # views eram filhas do _env (demolido); só solta as referências
 	if is_instance_valid(_player_view):
 		_player_view.ladders = _ladders
@@ -530,6 +532,28 @@ func _try_pull_lever() -> bool:
 		return true
 	return false
 
+## Falar com um NPC. Antes da fogueira e da névoa na ordem do INTERAGIR porque ele fica ao lado
+## do fogo — e quem chega ali pela primeira vez veio falar com ele, não descansar.
+func _try_npc() -> bool:
+	if is_instance_valid(_npc) and _npc.in_reach(_player_view):
+		_npc.falar()
+		return true
+	return false
+
+## O Sir Big T. entrega o Estus — e é ele quem ensina a fogueira e o frasco. A lição saiu de um
+## toast disparado por proximidade e virou fala de alguém: uma regra dita por um personagem gruda
+## melhor do que uma caixa de texto que aparece sozinha quando você pisa no lugar certo.
+func _on_npc_falado(_n: NpcView) -> void:
+	if _run.player.receive_flask():
+		_run.flask_tutorial_seen = true
+		_show_tip("Sir Big T.: \"Tome o Frasco, andarilho. Beba com %s; o fogo o enche de novo.\""
+			% KeyBinds.key_name("flask"))
+		Juice.burst(_env, _npc.global_position + Vector2(0, -30), Color(1.0, 0.72, 0.28), 16, 110.0)
+		return                          # a HUD se atualiza sozinha todo frame (Hud._process)
+	# Já deu o frasco: daqui em diante ele lembra do essencial da fogueira.
+	_show_tip("Sir Big T.: \"Descanse no fogo (%s) e ele devolve vida e frasco — mas os mortos voltam com você.\""
+		% KeyBinds.key_name("interact"))
+
 func _try_rest() -> bool:
 	if not is_instance_valid(_player_view):
 		return false
@@ -713,22 +737,6 @@ func _schedule_first_tip() -> void:
 ## Persistida em RunState.flask_tutorial_seen para não repetir a cada morte/run-back.
 const FLASK_TIP_REACH := 130.0
 
-func _update_flask_tip() -> void:
-	if _run == null or _run.flask_tutorial_seen or _bonfires.is_empty():
-		return
-	# A lição pertence à PRIMEIRA fogueira (o refúgio do nível 1). Nas outras (ex.: a área de
-	# descanso pós-chefe, cuja fogueira fica na entrada), quem chegou até lá já bebeu do frasco —
-	# e a sala teria a mensagem de chegada atropelada pelo tutorial.
-	if _run.current_level != _start_level:
-		return
-	if not is_instance_valid(_player_view):
-		return
-	var px := _player_view.global_position.x
-	for bf in _bonfires:
-		if is_instance_valid(bf) and absf(px - bf.global_position.x) <= FLASK_TIP_REACH:
-			_run.flask_tutorial_seen = true
-			_show_tip(TutorialTips.flask_tip())
-			return
 
 ## No tutorial, dispara a dica cujo x o player acabou de alcançar (uma vez cada).
 func _update_tutorial_tips() -> void:
@@ -1394,8 +1402,6 @@ func _process(delta: float) -> void:
 	# automático ao passar por cima dela, como no Dark Souls (sem tecla).
 	_update_bloodstain()
 
-	# Chegou perto da fogueira pela 1ª vez na run: ensina o Frasco de Cura.
-	_update_flask_tip()
 
 	# Vila de tutorial: as dicas surgem conforme o player anda; chegar na porta entra na dungeon.
 	if _phase == "tutorial":
@@ -1744,7 +1750,7 @@ func _spawn_shortcut(_level_id: String) -> void:
 
 ## A ENTRADA de um nível de sala (levels.json → "entrance"): o que existe ANTES da zona de
 ## combate. É onde mora a fogueira do Portão — a primeira do jogo, e por isso onde nasce a lição
-## do frasco (_update_flask_tip acha qualquer fogueira do start_level). Logo depois dela pode vir
+## do frasco — dita pelo Sir Big T., que nasce ao lado dela. Logo depois dela pode vir
 ## um portão GRANDE com alavanca: ele não tranca uma recompensa como o do refúgio, ele marca a
 ## saída de um lugar, então nasce destravado — puxar é um gesto de partida, não um prêmio.
 func _spawn_entrance(level_id: String) -> void:
@@ -1760,6 +1766,14 @@ func _spawn_entrance(level_id: String) -> void:
 		bf.setup(bx, _run.is_lit(level_id, bx), _player_view)
 		bf.rested.connect(_on_bonfire_rested)
 		_bonfires.append(bf)
+
+		# O Sir Big T., ao lado da fogueira. Fica LONGE o bastante dela para que INTERAGIR nunca
+		# seja ambíguo (as interações do jogo se desambiguam só por proximidade).
+		var nx := bx + float(ent.get("npc_offset", 56.0))
+		_npc = NpcView.new()
+		_env.add_child(_npc)
+		_npc.setup(nx, GROUND_Y, _player_view, "Sir Big T.")
+		_npc.falado.connect(_on_npc_falado)
 
 	var g: Dictionary = ent.get("gate", {})
 	if g.is_empty():
@@ -2161,7 +2175,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if _phase in ["transition", "dead", "boss_intro"]:
 			return
-		if _try_pull_lever() or _try_rest() or _try_shortcut() or _try_cross_fog():
+		if _try_npc() or _try_pull_lever() or _try_rest() or _try_shortcut() or _try_cross_fog():
 			return
 		return
 	# F9 alterna o overlay CRT (disponível sempre, não só em debug).

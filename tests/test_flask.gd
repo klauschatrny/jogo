@@ -3,9 +3,38 @@ extends TestCase
 ## Frasco de cura (o Estus): a única cura sob demanda. Cargas limitadas, gasto comprometido
 ## (a carga sai no início; a cura é aplicada pela apresentação ao fim do gesto).
 
+## O jogador nasce SEM o frasco (é o Sir Big T. quem o entrega); estes testes tratam do frasco
+## em si, então partem de quem já o recebeu.
 func _player() -> Player:
 	var w := Weapon.from_dict({"base_damage": 15})
-	return Player.create_new("X", w)
+	var p := Player.create_new("X", w)
+	p.receive_flask()
+	return p
+
+func test_comeca_SEM_o_frasco() -> void:
+	var w := Weapon.from_dict({"base_damage": 15})
+	var p := Player.create_new("X", w)
+	assert_false(p.has_flask, "o frasco é um presente, não equipamento inicial")
+	assert_eq(p.flask_charges, 0)
+	p.take_damage(50)
+	assert_false(p.can_drink(), "sem o frasco não se bebe")
+	assert_eq(p.drink_flask(), 0)
+
+func test_receber_o_frasco_enche_e_nao_se_repete() -> void:
+	var w := Weapon.from_dict({"base_damage": 15})
+	var p := Player.create_new("X", w)
+	assert_true(p.receive_flask(), "a primeira entrega vale")
+	assert_true(p.has_flask)
+	assert_eq(p.flask_charges, p.flask_capacity())
+	assert_false(p.receive_flask(), "falar de novo com ele não dá um segundo frasco")
+	assert_eq(p.flask_charges, p.flask_capacity())
+
+## Sem o frasco, descansar não inventa cargas do nada.
+func test_descansar_sem_frasco_nao_da_cargas() -> void:
+	var w := Weapon.from_dict({"base_damage": 15})
+	var p := Player.create_new("X", w)
+	p.refill_flask()
+	assert_eq(p.flask_charges, 0)
 
 func test_comeca_com_o_frasco_cheio() -> void:
 	var p := _player()
@@ -75,6 +104,7 @@ func test_a_cura_escala_com_a_vida_maxima() -> void:
 func test_descansar_recarrega_o_frasco() -> void:
 	var w := Weapon.from_dict({"id": "w", "base_damage": 15, "weapon_growth": 1.12})
 	var rs := RunState.start_new("Kael", w, [], 1)
+	rs.player.receive_flask()                       # o Sir Big T. já entregou
 	rs.player.take_damage(rs.player.stats.max_hp - 1)
 	rs.player.drink_flask()
 	assert_true(rs.player.flask_charges < rs.player.flask_max)
@@ -84,6 +114,7 @@ func test_descansar_recarrega_o_frasco() -> void:
 func test_renascer_recarrega_o_frasco() -> void:
 	var w := Weapon.from_dict({"id": "w", "base_damage": 15, "weapon_growth": 1.12})
 	var rs := RunState.start_new("Kael", w, [], 1)
+	rs.player.receive_flask()                       # o Sir Big T. já entregou
 	rs.player.take_damage(rs.player.stats.max_hp - 1)
 	rs.player.drink_flask()
 	rs.player.take_damage(rs.player.stats.max_hp)   # morre

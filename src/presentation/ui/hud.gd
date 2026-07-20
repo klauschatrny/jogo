@@ -235,7 +235,16 @@ func _refresh() -> void:
 	if _souls != null:
 		_souls.text = "%d" % _player.souls
 	if _flask_count != null:
-		var tem := _player.flask_charges > 0
-		_flask_body.color = Color(0.95, 0.62, 0.16) if tem else Color(0.32, 0.32, 0.34)
-		_flask_core.color = Color(1.0, 0.85, 0.45) if tem else Color(0.42, 0.42, 0.44)
-		_flask_count.text = "%d" % _player.flask_charges
+		# SEM O FRASCO o slot fica VAZIO — só o quadro, sem vidro e sem número. É diferente de
+		# "frasco vazio" (que mostra o vidro apagado e um 0): aqui o jogador ainda nem tem o objeto,
+		# e o slot vazio é a pergunta que o leva a falar com o Sir Big T.
+		var tem_frasco: bool = _player.has_flask
+		_flask_body.visible = tem_frasco
+		_flask_core.visible = tem_frasco
+		if not tem_frasco:
+			_flask_count.text = ""
+		else:
+			var tem := _player.flask_charges > 0
+			_flask_body.color = Color(0.95, 0.62, 0.16) if tem else Color(0.32, 0.32, 0.34)
+			_flask_core.color = Color(1.0, 0.85, 0.45) if tem else Color(0.42, 0.42, 0.44)
+			_flask_count.text = "%d" % _player.flask_charges

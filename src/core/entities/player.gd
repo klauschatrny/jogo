@@ -38,6 +38,10 @@ var attribute_points: int = 0       # pontos por gastar
 # transforma cada troca de golpes num cálculo de recurso ("curo agora e me exponho, ou aguento?").
 var flask_charges: int = 0
 var flask_max: int = 0
+## O jogador COMEÇA SEM O FRASCO. Ele é um presente do Sir Big T., o cavaleiro ao lado da primeira
+## fogueira — até falar com ele, o slot na HUD fica vazio e beber não faz nada. Ganhar o Estus de
+## alguém, em vez de já nascer com ele, é o que dá ao objeto o peso de um marco do começo do jogo.
+var has_flask: bool = false
 
 static func create_new(player_name: String, chosen_weapon: Weapon) -> Player:
 	var p := Player.new()
@@ -49,7 +53,7 @@ static func create_new(player_name: String, chosen_weapon: Weapon) -> Player:
 	p.attributes = Attributes.defaults()
 	p.stamina = Stamina.from_config(BalanceConfig.stamina)
 	p.recalculate_stats()             # depois da stamina: recalculate_stats também a redimensiona
-	p.refill_flask()                  # começa com o frasco cheio
+	# NÃO enche o frasco: ele nem existe ainda (ver has_flask / receive_flask).
 	return p
 
 # --- Frasco de cura (o Estus) ---
@@ -64,13 +68,23 @@ func flask_heal_amount() -> int:
 
 ## Enche o frasco (fogueira / renascer).
 func refill_flask() -> void:
+	if not has_flask:
+		return                        # sem frasco não há o que reabastecer
 	flask_max = flask_capacity()
 	flask_charges = flask_max
+
+## Recebe o frasco (do Sir Big T.). Idempotente: falar com ele de novo não dá um segundo.
+func receive_flask() -> bool:
+	if has_flask:
+		return false
+	has_flask = true
+	refill_flask()
+	return true
 
 ## Pode beber agora? Precisa de carga e estar vivo. Beber com a vida CHEIA é permitido — a cura
 ## satura no máximo (não adiciona nada), mas a carga é gasta assim mesmo: a decisão é do jogador.
 func can_drink() -> bool:
-	return flask_charges > 0 and is_alive()
+	return has_flask and flask_charges > 0 and is_alive()
 
 ## Compromete uma carga e devolve quanto ela CURARÁ. A cura em si é aplicada por quem chama, ao
 ## fim da animação de beber (via heal()) — se um golpe interromper antes, a carga já foi: é o preço.

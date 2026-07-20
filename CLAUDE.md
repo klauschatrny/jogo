@@ -347,6 +347,18 @@ boss never summoned anything anyway, and the ghost-fight (`GhostData`/`GhostFact
 treatment as the tower. `balance.json → nemesis.ENABLED` no longer gates anything (the bloodstain is
 always on; it's the base death mechanic, not the optional Nemesis).
 
+**Done — Sir Big T. gives you the flask.** The player now **starts with no flask at all**
+(`Player.has_flask = false`): the HUD slot is an empty frame — no glass, no number, which reads
+differently from *an empty flask* (dim glass and a `0`) — and `can_drink()` refuses. A knight NPC
+(`NpcView`, plate + red cloak + plumed helm + greatsword planted in the ground) sits beside the
+**first bonfire** and hands it over when you talk to him (`interact`, prompt *"E falar com Sir Big
+T."*). `receive_flask()` is idempotent, so talking again never yields a second one. He is also who
+**teaches the bonfire and the flask** — that lesson used to be a toast fired by walking near the
+fire (`_update_flask_tip`, now deleted); a rule spoken by a character sticks better than a box that
+appears on its own when you step on the right tile. He is placed `entrance.npc_offset` (56px) from
+the fire so `interact` is never ambiguous — all interactions in this game disambiguate purely by
+proximity.
+
 **Done — the flask (the Estus).** The **only on-demand heal** in the game: `Player.flask_charges`
 (capacity + heal fraction are data, `balance.json → flask`). Each gulp heals `HEAL_FRACTION` of
 **max** HP — so raising Vigor also fattens the heal (`flask_heal_amount()`). Charges refill **only**
