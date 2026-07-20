@@ -686,6 +686,7 @@ func _spawn_training_dummy(x: float) -> void:
 	var enemy := Enemy.from_dict({
 		"id": "boneco_treino", "name": "Espantalho", "rank": "NORMAL",
 		"base_stats": { "max_hp": 99999, "attack": 0, "defense": 0, "move_speed": 0 },
+		"hurt_sfx": "dummy_hit",
 	})
 	var view := ScarecrowView.new()
 	view.setup(enemy, _player_view)

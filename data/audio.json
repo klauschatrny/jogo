@@ -21,24 +21,39 @@
   "sfx": {
     "ui_click": {
       "_comment": "Clique de botão do menu (principal e pausa). PLACEHOLDER sintetizado (_gen_click.gd): tick curto. O pitch varia de leve a cada toque pra clicar em sequência não soar mecânico. Trocar por um som de verdade = só substituir o stream.",
-      "streams": ["res://assets/audio/sfx/ui_click.wav"],
-      "pitch": [1.0, 1.06, 0.96],
+      "streams": [
+        "res://assets/audio/sfx/ui_click.wav"
+      ],
+      "pitch": [
+        1.0,
+        1.06,
+        0.96
+      ],
       "volume_db": -10.0
     },
     "player_attack": {
       "_comment": "UM arquivo, DUAS variações: a 2ª é o mesmo golpe num tom mais grave (pitch). A variação é o passo do combo (3 golpes), então a sequência sai tom normal, grave, normal. Parar deixa o combo expirar e o próximo golpe volta ao 1º. Um 3º valor em 'pitch' (ou um 2º stream) daria ao finisher um som próprio.",
-      "streams": ["res://assets/audio/sfx/player_attack1.mp3"],
-      "pitch": [1.0, 0.92],
+      "streams": [
+        "res://assets/audio/sfx/player_attack1.mp3"
+      ],
+      "pitch": [
+        1.0,
+        0.92
+      ],
       "volume_db": -12.0
     },
     "player_dodge": {
       "_comment": "Rolamento. Há uma 2ª variação desenhada (esquiva2) ainda fora do jogo: para testá-la, some o stream dela aqui — o rodízio passa a alternar sozinho.",
-      "streams": ["res://assets/audio/sfx/player_dodge1.mp3"],
+      "streams": [
+        "res://assets/audio/sfx/player_dodge1.mp3"
+      ],
       "volume_db": -16.0
     },
     "player_footsteps": {
       "_comment": "Passadas de corrida na GRAMA. MEDIDO no clipe de 0,76 s: 3 passadas, uma a cada ~0,25 s, a 1ª em 0,12 s. Tocado com Sfx.play_step (mesma técnica da investida do ogro): o PlayerView recorta UMA passada por vez, no quadro exato da anim 'run' em que o pé apoia (STEP_FRAMES) — a cadência vem da animação, não deste arquivo. step_dur = quanto tempo o recorte soa; se um passo 'clicar' no fim, diminua-o.",
-      "streams": ["res://assets/audio/sfx/player_footsteps.mp3"],
+      "streams": [
+        "res://assets/audio/sfx/player_footsteps.mp3"
+      ],
       "volume_db": -16.0,
       "loop": true,
       "step_every": 0.253,
@@ -55,23 +70,35 @@
     },
     "skeleton_hurt": {
       "_comment": "Esqueleto levando dano e sobrevivendo (data/enemies/*.json -> hurt_sfx). O tom varia de golpe a golpe (pitch), senão apanhar em sequência vira metralhadora do mesmo som.",
-      "streams": ["res://assets/audio/sfx/skeleton_hurt.mp3"],
-      "pitch": [1.0, 0.94, 1.06],
+      "streams": [
+        "res://assets/audio/sfx/skeleton_hurt.mp3"
+      ],
+      "pitch": [
+        1.0,
+        0.94,
+        1.06
+      ],
       "volume_db": -12.0
     },
     "skeleton_death": {
       "_comment": "Grito de morte: só no golpe FATAL (data/enemies/*.json -> death_sfx).",
-      "streams": ["res://assets/audio/sfx/skeleton_death.mp3"],
+      "streams": [
+        "res://assets/audio/sfx/skeleton_death.mp3"
+      ],
       "volume_db": -12.0
     },
     "ogre_rage": {
       "_comment": "Grito do ogro ao entrar em fúria — o windup da investida, a 50/35/15% de vida (data/bosses/ogre.json -> rage_sfx).",
-      "streams": ["res://assets/audio/sfx/ogre_rage.mp3"],
+      "streams": [
+        "res://assets/audio/sfx/ogre_rage.mp3"
+      ],
       "volume_db": -12.0
     },
     "ogre_steps": {
       "_comment": "Ciclo de caminhada do ogro (data/bosses/ogre.json -> steps_sfx). MEDIDO no clipe de 4,97 s: 5 passadas, uma a cada 1,00 s (step_every), a 1ª em 0,12 s (first_step), e cada uma soa por ~0,45 s (step_dur). ANDANDO: Sfx.sustain roda o ciclo em loop e só o corta num ponto de silêncio. CORRENDO (investida): Sfx.play_step recorta as MESMAS passadas e as toca mais juntas — mesmo tom, cadência maior. Reexportou o arquivo? Remeça esses três números.",
-      "streams": ["res://assets/audio/sfx/ogre_steps.mp3"],
+      "streams": [
+        "res://assets/audio/sfx/ogre_steps.mp3"
+      ],
       "volume_db": -14.0,
       "loop": true,
       "step_every": 1.0,
@@ -80,32 +107,61 @@
     },
     "ogre_hurt": {
       "_comment": "Ogro levando dano (data/bosses/ogre.json -> hurt_sfx). O tom varia a cada golpe: o combo do player é rápido e o mesmo som repetido soaria como metralhadora.",
-      "streams": ["res://assets/audio/sfx/ogre_hurt.mp3"],
-      "pitch": [1.0, 0.93, 1.07],
+      "streams": [
+        "res://assets/audio/sfx/ogre_hurt.mp3"
+      ],
+      "pitch": [
+        1.0,
+        0.93,
+        1.07
+      ],
       "volume_db": -8.0
     },
     "ogre_wall_hit": {
       "_comment": "O ogro se espatifando na parede ao fim da investida (data/bosses/ogre.json -> wall_hit_sfx). Só na batida de verdade — se a investida acabar por tempo, sem parede, não toca.",
-      "streams": ["res://assets/audio/sfx/ogre_wall_hit.mp3"],
+      "streams": [
+        "res://assets/audio/sfx/ogre_wall_hit.mp3"
+      ],
       "volume_db": 0.0
     },
     "ogre_tired": {
       "_comment": "Respiração ofegante do ogro no stun que segue a investida (2 s parado). data/bosses/ogre.json -> tired_sfx.",
-      "streams": ["res://assets/audio/sfx/ogre_tired.mp3"],
+      "streams": [
+        "res://assets/audio/sfx/ogre_tired.mp3"
+      ],
       "volume_db": 0.0
     },
     "ogre_charge_steps": {
       "_comment": "Passadas da INVESTIDA do ogro. Reaproveita o arquivo da aterrissagem: as duas batidas do começo dele (MEDIDAS em 0,21 s e 0,80 s) são mais definidas que as do ciclo de caminhada. 'steps' declara os instantes um a um porque não são uniformes; Sfx.play_step recorta cada um por step_dur. Cadência da corrida = CHARGE_STEP_EVERY (ogre_view.gd), não deste arquivo.",
-      "streams": ["res://assets/audio/sfx/ogre_landing.mp3"],
-      "steps": [0.21, 0.80],
+      "streams": [
+        "res://assets/audio/sfx/ogre_landing.mp3"
+      ],
+      "steps": [
+        0.21,
+        0.8
+      ],
       "step_dur": 0.42,
       "volume_db": -10.0
     },
     "ogre_landing": {
       "_comment": "Impacto do ogro ao cair na arena, na cutscene de entrada (data/bosses/ogre.json -> landing_sfx). impact_at = instante DENTRO do clipe em que o baque soa: a cutscene toca o som adiantado para que os pés dele toquem o chão exatamente nesse ponto.",
-      "streams": ["res://assets/audio/sfx/ogre_landing.mp3"],
+      "streams": [
+        "res://assets/audio/sfx/ogre_landing.mp3"
+      ],
       "volume_db": -6.0,
       "impact_at": 1.75
+    },
+    "dummy_hit": {
+      "_comment": "Golpe no boneco de treino da Cidade (ScarecrowView). Reusa o som de acerto do esqueleto (skeleton_hurt.mp3) num tom bem mais GRAVE — o boneco e de palha e madeira, o baque nele soa mais surdo que o de um esqueleto.",
+      "streams": [
+        "res://assets/audio/sfx/skeleton_hurt.mp3"
+      ],
+      "pitch": [
+        0.68,
+        0.63,
+        0.72
+      ],
+      "volume_db": -10.0
     }
   }
 }
