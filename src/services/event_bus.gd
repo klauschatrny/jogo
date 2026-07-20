@@ -12,11 +12,11 @@ signal souls_gained(amount, total)
 signal souls_lost(amount)                 # morreu: tudo foi para a marca de sangue
 signal bloodstain_recovered(souls_back)   # tocou a própria marca: as almas voltaram
 signal level_up(new_level)
-signal floor_changed(floor)
+signal level_changed(level_id)      # mudou de nível do MAPA (id, não número — a dungeon é um grafo)
 
 # --- Fogueiras / morte (soulslike) ---
-signal checkpoint_rested(floor)     # o jogador descansou numa fogueira (vida cheia, ponto salvo)
-signal player_respawned(floor)      # morreu e voltou à última fogueira — a run NÃO acaba
+signal checkpoint_rested(level_id)  # o jogador descansou numa fogueira (vida cheia, ponto salvo)
+signal player_respawned(level_id)   # morreu e voltou à última fogueira — a run NÃO acaba
 signal flask_used(charges_left)     # bebeu o frasco de cura (o Estus): uma carga a menos
 
 # --- Atributos (progressão soulslike: nível dá pontos; a fogueira os gasta) ---

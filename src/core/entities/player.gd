@@ -20,6 +20,10 @@ var stamina: Stamina                # recurso de ações (ataque/esquiva), estil
 var weapon: Weapon
 var augments: Array = []            # Array[Augment] — desligado do jogo (ver CLAUDE.md)
 var gold: int = 0
+## Andar numérico — CONGELADO EM 1. A dungeon virou um grafo de níveis com id (RunState.
+## current_level), então não há mais número de andar para escrever aqui. Só o sistema de
+## ecos/Nemesis ainda lê este campo, e ele está desligado; quando a torre for redesenhada,
+## este campo sai junto.
 var current_floor: int = 1
 var run_id: String = ""
 

@@ -25,6 +25,9 @@ static func build(data: GhostData, current_player: Player) -> Enemy:
 	# Pisos de ELITE no andar atual: garantem que o eco seja um adversário relevante mesmo
 	# vindo de um snapshot fraco (morte cedo). O andar do confronto é o andar atual do jogador
 	# (== death_floor no momento da invocação, por should_summon).
+	# ATENÇÃO: Player.current_floor está congelado em 1 desde que a dungeon virou grafo — este
+	# piso saiu do lugar. Não é bug ativo (o Nemesis está desligado), mas é a primeira coisa a
+	# consertar se ele voltar: o "quão fundo estamos" precisa vir do mapa novo.
 	var floor := maxi(current_player.current_floor, 1)
 	var elite_hp := Scaling.enemy_hp(floor) * Scaling.rank_mult("ELITE", "hp")
 	var elite_atk := Scaling.enemy_atk(floor) * Scaling.rank_mult("ELITE", "atk")

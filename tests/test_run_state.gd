@@ -9,28 +9,42 @@ func _augs() -> Array:
 		Augment.from_dict({"id": "w1", "tier": "RELIC", "category": "WEAPON", "weight": 30, "stackable": true, "max_stacks": 9}),
 	]
 
+# Dois níveis quaisquer, para exercitar o grafo sem depender do conteúdo real do levels.json.
+const INICIO := "cripta"
+const ADIANTE := "arena"
+
 func _run() -> RunState:
 	var w := Weapon.from_dict({"id": "w", "base_damage": 15, "weapon_growth": 1.12})
-	return RunState.start_new("Kael", w, _augs(), 123)
+	var rs := RunState.start_new("Kael", w, _augs(), 123)
+	rs.start_level = INICIO
+	rs.go_to(INICIO)
+	return rs
 
 func test_start_new() -> void:
 	var rs := _run()
 	assert_eq(rs.player.name, "Kael")
-	assert_eq(rs.current_floor, 1)
+	assert_eq(rs.current_level, INICIO)
 	assert_eq(rs.seed, 123)
 	assert_eq(rs.augment_pool.size(), 4)
 
-func test_advance_floor() -> void:
+func test_go_to_muda_de_nivel() -> void:
 	var rs := _run()
-	rs.advance_floor()
-	assert_eq(rs.current_floor, 2)
-	assert_eq(rs.player.current_floor, 2)
+	rs.go_to(ADIANTE)
+	assert_eq(rs.current_level, ADIANTE)
 
-func test_advance_floor_cura_hp_cheio() -> void:
+func test_go_to_com_id_vazio_nao_move() -> void:
+	# Uma saída inexistente resolve para "" — ir a lugar nenhum tem de ser inócuo, não
+	# largar o jogador num nível sem nome.
+	var rs := _run()
+	rs.go_to("")
+	assert_eq(rs.current_level, INICIO)
+
+func test_go_to_cura_so_quando_pedido() -> void:
 	var rs := _run()
 	rs.player.take_damage(80)
-	assert_true(rs.player.stats.current_hp < rs.player.stats.max_hp)
-	rs.advance_floor()
+	rs.go_to(ADIANTE)
+	assert_true(rs.player.stats.current_hp < rs.player.stats.max_hp, "revisitar não cura")
+	rs.go_to(INICIO, true)
 	assert_eq(rs.player.stats.current_hp, rs.player.stats.max_hp)
 
 func test_offer_augments_quantidade_padrao() -> void:
@@ -84,64 +98,64 @@ func test_vinganca_nao_empilha() -> void:
 func test_vinganca_acaba_no_proximo_andar() -> void:
 	var rs := _run()
 	rs.apply_vengeance()
-	rs.advance_floor()
-	assert_false(rs.has_vengeance(), "o buff dura só até o fim do andar")
+	rs.go_to(ADIANTE)
+	assert_false(rs.has_vengeance(), "o buff dura só até o fim do nível")
 
 # --- Fogueiras / morte (soulslike): a run não acaba mais ao morrer ---
 
 func test_descansar_acende_cura_e_marca_o_retorno() -> void:
 	var rs := _run()
 	rs.player.take_damage(80)
-	rs.rest_at(1, 260.0)
+	rs.rest_at(INICIO, 260.0)
 	assert_eq(rs.player.stats.current_hp, rs.player.stats.max_hp, "descansar cura por completo")
 	assert_true(rs.has_checkpoint())
-	assert_eq(rs.checkpoint_floor, 1)
-	assert_true(rs.is_lit(1, 260.0), "a fogueira fica acesa")
-	assert_false(rs.is_lit(1, 999.0), "só a que ele tocou")
+	assert_eq(rs.checkpoint_level, INICIO)
+	assert_true(rs.is_lit(INICIO, 260.0), "a fogueira fica acesa")
+	assert_false(rs.is_lit(INICIO, 999.0), "só a que ele tocou")
 
 func test_descansar_enche_a_stamina() -> void:
 	var rs := _run()
 	rs.player.stamina.consume(rs.player.stamina.maximum)
 	assert_false(rs.player.stamina.can_act())
-	rs.rest_at(1, 260.0)
+	rs.rest_at(INICIO, 260.0)
 	assert_true(rs.player.stamina.can_act(), "levantar da fogueira já podendo agir")
 
 func test_morrer_devolve_a_run_a_ultima_fogueira() -> void:
 	var rs := _run()
-	rs.rest_at(1, 260.0)
-	rs.advance_floor()                       # foi para o nível 2 (boss)
+	rs.rest_at(INICIO, 260.0)
+	rs.go_to(ADIANTE)                        # foi para a arena do chefe
 	rs.player.take_damage(rs.player.stats.max_hp)
 	assert_false(rs.player.is_alive())
 	rs.respawn()
-	assert_eq(rs.current_floor, 1, "volta ao nível da fogueira, não ao começo do jogo")
+	assert_eq(rs.current_level, INICIO, "volta ao nível da fogueira, não ao começo do jogo")
 	assert_eq(rs.respawn_x(80.0), 260.0, "e ao ponto exato dela")
 	assert_eq(rs.player.stats.current_hp, rs.player.stats.max_hp)
 	assert_eq(rs.deaths, 1)
 
 func test_morrer_sem_fogueira_volta_ao_comeco_do_jogo() -> void:
 	var rs := _run()
-	rs.advance_floor()                       # está no nível 2 (a arena do chefe)
-	assert_eq(rs.current_floor, 2)
+	rs.go_to(ADIANTE)                        # está na arena do chefe
+	assert_eq(rs.current_level, ADIANTE)
 	rs.player.take_damage(rs.player.stats.max_hp)
 	rs.respawn()
-	assert_eq(rs.current_floor, 1, "sem fogueira, volta ao COMEÇO — nunca à sala onde morreu")
+	assert_eq(rs.current_level, INICIO, "sem fogueira, volta ao COMEÇO — nunca à sala onde morreu")
 	assert_eq(rs.respawn_x(80.0), 80.0)
 
 func test_nunca_se_renasce_onde_se_morreu() -> void:
 	# A regra, em qualquer combinação: ou a fogueira, ou o começo. Nunca o lugar da queda.
-	for morte_no_nivel in [1, 2]:
+	for morte_no_nivel in [INICIO, ADIANTE]:
 		var rs := _run()
-		rs.current_floor = morte_no_nivel
+		rs.go_to(morte_no_nivel)
 		rs.player.take_damage(rs.player.stats.max_hp)
 		rs.respawn()
-		assert_eq(rs.current_floor, 1, "sem fogueira: começo do jogo")
+		assert_eq(rs.current_level, INICIO, "sem fogueira: começo do jogo")
 
 		var rs2 := _run()
-		rs2.rest_at(1, 150.0)                # descansou na sala do baú do nível 1
-		rs2.current_floor = morte_no_nivel
+		rs2.rest_at(INICIO, 150.0)           # descansou no refúgio do primeiro nível
+		rs2.go_to(morte_no_nivel)
 		rs2.player.take_damage(rs2.player.stats.max_hp)
 		rs2.respawn()
-		assert_eq(rs2.current_floor, 1, "com fogueira: o nível DELA")
+		assert_eq(rs2.current_level, INICIO, "com fogueira: o nível DELA")
 		assert_eq(rs2.respawn_x(80.0), 150.0, "e o ponto exato dela")
 
 
@@ -167,9 +181,9 @@ func test_a_morte_leva_o_buff_de_vinganca() -> void:
 
 func test_respawn_x_ignora_fogueira_de_outro_nivel() -> void:
 	var rs := _run()
-	rs.rest_at(1, 260.0)
-	rs.current_floor = 2                     # sem passar pela fogueira do 2
-	assert_eq(rs.respawn_x(80.0), 80.0, "a fogueira do nível 1 não posiciona no nível 2")
+	rs.rest_at(INICIO, 260.0)
+	rs.go_to(ADIANTE)                        # sem passar por nenhuma fogueira de lá
+	assert_eq(rs.respawn_x(80.0), 80.0, "a fogueira de um nível não posiciona em outro")
 
 func test_portao_de_mecanismo_abre_e_persiste() -> void:
 	var rs := _run()
@@ -182,60 +196,60 @@ func test_portao_de_mecanismo_abre_e_persiste() -> void:
 
 func test_portao_aberto_sobrevive_a_morte() -> void:
 	var rs := _run()
-	rs.rest_at(1, 1680.0)
+	rs.rest_at(INICIO, 1680.0)
 	rs.open_gate("gate_1")
-	rs.advance_floor()                       # foi ao chefe (nível 2)
+	rs.go_to(ADIANTE)                        # foi ao chefe
 	rs.player.take_damage(rs.player.stats.max_hp)
 	rs.respawn()
-	assert_eq(rs.current_floor, 1)
+	assert_eq(rs.current_level, INICIO)
 	assert_true(rs.is_gate_open("gate_1"), "o atalho aberto continua aberto ao renascer")
 
 func test_nivel_vencido_fica_vencido() -> void:
 	var rs := _run()
-	assert_false(rs.is_cleared(1))
-	rs.mark_cleared(1)
-	rs.mark_cleared(1)                       # idempotente
-	assert_true(rs.is_cleared(1))
-	assert_eq(rs.cleared_floors.size(), 1)
-	assert_false(rs.is_cleared(2))
+	assert_false(rs.is_cleared(INICIO))
+	rs.mark_cleared(INICIO)
+	rs.mark_cleared(INICIO)                  # idempotente
+	assert_true(rs.is_cleared(INICIO))
+	assert_eq(rs.cleared_levels.size(), 1)
+	assert_false(rs.is_cleared(ADIANTE))
 
 # --- A mancha de sangue (bloodstain) ---
 
 func test_morrer_deixa_a_marca_com_as_almas() -> void:
 	var rs := _run()
 	rs.player.gain_souls(240)
-	var caidas := rs.drop_bloodstain(1, 900.0)
+	var caidas := rs.drop_bloodstain(INICIO, 900.0)
 	assert_eq(caidas, 240, "devolve quantas caíram")
 	assert_eq(rs.player.souls, 0, "o bolso esvazia")
 	assert_true(rs.has_bloodstain())
 	assert_eq(rs.bloodstain_souls, 240, "e as almas ficam na marca")
 	assert_almost(rs.bloodstain_x, 900.0)
-	assert_true(rs.has_bloodstain_on(1))
-	assert_false(rs.has_bloodstain_on(2), "só no nível onde caiu")
+	assert_true(rs.has_bloodstain_on(INICIO))
+	assert_false(rs.has_bloodstain_on(ADIANTE), "só no nível onde caiu")
 
 func test_sem_almas_nao_deixa_marca() -> void:
 	var rs := _run()
-	assert_eq(rs.drop_bloodstain(1, 900.0), 0)
+	assert_eq(rs.drop_bloodstain(INICIO, 900.0), 0)
 	assert_false(rs.has_bloodstain(), "uma marca vazia não teria o que recolher")
 
 func test_tocar_a_marca_devolve_as_almas() -> void:
 	var rs := _run()
 	rs.player.gain_souls(240)
-	rs.drop_bloodstain(1, 900.0)
+	rs.drop_bloodstain(INICIO, 900.0)
 	var back := rs.recover_bloodstain()
 	assert_eq(back, 240)
 	assert_eq(rs.player.souls, 240)
 	assert_false(rs.has_bloodstain())
-	assert_false(rs.has_bloodstain_on(1))
+	assert_false(rs.has_bloodstain_on(INICIO))
 
 ## A aposta do gênero: morrer de novo antes de chegar na marca a substitui — as almas
 ## antigas se perdem PARA SEMPRE.
 func test_morrer_de_novo_apaga_a_marca_anterior() -> void:
 	var rs := _run()
 	rs.player.gain_souls(500)
-	rs.drop_bloodstain(1, 900.0)         # 500 almas ficam lá
+	rs.drop_bloodstain(INICIO, 900.0)         # 500 almas ficam lá
 	rs.player.gain_souls(60)             # juntou umas poucas no caminho de volta
-	rs.drop_bloodstain(1, 300.0)         # morreu antes de chegar nelas
+	rs.drop_bloodstain(INICIO, 300.0)         # morreu antes de chegar nelas
 	assert_eq(rs.bloodstain_souls, 60, "só as novas — as 500 se perderam")
 	assert_almost(rs.bloodstain_x, 300.0)
 	assert_eq(rs.recover_bloodstain(), 60)
@@ -244,8 +258,8 @@ func test_morrer_de_novo_apaga_a_marca_anterior() -> void:
 func test_marca_fica_no_ponto_exato_inclusive_no_boss() -> void:
 	var rs := _run()
 	rs.player.gain_souls(100)
-	rs.drop_bloodstain(2, 512.0)         # nível 2 = arena do Ogro, no meio dela
-	assert_true(rs.has_bloodstain_on(2), "fica no próprio nível do chefe")
+	rs.drop_bloodstain(ADIANTE, 512.0)   # a arena do chefe, no meio dela
+	assert_true(rs.has_bloodstain_on(ADIANTE), "fica no próprio nível do chefe")
 	assert_almost(rs.bloodstain_x, 512.0, 0.01, "exatamente onde caiu")
 
 func test_cutscene_do_boss_so_na_primeira_vez() -> void:

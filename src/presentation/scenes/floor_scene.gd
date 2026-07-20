@@ -6,7 +6,7 @@ extends Node2D
 
 # --- DEBUG (desligue pondo DEBUG = false antes de buildar de verdade) ---
 const DEBUG := true
-const DEBUG_START_FLOOR := 0   # 0 = normal (tutorial); 2 = pula direto para a arena do Ogro
+const DEBUG_START_AT := ""     # "" = normal (tutorial); um id de levels.json pula direto p/ lá
 const DEBUG_START_LEVEL := 0   # 0 = normal; nível inicial do jogador
 
 var _run: RunState
@@ -17,7 +17,8 @@ var _msg: Label
 var _layer: CanvasLayer
 var _phase := "room"           # tutorial | room | cleared | transition | boss_intro | boss | dead
 var _floor_config: Dictionary = {}   # config do nível ATUAL (de levels.json)
-var _levels: Dictionary = {}         # nível(int) -> config (data/floors/levels.json)
+var _levels: Dictionary = {}         # id(String) -> config (data/floors/levels.json)
+var _start_level := ""               # onde a dungeon começa (levels.json → "start")
 var _hazards: Dictionary = {}        # id -> definição de armadilha (data/hazards.json)
 var _bonfires: Array = []            # fogueiras (checkpoints) do nível atual — BonfireView
 var _guard: Array = []               # a GUARDA do refúgio: esqueletos do run-back (nível vencido) — EnemyView
@@ -75,7 +76,10 @@ var _boss_fogs: Array = []           # FogGateViews sobre as portas (só durante
 var _boss_door_left_x := 0.0
 var _boss_door_right_x := 0.0
 var _exit_door_x := 0.0              # saída LIVRE no fim do nível (a névoa já se dissipou com o chefe)
-var _entry_from_right := false       # o próximo _start_floor entra pela DIREITA (veio de voltar)
+# Por onde o próximo _start_floor coloca o jogador: "inicio" (padrão), "fim" (extremo direito —
+# é assim que se volta por uma porta de trás) ou "fogueira" (desemboca no refúgio; o que torna uma
+# passagem um atalho). Quem define é a saída que foi cruzada; consumido em _start_floor.
+var _entry_point := "inicio"
 var _attr_layer: CanvasLayer    # painel de atributos (aberto ao descansar na fogueira)
 
 ## Linha de topo do chão (eixo Y). Player e inimigos pousam aqui pela gravidade.
@@ -100,10 +104,9 @@ const BOSS_INTRO_FALL_MAX := 3.0     # segurança: tempo máximo esperando o imp
 const BOSS_INTRO_ROAR_MIN := 1.4     # mínimo encarando o player depois de pousar (boss sem som)
 
 # --- Dungeon ---
-# Todo nível é desenhado à mão em data/floors/levels.json; não há mais geração/repetição
-# automática. Hoje são 2: 1 = sala do Necromante (esqueletos), 2 = arena do Ogro. Limpar o
-# último conclui a run. Ao criar um nível novo, descreva-o no JSON e some 1 aqui.
-const TOTAL_LEVELS := 3
+# Todo nível é desenhado à mão em data/floors/levels.json, que é um GRAFO: cada nível tem id e
+# declara para onde se pode ir a partir dele. Não há contagem nem ordem implícita — acrescentar
+# um nível é descrevê-lo no JSON e apontar a saída de algum outro para ele.
 const BOSS_DOOR_IN := 26.0     # as portas da arena do chefe, este tanto para dentro de cada parede
 # Refúgio (fim de um nível de sala): o corredor tem a ZONA DE COMBATE (corridor_length) e, depois
 # dela, um trecho seguro de SANCTUARY_LEN com o portão, a fogueira e a névoa do chefe. Assim a
@@ -136,12 +139,13 @@ const _TUTORIAL_HAZARDS := []
 func _ready() -> void:
 	randomize()
 
-	# Config por-nível da dungeon (levels.json): 1 = sala do Necromante, 2 = arena do Ogro.
+	# O MAPA da dungeon (levels.json): um grafo de níveis com id, e cada um declara suas saídas.
 	var lcfg = JsonLoader.load_file("res://data/floors/levels.json")
 	if typeof(lcfg) == TYPE_DICTIONARY:
 		var lv: Dictionary = lcfg.get("levels", {})
 		for k in lv:
-			_levels[int(k)] = lv[k]   # chaves JSON vêm como String
+			_levels[String(k)] = lv[k]
+		_start_level = String(lcfg.get("start", ""))
 
 	var ecfg = JsonLoader.load_file("res://data/environment.json")
 	_scenery = ecfg if typeof(ecfg) == TYPE_DICTIONARY else {}
@@ -203,6 +207,9 @@ func _ready() -> void:
 	_boss_repo.load_all()
 
 	_run = RunState.start_new("Kael", weapon, aug_repo.all_augments(), randi())
+	# O core não lê o levels.json (§2.3): quem monta a run é que informa onde a dungeon começa.
+	# É o destino do respawn de quem morre sem nunca ter acendido uma fogueira.
+	_run.start_level = _start_level
 	_player_view = PlayerView.new()
 	_player_view.setup(_run.player)
 	_player_view.position = Vector2(80, GROUND_Y - 40)   # início à esquerda do corredor
@@ -218,9 +225,9 @@ func _ready() -> void:
 		# A legenda de debug na tela fica DESLIGADA a pedido; os atalhos seguem ativos (ver _debug_input).
 		# _show_debug_legend()
 
-	# Começa na vila de tutorial (fora da dungeon); a porta ao fim leva ao nível 1.
-	# Se o debug pular direto para um andar (DEBUG_START_FLOOR > 1), entra na dungeon.
-	if _run.current_floor <= 1:
+	# Começa na vila de tutorial (fora da dungeon); a porta ao fim leva ao primeiro nível.
+	# Se o debug apontar para um nível (DEBUG_START_AT), entra direto na dungeon.
+	if _run.current_level == "":
 		_start_tutorial()
 	else:
 		_start_floor()
@@ -416,7 +423,7 @@ func _spawn_hazards(list: Array) -> void:
 ## Descansou: vida e stamina cheias, esta fogueira vira o ponto de retorno da morte — e abre o
 ## painel de atributos, que é onde os pontos ganhos subindo de nível viram poder de verdade.
 func _on_bonfire_rested(bf: BonfireView) -> void:
-	_run.rest_at(_run.current_floor, bf.pos_x)
+	_run.rest_at(_run.current_level, bf.pos_x)
 	_reset_guard()   # descansar RENASCE a guarda do refúgio (o run-back clássico)
 	Juice.burst(_env, bf.global_position + Vector2(0, -10), Color(1.0, 0.7, 0.25), 14, 90.0)
 	_open_attributes()
@@ -468,7 +475,7 @@ func _try_rest() -> bool:
 ## (fim do conteúdo atual), a névoa não deixa passar e avisa.
 func _try_cross_fog() -> bool:
 	if _phase == "cleared" and is_instance_valid(_fog) and _fog.in_reach(_player_view):
-		if not _levels.has(_run.current_floor + 1):
+		if not _has_exit("frente"):
 			_show_tip("O caminho adiante ainda está por vir...")
 			return true
 		_transition(_next_floor)
@@ -610,7 +617,7 @@ func _update_flask_tip() -> void:
 	# A lição pertence à PRIMEIRA fogueira (o refúgio do nível 1). Nas outras (ex.: a área de
 	# descanso pós-chefe, cuja fogueira fica na entrada), quem chegou até lá já bebeu do frasco —
 	# e a sala teria a mensagem de chegada atropelada pelo tutorial.
-	if _run.current_floor != 1:
+	if _run.current_level != _start_level:
 		return
 	if not is_instance_valid(_player_view):
 		return
@@ -771,7 +778,7 @@ func _begin_dungeon() -> void:
 		if is_instance_valid(v):
 			v.queue_free()
 	_enemies.clear()
-	_run.current_floor = 1
+	_run.go_to(_start_level)
 	_start_floor()
 
 ## Início de um nível da dungeon. Cada nível é desenhado à mão em levels.json e é de UM tipo:
@@ -811,20 +818,23 @@ func _clear_entities() -> void:
 	_first_kill_done = false
 
 func _start_floor() -> void:
-	var floor := _run.current_floor
-	# Veio da porta de trás de uma arena? Então entra por este nível pela DIREITA (pela névoa/porta
-	# do fim), não pelo começo. Consumido aqui — a próxima entrada volta ao normal.
-	var from_right := _entry_from_right
-	_entry_from_right = false
+	var floor := _run.current_level
+	# Por onde entrar neste nível. Quem cruzou a passagem definiu; consumido aqui, e a próxima
+	# entrada volta ao padrão (o começo do corredor).
+	var entry := _entry_point
+	_entry_point = "inicio"
+	var from_right := entry == "fim"
 	_clear_entities()
 	_boss_fogs.clear()   # views eram filhas do _env (demolido abaixo); só solta as referências
 	_floor_config = _levels.get(floor, {})
 	var ltype := String(_floor_config.get("type", ""))
 	if ltype == "":
-		# Não deveria acontecer: as passagens só se abrem quando o próximo nível existe
-		# (_try_cross_fog / portas da arena). Se um debug pular além, volta ao último válido.
-		push_warning("[floor_scene] nível %d não existe em levels.json — voltando ao anterior" % floor)
-		_run.retreat_floor()
+		# Não deveria acontecer: uma passagem só se abre quando o destino existe no mapa
+		# (_has_exit). Se um debug apontar para um id inexistente, cai no começo da dungeon.
+		push_warning("[floor_scene] nível '%s' não existe em levels.json — voltando ao início" % floor)
+		if floor == _start_level:
+			return                 # o próprio início está quebrado: não recursa para sempre
+		_run.go_to(_start_level)
 		_start_floor()
 		return
 
@@ -923,10 +933,10 @@ func _start_room() -> void:
 		for i in maxi(1, int(spec.get("count", 1))):
 			_spawn_necromancer(String(spec.get("id", "")))
 
-	# TESTE: andar 1 só com o necromante (pula heavies e horda).
-	if not (_run.current_floor == 1 and L1_NECRO_ONLY):
-		# Heavies: andar 1 → encadeamento a/b/c dormente; demais → ativos, espalhados na 2ª metade.
-		if _run.current_floor == 1:
+	# TESTE: o primeiro nível só com o necromante (pula heavies e horda).
+	if not (_run.current_level == _start_level and L1_NECRO_ONLY):
+		# Heavies: no primeiro nível → encadeamento a/b/c dormente; nos demais → ativos, espalhados.
+		if _run.current_level == _start_level:
 			_spawn_l1_heavies()
 		else:
 			_spawn_heavies_simple()
@@ -936,9 +946,9 @@ func _start_room() -> void:
 		_fill_pool("normal")
 
 	if _has_necro():
-		_msg.text = "Nível %d / %d: o Necromante comanda a horda. Elimine-o!" % [_run.current_floor, TOTAL_LEVELS]
+		_msg.text = "%s: o Necromante comanda a horda. Elimine-o!" % _level_name()
 	else:
-		_msg.text = "Nível %d / %d: limpe a sala de esqueletos." % [_run.current_floor, TOTAL_LEVELS]
+		_msg.text = "%s: limpe a sala de esqueletos." % _level_name()
 	_start_respawn_cast()   # loop de reinvocação: 1 esqueleto do pool por cast, enquanto o Necromante vive (sem ele, no-op)
 	_check_room_cleared()   # fallback: sem Necromante, a sala limpa por contagem
 
@@ -1237,7 +1247,7 @@ func _begin_boss_intro() -> void:
 	_boss_landing_sfx = String(_boss_repo.get_by_id(_current_boss_id).get("landing_sfx", ""))
 	if is_instance_valid(_player_view):
 		_player_view.frozen = true
-	_msg.text = "Nível %d: algo desperta na escuridão..." % _run.current_floor
+	_msg.text = "%s: algo desperta na escuridão..." % _level_name()
 	_intro_token += 1
 	_start_boss_music(_intro_token)   # entra atrasada, em paralelo à cutscene
 	_boss_intro(_intro_token)
@@ -1344,13 +1354,19 @@ func _abort_boss_intro() -> void:
 		_player_view.frozen = false
 	_on_floor_cleared()               # já corta a música (ver o topo dele)
 
+## Nome de exibição do nível atual (levels.json → "name"). Substituiu o "Nível %d / %d": num
+## grafo não há numeração nem total, o lugar tem nome.
+func _level_name() -> String:
+	var n := String(_floor_config.get("name", ""))
+	return n if n != "" else _run.current_level
+
 func _boss_title(boss_name: String) -> String:
-	return "Nível %d   CHEFE: %s" % [_run.current_floor, boss_name]
+	return "%s   CHEFE: %s" % [_level_name(), boss_name]
 
 ## Cria o boss do nível em `at`. Quem chama decide se ele já age (a cutscene o deixa dormente).
 ## Também resolve o eco do Nemesis, que o próprio boss invoca ao cruzar o limiar de HP.
 func _spawn_boss(at: Vector2) -> void:
-	var floor := _run.current_floor
+	var floor := _run.current_level
 	var base := _boss_repo.get_by_id(_current_boss_id)
 	if base.is_empty():
 		push_warning("[floor_scene] boss '%s' não encontrado no andar %d" % [_current_boss_id, floor])
@@ -1390,7 +1406,7 @@ func _on_enemy_died(view: EnemyView, enemy: Enemy) -> void:
 				_on_floor_cleared()
 
 func _on_floor_cleared() -> void:
-	_run.mark_cleared(_run.current_floor)   # morrer adiante e voltar por aqui não o repovoa
+	_run.mark_cleared(_run.current_level)   # morrer adiante e voltar por aqui não o repovoa
 	if _phase == "boss":
 		# Chefe vencido: a trilha se despede (fade do audio.json) e as DUAS névoas da arena se
 		# desmancham — voltar e seguir ficam livres (a porta da direita leva à área nova).
@@ -1419,10 +1435,10 @@ func _spawn_boss_doors(cleared: bool) -> void:
 	_boss_door_left_x = 0.0
 	_boss_door_right_x = 0.0
 	var portas: Array = []
-	if _levels.has(_run.current_floor - 1):
+	if _has_exit("tras"):
 		_boss_door_left_x = BOSS_DOOR_IN
 		portas.append(_boss_door_left_x)
-	if _levels.has(_run.current_floor + 1):
+	if _has_exit("frente"):
 		_boss_door_right_x = _arena_width - BOSS_DOOR_IN
 		portas.append(_boss_door_right_x)
 	for x in portas:
@@ -1457,14 +1473,9 @@ func _update_boss_doors() -> void:
 		return
 	var px := _player_view.global_position.x
 	if _boss_door_left_x > 0.0 and absf(px - _boss_door_left_x) <= DOOR_REACH:
-		_entry_from_right = true
 		_transition(_prev_floor)
 	elif _boss_door_right_x > 0.0 and absf(px - _boss_door_right_x) <= DOOR_REACH:
 		_transition(_next_floor)
-
-func _prev_floor() -> void:
-	_run.retreat_floor()
-	_start_floor()
 
 ## A porta LIVRE no fim de um nível de sala/descanso (só existe quando o chefe adiante já caiu —
 ## ver _spawn_exit_passage): cruza andando, como as portas da arena. A _transition trava re-disparo.
@@ -1476,7 +1487,7 @@ func _update_exit_door() -> void:
 
 ## A ÁREA DE DESCANSO (nível "rest"): só a fogueira, perto da entrada, e a névoa no fim. Nada de
 ## alavanca, portão ou guarda — aqui não há o que vencer, e por isso nada tranca a fogueira.
-func _spawn_rest_area(floor_n: int) -> void:
+func _spawn_rest_area(level_id: String) -> void:
 	_bonfires.clear()
 	_lever = null      # nada de mecanismo neste nível (as views antigas morreram com o _env)
 	_gate = null
@@ -1485,18 +1496,19 @@ func _spawn_rest_area(floor_n: int) -> void:
 	var bf := BonfireView.new()
 	bf.position = Vector2(bf_x, GROUND_Y)
 	_env.add_child(bf)
-	bf.setup(bf_x, _run.is_lit(floor_n, bf_x), _player_view)
+	bf.setup(bf_x, _run.is_lit(level_id, bf_x), _player_view)
 	bf.rested.connect(_on_bonfire_rested)
 	_bonfires.append(bf)
 
-	_spawn_exit_passage(floor_n)
+	_spawn_exit_passage(level_id)
 
 ## A saída no extremo do nível: a névoa do chefe (atravessa com INTERAGIR) — ou, se o nível
 ## adiante JÁ FOI VENCIDO, uma porta livre que se cruza andando (_update_exit_door), como as da
 ## arena: a névoa se dissipou junto com o chefe e não volta mais.
-func _spawn_exit_passage(floor_n: int) -> void:
+func _spawn_exit_passage(_level_id: String) -> void:
 	var fog_x := _arena_width - FOG_BACK
-	if _levels.has(floor_n + 1) and _run.is_cleared(floor_n + 1):
+	var adiante := _exit("frente")
+	if not adiante.is_empty() and _run.is_cleared(String(adiante["level"])):
 		_spawn_door(fog_x, Palette.ACCENT.darkened(0.35))
 		_exit_door_x = fog_x
 		return
@@ -1506,23 +1518,23 @@ func _spawn_exit_passage(floor_n: int) -> void:
 	_fog.setup(fog_x, _player_view)
 
 ## Id estável do portão de mecanismo de um nível (persistido no RunState). Um por nível de sala.
-func _gate_id(floor_n: int) -> String:
-	return "gate_%d" % floor_n
+func _gate_id(level_id: String) -> String:
+	return "gate_%s" % level_id
 
 ## O REFÚGIO ao fim de um nível de sala, contínuo com a zona de combate (sem fade): a alavanca (no
 ## fim do combate), o portão de madeira, a fogueira mais adiante e a névoa do chefe no extremo. O
 ## portão barra a passagem até a alavanca ser puxada; aberto, fica aberto para sempre.
-func _spawn_sanctuary(floor_n: int) -> void:
+func _spawn_sanctuary(level_id: String) -> void:
 	_bonfires.clear()
 
 	# A alavanca fica SEMPRE no lugar, já durante a luta — mas só destravada (puxável) quando o
 	# nível está vencido. Se o portão já foi aberto nesta run, ela nasce puxada.
-	var gate_open := _run.is_gate_open(_gate_id(floor_n))
+	var gate_open := _run.is_gate_open(_gate_id(level_id))
 	var lx := _fight_width - LEVER_BACK
 	_lever = LeverView.new()
 	_lever.position = Vector2(lx, GROUND_Y)
 	_env.add_child(_lever)
-	_lever.setup(lx, _player_view, gate_open, _run.is_cleared(floor_n))
+	_lever.setup(lx, _player_view, gate_open, _run.is_cleared(level_id))
 	_lever.pulled.connect(_on_lever_pulled)
 
 	var gate_x := _fight_width
@@ -1536,18 +1548,18 @@ func _spawn_sanctuary(floor_n: int) -> void:
 	var bf := BonfireView.new()
 	bf.position = Vector2(bf_x, GROUND_Y)
 	_env.add_child(bf)
-	bf.setup(bf_x, _run.is_lit(floor_n, bf_x), _player_view)
+	bf.setup(bf_x, _run.is_lit(level_id, bf_x), _player_view)
 	bf.rested.connect(_on_bonfire_rested)
 	_bonfires.append(bf)
 
 	# A saída do refúgio, no extremo (encostada na parede do fim): a névoa do chefe — ou uma porta
 	# livre, se o chefe adiante já caiu (_spawn_exit_passage).
-	_spawn_exit_passage(floor_n)
+	_spawn_exit_passage(level_id)
 
 ## Alavanca puxada: abre o portão (na hora, com animação) e persiste isso na run — o atalho fica
 ## aberto para sempre, inclusive depois de morrer e voltar.
 func _on_lever_pulled(_l: LeverView) -> void:
-	_run.open_gate(_gate_id(_run.current_floor))
+	_run.open_gate(_gate_id(_run.current_level))
 	if is_instance_valid(_gate):
 		_gate.open()
 	_msg.text = "O portão se abriu. A fogueira aguarda adiante →"
@@ -1618,9 +1630,49 @@ func _update_guard_wake() -> void:
 		if is_instance_valid(v) and v.dormant and absf(px - v.global_position.x) <= GUARD_WAKE:
 			v.dormant = false
 
-func _next_floor() -> void:
-	_run.advance_floor()
+# ---------------------------------------------------------------------------
+# Navegação pelo GRAFO. Um nível não sabe "qual é o próximo": sabe quais SAÍDAS tem e para onde
+# cada uma leva (levels.json → "exits"). Toda travessia passa por aqui, o que torna impossível
+# reintroduzir aritmética de andar sem que se veja.
+# ---------------------------------------------------------------------------
+
+## Resolve uma saída do nível ATUAL. Devolve {} se ela não existir (o que é a maneira normal de
+## dizer "não há caminho por aqui" — a névoa do fim do conteúdo, um beco). O destino aceita as
+## duas formas do JSON: o id cru ("arena_ogro") ou { level, entry }.
+func _exit(nome: String) -> Dictionary:
+	var alvo: Variant = _floor_config.get("exits", {}).get(nome, null)
+	if typeof(alvo) == TYPE_STRING and String(alvo) != "":
+		return { "level": String(alvo), "entry": "inicio" }
+	if typeof(alvo) == TYPE_DICTIONARY:
+		var d: Dictionary = alvo
+		var lid := String(d.get("level", ""))
+		if lid != "":
+			return { "level": lid, "entry": String(d.get("entry", "inicio")) }
+	return {}
+
+## A saída existe E o nível de destino está descrito no mapa? É o teste que decide se uma porta
+## nasce, se a névoa deixa passar e se a arena ganha porta de trás.
+func _has_exit(nome: String) -> bool:
+	var e := _exit(nome)
+	return not e.is_empty() and _levels.has(e["level"])
+
+## Atravessa uma saída. `heal` = curar ao chegar: hoje só a travessia "para frente" cura, herança
+## do fim-de-andar do roguelike. Num soulslike isso é discutível — curar deveria ser papel
+## exclusivo da fogueira e do frasco —, mas mexer nisso muda o feel do jogo, então fica como está
+## até ser uma decisão de design tomada de propósito.
+func _go_through(nome: String, heal: bool = true) -> void:
+	var e := _exit(nome)
+	if e.is_empty():
+		return
+	_entry_point = String(e.get("entry", "inicio"))
+	_run.go_to(String(e["level"]), heal)
 	_start_floor()
+
+func _next_floor() -> void:
+	_go_through("frente", true)
+
+func _prev_floor() -> void:
+	_go_through("tras", false)   # revisitar não cura
 
 ## Morte (soulslike): a run NÃO acaba mais. A tela escurece com "VOCÊ MORREU", o mundo se refaz
 ## e o jogador levanta na última fogueira em que descansou, com vida e stamina cheias. Ele mantém
@@ -1639,7 +1691,7 @@ func _on_player_died(_p: Player) -> void:
 	# Uma marca anterior é substituída — as almas dela se perdem para sempre. É a aposta que dá peso
 	# à morte. Sem almas no bolso, não deixa marca (drop_bloodstain devolve 0).
 	var death_x := _player_view.global_position.x if is_instance_valid(_player_view) else PLAYER_START_X
-	var souls_perdidas := _run.drop_bloodstain(_run.current_floor, death_x)
+	var souls_perdidas := _run.drop_bloodstain(_run.current_level, death_x)
 	_show_death_banner(souls_perdidas)
 
 	# A tela apaga JÁ (não se assiste ao próprio cadáver), fica preta com o letreiro enquanto o
@@ -1666,13 +1718,13 @@ func _respawn_at_checkpoint() -> void:
 	else:
 		_start_tutorial()
 
-func _is_boss_level(floor_n: int) -> bool:
-	return String(_levels.get(floor_n, {}).get("type", "")) == "boss"
+func _is_boss_level(level_id: String) -> bool:
+	return String(_levels.get(level_id, {}).get("type", "")) == "boss"
 
 ## A marca de sangue espera no ponto EXATO onde você caiu (inclusive numa arena de chefe). Não é um
 ## inimigo: é um marcador passivo que se recolhe ao passar por cima (_update_bloodstain).
 func _spawn_bloodstain_if_here() -> void:
-	if not _run.has_bloodstain_on(_run.current_floor):
+	if not _run.has_bloodstain_on(_run.current_level):
 		return
 	var bs := BloodstainView.new()
 	bs.position = Vector2(_run.bloodstain_x, GROUND_Y)
@@ -1807,9 +1859,8 @@ func _apply_debug_start() -> void:
 		_run.player.attribute_points += (DEBUG_START_LEVEL - 1) * Attributes.points_per_level()
 		_run.player.recalculate_stats()
 		_run.player.stats.current_hp = _run.player.stats.max_hp
-	if DEBUG_START_FLOOR > 1:
-		_run.current_floor = DEBUG_START_FLOOR
-		_run.player.current_floor = DEBUG_START_FLOOR
+	if DEBUG_START_AT != "":
+		_run.go_to(DEBUG_START_AT)
 
 func _show_debug_legend() -> void:
 	var l := Label.new()
@@ -1842,14 +1893,19 @@ func _debug_clear_all() -> void:
 			v.queue_free()
 	_enemies.clear()
 
+## Pula níveis SEGUINDO o grafo (a saída "frente"), não somando índices: num mapa não existe
+## "andar n+2", existe o que estiver depois do que estiver depois daqui.
 func _debug_skip_floors(n: int) -> void:
 	if _phase == "dead":
 		return
 	_debug_clear_all()
-	if n > 1:
-		_run.current_floor += (n - 1)
-		_run.player.current_floor = _run.current_floor
-	_next_floor()
+	for i in maxi(1, n):
+		if not _has_exit("frente"):
+			break
+		var e := _exit("frente")
+		_run.go_to(String(e["level"]), true)
+		_floor_config = _levels.get(_run.current_level, {})
+	_start_floor()
 
 ## Dá almas de sobra para testar a fogueira sem precisar farmar.
 func _debug_level_up() -> void:
@@ -1860,7 +1916,7 @@ func _debug_level_up() -> void:
 ## Solta uma marca de sangue um pouco à frente, com as almas do bolso (sem precisar morrer).
 func _debug_drop_bloodstain() -> void:
 	_run.player.gain_souls(50)   # garante almas para a marca não nascer vazia
-	_run.drop_bloodstain(_run.current_floor, _player_view.global_position.x + 120.0)
+	_run.drop_bloodstain(_run.current_level, _player_view.global_position.x + 120.0)
 	_spawn_bloodstain_if_here()
 
 func _debug_toggle_god() -> void:
