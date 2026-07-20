@@ -501,9 +501,9 @@ target is a **`ScarecrowView`** — the `combat_doll` art (a target dummy: post 
 flashes and *wobbles* on a damped spring when hit (the sprite rotates around its base), but has no
 HP loss, no AI, no death — it replaced the dormant skeleton that
 used to stand in, which wrongly implied the Cidade had combat. It extends `EnemyView` only to pass
-the sword's `is EnemyView` check; `setup` is minimal and `_build`/`_physics_process` are fully
-overridden (collision shape + straw drawing, gravity + wobble, nothing else). It is spawned
-straight into `_env`, not `_enemies`. **Sanctuary length is now per-level** (`sanctuary_len`,
+the sword's `is EnemyView` check; `setup` is minimal, `_build` is overridden (collision shape +
+sprite, no grey body/HP bar) and `_tick_ai` is the wobble (per the template rule above — it does
+*not* override `_physics_process`). It is spawned straight into `_env`, not `_enemies`. **Sanctuary length is now per-level** (`sanctuary_len`,
 default `SANCTUARY_LEN` 980): the refuge stretch appended after combat holds the gate, bonfire,
 guard and boss fog, but `portao` has none of those in its sanctuary (its fire and gate are in the
 `entrance`), so it was leaving a ~950px empty run to the exit door — cut to 170.
