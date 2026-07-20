@@ -1,5 +1,5 @@
 {
-  "_comment": "O MAPA da dungeon, como GRAFO. Cada nível tem um id (a chave), um 'name' de exibição e 'exits': para onde se pode ir DAQUI. Não existe mais 'próximo nível' por aritmética — se não houver uma saída apontando para um nível, ele é inalcançável. É isso que permite bifurcações, becos e ATALHOS (duas arestas ligando os mesmos dois lugares por caminhos de custo diferente). 'start' é onde a dungeon começa, depois da vila.\n\nSAÍDAS: o nome da saída diz QUAL passagem do nível ela é, e o código conhece dois nomes: 'frente' (a névoa/porta no fim do nível) e 'tras' (a porta de trás, que só as arenas de chefe têm). O destino pode ser o id do nível (entra pelo começo dele) ou { level, entry } para escolher POR ONDE se entra. Pontos de entrada: 'inicio' (padrão), 'fim' (desemboca no extremo direito — é como se volta por uma porta de trás) e 'fogueira' (desemboca na fogueira do refúgio, o que faz de uma passagem um atalho de verdade).\n\nTIPOS: 'room' = sala a limpar (o refúgio com portão+fogueira+névoa é anexado pelo floor_scene, ver _spawn_sanctuary); 'boss' = arena fechada; 'rest' = área segura, só fogueira e névoa.\n\nDIFICULDADE não se escala aqui: não há curva por andar. O inimigo vale o que o JSON dele em data/enemies/ diz. Para um encontro mais duro, afine o JSON do inimigo ou crie uma variante com id próprio e use-a só onde quiser.\n\n'hazards' (opcional) = armadilhas de cenário, 'id' do catálogo em data/hazards.json, 'x' no corredor e 'width' opcional. Cair num poço MATA. 'guard' (opcional, só 'room') = a guarda do refúgio: { ids, count } de esqueletos que reocupam o trecho entre a fogueira e a névoa DEPOIS que o nível é vencido; descansar na fogueira os renasce (o run-back do soulslike).",
+  "_comment": "O MAPA da dungeon, como GRAFO. Cada nível tem um id (a chave), um 'name' de exibição e 'exits': para onde se pode ir DAQUI. Não existe mais 'próximo nível' por aritmética — se não houver uma saída apontando para um nível, ele é inalcançável. É isso que permite bifurcações, becos e ATALHOS (duas arestas ligando os mesmos dois lugares por caminhos de custo diferente). 'start' é onde a dungeon começa, depois da vila.\n\nSAÍDAS: o nome da saída diz QUAL passagem do nível ela é, e o código conhece dois nomes: 'frente' (a névoa/porta no fim do nível) e 'tras' (a porta de trás, que só as arenas de chefe têm). O destino pode ser o id do nível (entra pelo começo dele) ou { level, entry } para escolher POR ONDE se entra. Pontos de entrada: 'inicio' (padrão), 'fim' (desemboca no extremo direito — é como se volta por uma porta de trás) e 'fogueira' (desemboca na fogueira do refúgio, o que faz de uma passagem um atalho de verdade).\n\nTIPOS: 'room' = sala a limpar (o refúgio com portão+fogueira+névoa é anexado pelo floor_scene, ver _spawn_sanctuary); 'boss' = arena fechada; 'rest' = área segura, só fogueira e névoa.\n\nDIFICULDADE não se escala aqui: não há curva por andar. O inimigo vale o que o JSON dele em data/enemies/ diz. Para um encontro mais duro, afine o JSON do inimigo ou crie uma variante com id próprio e use-a só onde quiser.\n\n'hazards' (opcional) = armadilhas de cenário, 'id' do catálogo em data/hazards.json, 'x' no corredor e 'width' opcional. Cair num poço MATA. 'guard' (opcional, só 'room') = a guarda do refúgio: { ids, count } de esqueletos que reocupam o trecho entre a fogueira e a névoa DEPOIS que o nível é vencido; descansar na fogueira os renasce (o run-back do soulslike).\n\n'shortcut' (opcional, só 'room') = O ATALHO: a boca de um poço plantada no refúgio, em 'at' px depois do portão. Nasce FECHADA e só se destranca do lado de dentro — é o que dá sentido à primeira travessia longa, porque a porta se abre pelas costas. Destrancada, liga a vila direto à fogueira deste nível (entrada 'fogueira'), pulando a zona de combate inteira, e fica aberta para sempre ('id' é gravado em RunState.opened_gates, sobrevivendo à morte). Nas duas pontas é INTERAGIR, nunca walk-through: no refúgio ela fica no caminho obrigatório até a névoa do chefe, e cruzá-la andando teleportaria o jogador para a vila toda vez que ele fosse lutar.",
   "start": "cripta_entrada",
   "levels": {
     "cripta_entrada": {
@@ -7,11 +7,25 @@
       "type": "room",
       "corridor_length": 1440,
       "room": {
-        "minions": { "ids": ["enm_skeleton_minion"], "count": 6 }
+        "minions": {
+          "ids": [
+            "enm_skeleton_minion"
+          ],
+          "count": 6
+        }
       },
-      "guard": { "ids": ["enm_skeleton_minion"], "count": 3 },
+      "guard": {
+        "ids": [
+          "enm_skeleton_minion"
+        ],
+        "count": 3
+      },
       "exits": {
         "frente": "arena_ogro"
+      },
+      "shortcut": {
+        "id": "poco_cripta",
+        "at": 260
       }
     },
     "arena_ogro": {
@@ -19,7 +33,10 @@
       "type": "boss",
       "boss_id": "bss_ogre",
       "exits": {
-        "tras": { "level": "cripta_entrada", "entry": "fim" },
+        "tras": {
+          "level": "cripta_entrada",
+          "entry": "fim"
+        },
         "frente": "salao_quieto"
       }
     },

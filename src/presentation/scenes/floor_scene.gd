@@ -76,6 +76,14 @@ var _boss_fogs: Array = []           # FogGateViews sobre as portas (só durante
 var _boss_door_left_x := 0.0
 var _boss_door_right_x := 0.0
 var _exit_door_x := 0.0              # saída LIVRE no fim do nível (a névoa já se dissipou com o chefe)
+# O ATALHO. Uma segunda aresta do mapa, ligando dois lugares que já se alcançavam — por um caminho
+# muito mais curto. Nasce FECHADO e só se destranca do lado de LÁ (o refúgio), o que é o que dá
+# sentido à primeira travessia longa: você abre a porta pelas costas dela. Aberto, fica aberto para
+# sempre (persiste em RunState.opened_gates, como o portão da alavanca).
+var _shortcut: Node2D                # a boca do poço no cenário (null onde não há)
+var _shortcut_x := 0.0
+var _shortcut_id := ""               # id em opened_gates; "" = este nível não tem atalho
+var _shortcut_na_vila := false       # de que ponta estamos: a vila leva à fogueira, o refúgio à vila
 # Por onde o próximo _start_floor coloca o jogador: "inicio" (padrão), "fim" (extremo direito —
 # é assim que se volta por uma porta de trás) ou "fogueira" (desemboca no refúgio; o que torna uma
 # passagem um atalho). Quem define é a saída que foi cruzada; consumido em _start_floor.
@@ -90,6 +98,8 @@ const SPAWN_EXCLUSION := 180.0  # zona inicial (à esquerda) sem inimigos ao com
 const L1_NECRO_ONLY := false    # TESTE: andar 1 só com o necromante (sem horda/heavies)
 const BOSS_ROOM_W := 640.0     # sala do boss = uma tela fechada (base 640×360)
 const DOOR_REACH := 30.0       # distância para "entrar" na porta / abrir o baú (base 640×360)
+const VILLAGE_SHORTCUT_X := 30.0   # a boca do poço na vila: atrás do início (PLAYER_START_X)
+const SHORTCUT_REACH := 34.0       # alcance do INTERAGIR no atalho (um pouco mais que a porta)
 const FADE_TIME := 0.35
 const DEATH_FADE_OUT := 0.45   # a tela apaga assim que ele cai (o letreiro entra junto)
 const DEATH_HOLD := 1.8        # e FICA preta, com o letreiro, enquanto o mundo se refaz por baixo
@@ -255,6 +265,10 @@ func _build_environment(width: float, is_boss_room: bool, hazards := []) -> void
 	_lever = null
 	_fog = null
 	_exit_door_x = 0.0        # refeita por _spawn_exit_passage, quando o nível adiante já caiu
+	_shortcut = null
+	_shortcut_x = 0.0
+	_shortcut_id = ""
+	_shortcut_na_vila = false
 	_bloodstain = null        # refeita por _spawn_bloodstain_if_here (filha do _env, já liberada)
 	_env = Node2D.new()
 	add_child(_env)
@@ -470,6 +484,33 @@ func _try_rest() -> bool:
 			return true
 	return false
 
+## O ATALHO, nas duas pontas. No refúgio: fechado, INTERAGIR o destranca para sempre (e o jogador
+## sobe na hora — abriu pelas costas, agora usa); aberto, INTERAGIR sobe. Na vila: desce direto à
+## fogueira. Nunca é walk-through, porque no refúgio ele fica no caminho da névoa do chefe.
+func _try_shortcut() -> bool:
+	if _shortcut_id == "" or not is_instance_valid(_player_view) or not is_instance_valid(_shortcut):
+		return false
+	if absf(_player_view.global_position.x - _shortcut_x) > SHORTCUT_REACH:
+		return false
+	if _shortcut_na_vila:
+		_transition(_descer_pelo_atalho)
+		return true
+	if not _run.is_gate_open(_shortcut_id):
+		_run.open_gate(_shortcut_id)       # aberto é para sempre, inclusive através da morte
+	_transition(_subir_pelo_atalho)
+	return true
+
+## Refúgio → vila. O nível fica como está (vencido continua vencido); só o jogador sobe.
+func _subir_pelo_atalho() -> void:
+	_run.current_level = ""
+	_start_tutorial()
+
+## Vila → a fogueira do primeiro nível, pulando o corredor inteiro. É o ganho do atalho.
+func _descer_pelo_atalho() -> void:
+	_entry_point = "fogueira"
+	_run.go_to(_start_level)
+	_start_floor()
+
 ## Atravessa a névoa do chefe: só com o nível vencido (não dá para pular o combate) e perto dela.
 ## Leva ao próximo nível com o fade de sempre — e se o próximo nível ainda não foi desenhado
 ## (fim do conteúdo atual), a névoa não deixa passar e avisa.
@@ -512,6 +553,16 @@ func _start_tutorial() -> void:
 	_spawn_training_dummy(980.0)
 	_door = _spawn_door(_arena_width - 40.0, Palette.ACCENT)
 	_door_x = _arena_width - 40.0
+
+	# A outra ponta do atalho, se ele já foi destrancado lá embaixo: a boca do poço na vila, ATRÁS
+	# do ponto de partida. Atrás de propósito — à frente, o jogador a cruzaria sem querer a caminho
+	# da porta da dungeon. Quem quer o atalho anda alguns passos para trás e aperta INTERAGIR.
+	var sc_id := String(_levels.get(_start_level, {}).get("shortcut", {}).get("id", ""))
+	if sc_id != "" and _run.is_gate_open(sc_id):
+		_shortcut_id = sc_id
+		_shortcut_na_vila = true
+		_shortcut_x = VILLAGE_SHORTCUT_X
+		_shortcut = _spawn_door(_shortcut_x, Palette.ACCENT.darkened(0.5))
 	_tips_done.clear()          # as dicas recomeçam a cada visita à vila
 	_hide_tip()
 	_msg.text = "Vila: siga até a porta da Dungeon →"
@@ -892,6 +943,8 @@ func _start_floor() -> void:
 	var start_x := _run.respawn_x(PLAYER_START_X)   # início do nível, ou a fogueira ao renascer
 	if from_right:
 		start_x = _arena_width - FOG_BACK - 48.0    # voltou da arena: entra pela névoa do fim
+	elif entry == "fogueira":
+		start_x = _corridor_length + BONFIRE_IN     # desceu pelo atalho: cai ao pé do fogo
 	_reset_player_to_start(start_x)
 	_spawn_hazards(hazards)
 	_spawn_sanctuary(floor)                   # alavanca + portão + fogueira + névoa (o refúgio do nível)
@@ -1552,6 +1605,21 @@ func _spawn_sanctuary(level_id: String) -> void:
 	bf.rested.connect(_on_bonfire_rested)
 	_bonfires.append(bf)
 
+	# A boca do ATALHO, entre a fogueira e o posto mais próximo da guarda. Fica no caminho, mas só
+	# responde a INTERAGIR — encostar não faz nada. Tem de ser assim: este trecho é a passagem
+	# obrigatória para a névoa do chefe, e um atalho que se cruzasse andando teleportaria o jogador
+	# para a vila toda vez que ele fosse lutar.
+	var sc: Dictionary = _floor_config.get("shortcut", {})
+	if not sc.is_empty():
+		_shortcut_id = String(sc.get("id", ""))
+		_shortcut_na_vila = false
+		_shortcut_x = _fight_width + float(sc.get("at", 260.0))
+		_shortcut = _spawn_door(_shortcut_x, Palette.ACCENT.darkened(0.5))
+		# Fechado, é entulho: escuro e atrás das entidades. Aberto, ganha a cor de passagem.
+		if not _run.is_gate_open(_shortcut_id):
+			_shortcut.modulate = Color(0.42, 0.40, 0.44)
+			_shortcut.z_index = -3
+
 	# A saída do refúgio, no extremo (encostada na parede do fim): a névoa do chefe — ou uma porta
 	# livre, se o chefe adiante já caiu (_spawn_exit_passage).
 	_spawn_exit_passage(level_id)
@@ -1838,7 +1906,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if _phase in ["transition", "dead", "boss_intro"]:
 			return
-		if _try_pull_lever() or _try_rest() or _try_cross_fog():
+		if _try_pull_lever() or _try_rest() or _try_shortcut() or _try_cross_fog():
 			return
 		return
 	# F9 alterna o overlay CRT (disponível sempre, não só em debug).

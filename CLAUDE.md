@@ -57,6 +57,31 @@ for `sim_balance`'s "median player" model. The reward chest is gone; the refuge 
 the **sanctuary** (see above). `Augment`/`AugmentPool`/`StatResolver`/`CardSelect` still compile and
 are still tested, but nothing in gameplay calls them (same treatment as Nemesis and the tower).
 
+**Done — the dungeon is a GRAPH, not a number line.** Levels are keyed by **string id** with a
+display `name` and an `exits` block saying where you can go *from here*; `RunState.current_level`
+replaced `current_floor`, and `advance_floor`/`retreat_floor` collapsed into
+`go_to(level_id, heal)`. There is **no ordering and no count** (`TOTAL_LEVELS` is gone): a level
+nothing points at is unreachable. The old `current_floor + 1` made shortcuts and branches
+*inexpressible* — both are by definition a **second edge between places that already exist**, and a
+number line has nowhere to put one. Two exit names are known to the code: **`frente`** (the fog/door
+at the level's end) and **`tras`** (the back door, boss arenas only). A target may be a bare id
+(enter at the start) or `{ level, entry }`, where `entry` is one of **`inicio`** / **`fim`** (right
+edge — how you come back through a back door) / **`fogueira`** (lands at the sanctuary bonfire).
+Entry points replaced the old `_entry_from_right` boolean. The core still never reads `levels.json`:
+whoever builds the run passes `start_level`. `Player.current_floor` is **frozen at 1** — only the
+parked Nemesis reads it (note left in `ghost_factory`).
+
+**Done — the first shortcut (`levels.json → shortcut`).** A `"room"` level may declare
+`{ id, at }`: the mouth of a shaft placed `at` px past the gate, inside the sanctuary. It starts
+**locked and only unlocks from the far side** — which is what gives the first long traversal its
+point: you open the door from behind it. Unlocked, it links the **village straight to that level's
+bonfire** (`entry: "fogueira"`), skipping the whole combat corridor, and stays open forever
+(`id` goes into `RunState.opened_gates`, surviving death — same machinery as the lever's gate).
+Both ends are **`interact`, never walk-through**: in the sanctuary the mouth sits on the mandatory
+path to the boss fog, so crossing it by walking would teleport the player to the village every time
+they went to fight. The village end sits **behind** the spawn point (`VILLAGE_SHORTCUT_X`) for the
+same reason. Today: `poco_cripta` in `cripta_entrada`.
+
 **Passages — lever/gate and fog, not walk-through doors.** The village entrance is still a plain
 door you walk into. *Inside* the dungeon there are two mechanism passages, both persisted in
 `RunState`:
