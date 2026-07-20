@@ -24,6 +24,10 @@ var _bonfires: Array = []            # fogueiras (checkpoints) do nível atual �
 var _guard: Array = []               # a GUARDA do refúgio: esqueletos do run-back (nível vencido) — EnemyView
 var _ladders: Array = []             # escadas do nível (o PlayerView as consulta para escalar)
 var _npc: NpcView                    # o Sir Big T., ao lado da primeira fogueira
+var _knight_seq := false             # a sequência de falas base está tocando sozinha?
+var _knight_timer := 0.0             # tempo até a próxima fala base
+var _knight_card: CanvasLayer        # o card central "Frasco adquirido"
+var _knight_card_open := false       # o card está aberto (pausa a sequência até confirmar)
 var _bloodstain: BloodstainView      # a marca de sangue na cena, quando presente (passiva, recolhe ao tocar)
 # Toast de dica do tutorial (substitui as antigas placas): aparece no HUD conforme o player anda.
 var _tip_root: Control               # a caixa da dica (no _layer); invisível quando não há dica
@@ -270,6 +274,12 @@ func _build_environment(width: float, is_boss_room: bool, hazards := []) -> void
 	_fog = null
 	_exit_door_x = 0.0        # refeita por _spawn_exit_passage, quando o nível adiante já caiu
 	_npc = null               # view era filha do _env (demolida); só solta a referência
+	_knight_seq = false       # a sequência de falas não sobrevive à remontagem do nível
+	_knight_timer = 0.0
+	if is_instance_valid(_knight_card):
+		_knight_card.queue_free()
+	_knight_card = null
+	_knight_card_open = false
 	_ladders.clear()          # views eram filhas do _env (demolido); só solta as referências
 	if is_instance_valid(_player_view):
 		_player_view.ladders = _ladders
@@ -559,28 +569,126 @@ const KNIGHT_LOOP := [
 	"O medo é apenas uma escolha...",
 	"A luz há de prevalecer...",
 ]
-const KNIGHT_GIFT := 3
+const KNIGHT_GIFT := 3            # depois desta fala (o "presente") entra o card do Frasco
+const KNIGHT_LINE_SECONDS := 3.6 # quanto cada fala base fica na tela antes de a próxima entrar
 
+## Falar com o Sir Big T. As falas BASE tocam em SEQUÊNCIA sozinhas (uma vez iniciada, o resto
+## avança pelo tempo — não é preciso apertar INTERAGIR a cada frase). Esgotadas, cada INTERAGIR
+## mostra uma fala de loop.
 func _on_npc_falado(_n: NpcView) -> void:
-	var i := _run.knight_line
-	_run.knight_line += 1
-
-	# Falas base esgotadas: repete as de loop, alternando.
-	if i >= KNIGHT_LINES.size():
-		var j := (i - KNIGHT_LINES.size()) % KNIGHT_LOOP.size()
+	if _knight_seq or _knight_card_open:
+		return                          # já está falando: não reinicia nem empilha
+	if _run.knight_line >= KNIGHT_LINES.size():
+		var j := (_run.knight_line - KNIGHT_LINES.size()) % KNIGHT_LOOP.size()
+		_run.knight_line += 1
 		_show_tip(KNIGHT_LOOP[j])
 		return
+	# Inicia (ou retoma, se saiu no meio) a sequência base pela fala atual.
+	_knight_seq = true
+	_show_tip(KNIGHT_LINES[_run.knight_line])
+	_knight_timer = KNIGHT_LINE_SECONDS
 
-	# A fala do presente ENTREGA o Frasco. receive_flask é idempotente; a mensagem de aquisição só
-	# sai se ele foi de fato recebido agora (nunca numa segunda passada por esta fala).
-	if i == KNIGHT_GIFT and _run.player.receive_flask():
+## Chamado pelo _process quando o tempo da fala atual esgota: avança para a próxima. Na virada da
+## fala do presente entra o CARD do Frasco (entrega + confirmação); a sequência só continua depois.
+func _knight_avancar() -> void:
+	# Acabou de exibir a fala do presente e o Frasco ainda não foi dado: o card entra AGORA e
+	# pausa a sequência. A confirmação (INTERAGIR) a retoma — ver _fechar_card_frasco.
+	if _run.knight_line == KNIGHT_GIFT and not _run.player.has_flask:
+		_run.player.receive_flask()
 		_run.flask_tutorial_seen = true
-		Juice.burst(_env, _npc.global_position + Vector2(0, -30), Color(1.0, 0.72, 0.28), 16, 110.0)
-		_show_tip("%s
-(Frasco de Cura adquirido)" % KNIGHT_LINES[i])
+		Juice.burst(_env, _npc.global_position + Vector2(0, -30), Color(1.0, 0.72, 0.28), 18, 120.0)
+		_abrir_card_frasco()
 		return
+	_run.knight_line += 1
+	if _run.knight_line >= KNIGHT_LINES.size():
+		_knight_seq = false             # fim das falas base; a última linger na tela e some sozinha
+		return
+	_show_tip(KNIGHT_LINES[_run.knight_line])
+	_knight_timer = KNIGHT_LINE_SECONDS
 
-	_show_tip(KNIGHT_LINES[i])
+## O CARD central do Frasco: um painel no meio da tela que o jogador CONFIRMA (INTERAGIR) para
+## fechar. Enquanto aberto, a sequência de falas fica pausada (o _process não a avança).
+func _abrir_card_frasco() -> void:
+	_knight_card_open = true
+	_hide_tip()
+	var layer := CanvasLayer.new()
+	layer.layer = 97                    # acima do HUD e do fade, na faixa dos painéis
+	add_child(layer)
+	_knight_card = layer
+
+	var backdrop := ColorRect.new()
+	backdrop.color = Color(0, 0, 0, 0.55)
+	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(backdrop)
+
+	# Painel centrado (640×360): moldura dourada + fundo escuro.
+	var W := 260.0
+	var H := 132.0
+	var cx := 320.0 - W * 0.5
+	var cy := 180.0 - H * 0.5
+	var moldura := ColorRect.new()
+	moldura.color = Color(0.42, 0.33, 0.16)
+	moldura.position = Vector2(cx, cy)
+	moldura.size = Vector2(W, H)
+	layer.add_child(moldura)
+	var fundo := ColorRect.new()
+	fundo.color = Color(0.08, 0.07, 0.06)
+	fundo.position = Vector2(cx + 3.0, cy + 3.0)
+	fundo.size = Vector2(W - 6.0, H - 6.0)
+	layer.add_child(fundo)
+
+	var titulo := Label.new()
+	titulo.text = "ITEM ADQUIRIDO"
+	titulo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	titulo.position = Vector2(cx, cy + 12.0)
+	titulo.size = Vector2(W, 16.0)
+	titulo.add_theme_color_override("font_color", Color(0.86, 0.72, 0.34))
+	layer.add_child(titulo)
+
+	# Um frasquinho desenhado (âmbar), como o da HUD, para o card não ser só texto.
+	var frasco := Polygon2D.new()
+	frasco.polygon = PackedVector2Array([
+		Vector2(-6, -9), Vector2(6, -9), Vector2(11, 0), Vector2(11, 12),
+		Vector2(6, 20), Vector2(-6, 20), Vector2(-11, 12), Vector2(-11, 0),
+	])
+	frasco.color = Color(0.95, 0.62, 0.16)
+	frasco.position = Vector2(320.0, cy + 58.0)
+	layer.add_child(frasco)
+	var rolha := ColorRect.new()
+	rolha.color = Color(0.35, 0.22, 0.10)
+	rolha.size = Vector2(8, 6)
+	rolha.position = Vector2(316.0, cy + 43.0)
+	layer.add_child(rolha)
+
+	var nome := Label.new()
+	nome.text = "Frasco de Cura"
+	nome.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	nome.position = Vector2(cx, cy + 84.0)
+	nome.size = Vector2(W, 16.0)
+	nome.add_theme_color_override("font_color", Palette.TEXT)
+	layer.add_child(nome)
+
+	var prompt := Label.new()
+	prompt.text = "%s  confirmar" % KeyBinds.key_name("interact")
+	prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	prompt.position = Vector2(cx, cy + H - 22.0)
+	prompt.size = Vector2(W, 16.0)
+	prompt.add_theme_color_override("font_color", Color(0.66, 0.66, 0.72))
+	layer.add_child(prompt)
+
+## Confirmou o card: fecha e o cavaleiro RETOMA as falas base de onde parou.
+func _fechar_card_frasco() -> void:
+	if is_instance_valid(_knight_card):
+		_knight_card.queue_free()
+	_knight_card = null
+	_knight_card_open = false
+	_run.knight_line += 1               # passa da fala do presente para a próxima
+	if _run.knight_line >= KNIGHT_LINES.size():
+		_knight_seq = false
+		return
+	_show_tip(KNIGHT_LINES[_run.knight_line])
+	_knight_timer = KNIGHT_LINE_SECONDS
 
 func _try_rest() -> bool:
 	if not is_instance_valid(_player_view):
@@ -1424,6 +1532,12 @@ func _process(delta: float) -> void:
 		if _tip_time <= 0.0:
 			_hide_tip()
 
+	# Sequência de falas do Sir Big T.: avança sozinha pelo tempo (pausada enquanto o card está aberto).
+	if _knight_seq and not _knight_card_open:
+		_knight_timer -= delta
+		if _knight_timer <= 0.0:
+			_knight_avancar()
+
 	# Sala: os heavies seguem a cadeia de posição; os esqueletos comuns dormentes acordam por proximidade.
 	if _phase == "room":
 		_update_heavy_chain()
@@ -2217,6 +2331,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	# Cada uma só age se o player estiver perto do objeto; longe de todos, não faz nada. Bloqueadas
 	# durante transição/morte/cutscene, quando o player não tem controle.
 	if event.is_action_pressed("interact"):
+		# O card do Frasco é modal: INTERAGIR confirma e fecha, retomando a fala do cavaleiro.
+		if _knight_card_open:
+			_fechar_card_frasco()
+			return
+		# Falas base tocando sozinhas: E não faz nada (não fecha a linha nem re-fala com o NPC).
+		if _knight_seq:
+			return
 		if _tip_time > 0.0:            # há uma dica na tela: E fecha ela antes de qualquer outra coisa
 			_hide_tip()
 			return
