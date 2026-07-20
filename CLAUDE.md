@@ -396,7 +396,8 @@ as a **centre-screen card** (`_abrir_card_frasco`: framed panel, flask icon, "co
 player must `interact` to close; closing resumes the remaining base lines. Once they run out, each
 `interact` shows a loop line. While the sequence plays `interact` advances to the next line; while the card is open `interact`
 is captured to close it. The same `[E] Avançar` keycap is shown on the **Cidade tutorial toasts**
-(`_show_tip(text, com_tecla)` — the label shrinks to leave room for it; plain info tips omit it). He
+(`_show_tip(text, com_tecla)`; plain info tips omit it). The keycap sits **above** the toast's
+right corner, not inside it, so the toast text always stays centered across the full box width. He
 is also who **teaches the bonfire and the flask** — that lesson used to be a toast fired by walking near the
 fire (`_update_flask_tip`, now deleted); a rule spoken by a character sticks better than a box that
 appears on its own when you step on the right tile. He stands `entrance.npc_offset` (56px) to the **left** of the fire (knight left, bonfire right) so

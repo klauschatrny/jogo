@@ -849,8 +849,10 @@ func _build_tip_ui() -> void:
 	_tip_key.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_tip_key.visible = false
 	_tip_root.add_child(_tip_key)
-	var cap_x := x + W - 96.0
-	var cap_y := y + 7.0
+	# ACIMA da caixa, alinhado à direita: assim o texto do toast fica sempre centralizado na
+	# largura cheia, sem ter de encolher para caber ao lado do indicador.
+	var cap_x := x + W - 90.0
+	var cap_y := y - 20.0
 	var borda := ColorRect.new()          # contorno claro do keycap
 	borda.color = Color(0.80, 0.82, 0.90)
 	borda.size = Vector2(18.0, 16.0)
@@ -882,8 +884,6 @@ func _show_tip(text: String, com_tecla := false) -> void:
 	if _tip_label == null:
 		return
 	_tip_label.text = text
-	# Com o indicador de tecla visível, o texto encolhe à esquerda para não passar por baixo dele.
-	_tip_label.size.x = (568.0 - 96.0) if com_tecla else 568.0
 	if _tip_key != null:
 		_tip_key.visible = com_tecla
 		if com_tecla and _tip_key_label != null:
