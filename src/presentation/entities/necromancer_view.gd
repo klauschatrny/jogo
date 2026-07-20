@@ -49,6 +49,12 @@ func _physics_process(delta: float) -> void:
 	var dx := target.global_position.x - global_position.x
 	_update_sprite(dx, false)              # encara o player, idle
 
+	# Dormente: encara o jogador e espera. Este _physics_process substitui o do EnemyView por
+	# inteiro, então a checagem precisa existir aqui também — sem ela o Necromante lançaria do
+	# outro lado do mapa enquanto todo o resto ainda dorme.
+	if dormant:
+		return
+
 	_global_cd = maxf(0.0, _global_cd - delta)
 	if _enraged:
 		_aoe_cd = maxf(0.0, _aoe_cd - delta)

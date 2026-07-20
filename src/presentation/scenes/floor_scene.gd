@@ -1087,6 +1087,11 @@ func _spawn_room_enemy(tier: String, id: String, pos: Vector2) -> EnemyView:
 	var enemy := EnemyFactory.build(base)
 	var view := EnemyView.new()
 	view.set_meta("tier", tier)
+	# REGRA GERAL: todo inimigo que não seja chefe nasce DORMENTE e só se ativa quando o jogador
+	# chega perto (_update_room_wake). É o que deixa o jogador escolher a briga em vez de ser
+	# arrastado por um corredor inteiro de agressão simultânea — e o que torna possível passar
+	# reto por um grupo. Só o chefe age de saída, porque a arena dele já é o compromisso.
+	view.dormant = true
 	# Sob um Necromante, esqueleto não morre: desaba em ossos e se remonta sozinho (ver
 	# EnemyView._collapse). Quem apaga isso é a morte do Necromante — ele é o objetivo real.
 	if tier != "elite" and _has_necro():
@@ -1105,6 +1110,7 @@ func _spawn_necromancer(id: String) -> void:
 	var enemy := EnemyFactory.build(base)
 	var view := NecromancerView.new()
 	view.set_meta("tier", "elite")
+	view.dormant = true               # também espera: só começa a lançar quando o jogador se aproxima
 	_alive["elite"] += 1
 	_necro = view
 	_add_view(view, enemy, Vector2(_fight_width - 198.0, GROUND_Y - 40.0))   # 150px à esquerda do fim do COMBATE
@@ -1197,9 +1203,8 @@ func _update_room_wake() -> void:
 	for v in _enemies:
 		if not is_instance_valid(v) or not v.dormant:
 			continue
-		var tier := String(v.get_meta("tier", ""))
-		if tier != "minion" and tier != "normal":
-			continue
+		if _guard.has(v):
+			continue          # a guarda do refúgio tem o alcance dela (_update_guard_wake)
 		if absf(px - v.global_position.x) <= MINION_WAKE:
 			v.dormant = false
 

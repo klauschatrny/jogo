@@ -149,6 +149,17 @@ persisted in `RunState`:
 All three sanctuary interactions (lever, rest, fog) share the `interact` key and are disambiguated
 purely by proximity — they sit far enough apart that only one is ever in reach.
 
+**Done — every non-boss enemy starts dormant.** Uniform rule: anything that is not a boss spawns
+`dormant` (still, facing the player, no chase and no attack) and only turns aggressive when the
+player comes within `MINION_WAKE` (150px) — `GUARD_WAKE` (140px) for the refuge guard, which keeps
+its own pass. This is what lets the player pick the fight instead of dragging a whole corridor of
+simultaneous aggression, and what makes running past a group possible at all. The Necromancer is
+included: he overrides `_physics_process` wholesale, so the `dormant` check had to be repeated in
+`NecromancerView` — without it he would shell the player from across the map while everything else
+still slept. Bosses are exempt: their arena is already the commitment. **Watch out when authoring:**
+`_scatter_pos` can drop an enemy close enough to the entrance to wake the instant the level loads
+(seen at x=203 with the player entering at 80).
+
 **Done — resting respawns every non-boss enemy.** Two states that used to be one are now
 separate, and keeping them apart is the whole trick:
 - `RunState.cleared_levels` = **the level is beaten**. Permanent. Gate open, fog crossable, phase
