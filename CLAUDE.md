@@ -149,6 +149,21 @@ persisted in `RunState`:
 All three sanctuary interactions (lever, rest, fog) share the `interact` key and are disambiguated
 purely by proximity — they sit far enough apart that only one is ever in reach.
 
+**Done — per-enemy attack rhythm, and the Necromancer telegraphs.** The three skeletons used to be
+timing-identical (code defaults 0.18 / 1.0); now each declares its own in JSON — minion
+**0.2 / 1.5**, armoured **0.225 / 0.9**, heavy **0.35 / 1.5**. Remember the windup *freezes* the
+cooldown, so the real cycle is their sum (1.70 / 1.125 / 1.85): the armoured is the fast one, the
+heavy the slow heavy hitter.
+
+The **Necromancer's projectile was the only attack in the game with no tell** — and now that he
+fires from any distance, that was punishing rather than teachable. It gained a **0.35s windup** and
+its cadence went 1.4 → **3.0s**. The bolt is now three layers (20px halo, 10px core, 4px near-white
+centre, halo pulsing) instead of a flat 6px square: purple-on-dark was invisible in motion. Both
+his casts — bolt and AoE — light a **cast aura** on him (`_show_cast_fx`: pulsing rings behind him
+plus sparks rising from the ground), because he stands *still*; without a signal on his body the
+only warning was a `!` a player facing away never sees. The aura clears on release and the bolt
+leaves a burst.
+
 **Done — the step counts for damage too.** The swing resolves the instant the windup ends, but the
 enemy then travels `step_distance()` with the blade out, and the slash arc is a **child of the
 enemy**, so it rides along. Checking damage against `_hit_range()` alone meant the hit *landed on

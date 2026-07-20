@@ -5,7 +5,9 @@
 class_name NecromancerView
 extends EnemyView
 
-const SHOOT_INTERVAL := 1.4       # cadência de disparo
+const SHOOT_INTERVAL := 3.0       # cadência de disparo (cast a cast)
+const SHOOT_WINDUP := 0.35        # aviso antes do tiro sair — era o único ataque do jogo sem
+                                  # telegrafo, e um tiro sem aviso não se aprende, só se sofre
 const PROJECTILE_SPEED := 150.0
 # RANGED não tem alcance de disparo próprio: acordou, atira. Quem decide a que distância ele
 # entra na briga é o aggro_range dele (data/enemies/necromancer.json) — dois números para a mesma
@@ -22,6 +24,9 @@ const AOE_AFTER_CD := 1.5         # cooldown de QUALQUER ataque depois da habili
 const AOE_PREFER_WINDOW := 1.0    # dentro de 1s do cast, prefere a AoE e NÃO dispara projétil
 
 var _shoot_cd := 0.0
+var _shoot_windup := 0.0          # >0 = conjurando o tiro (aura crescendo, "!" visível)
+var _cast_fx: Node2D              # aura de conjuração ao redor dele (tiro e AoE usam a mesma)
+var _cast_t := 0.0
 var _enraged := false             # true depois de tomar dano (habilita a AoE)
 var _aoe_cd := 0.0                # tempo até o próximo cast da AoE
 var _aoe_windup := 0.0            # >0 = em windup da AoE
@@ -64,6 +69,7 @@ func _physics_process(delta: float) -> void:
 	# AoE em windup: espera o "!" + área terminarem e resolve o dano.
 	if _aoe_windup > 0.0:
 		_aoe_windup -= delta
+		_update_cast_fx(delta)
 		if _aoe_windup <= 0.0:
 			_resolve_aoe()
 		return
@@ -73,13 +79,24 @@ func _physics_process(delta: float) -> void:
 		_start_aoe()
 		return
 
-	# Projétil — a menos que a AoE esteja próxima (janela de 2s) ou em cooldown global.
+	# Tiro em windup: a aura cresce e o "!" fica visível; ao zerar, o projétil sai.
+	if _shoot_windup > 0.0:
+		_shoot_windup -= delta
+		_update_cast_fx(delta)
+		if _shoot_windup <= 0.0:
+			_hide_warn()
+			_fire()
+		return
+
+	# Projétil — a menos que a AoE esteja próxima (janela de 1s) ou em cooldown global.
 	_shoot_cd = maxf(0.0, _shoot_cd - delta)
 	if _global_cd <= 0.0 and _shoot_cd <= 0.0:
 		if _enraged and _aoe_cd <= AOE_PREFER_WINDOW:
 			return                         # prefere a habilidade: não dispara
-		_shoot_cd = SHOOT_INTERVAL
-		_fire()
+		_shoot_cd = SHOOT_INTERVAL         # cadência conta do início do cast
+		_shoot_windup = SHOOT_WINDUP
+		_show_warn()
+		_show_cast_fx()
 
 func _fire() -> void:
 	if _sprite != null and _sprite.sprite_frames != null and _sprite.sprite_frames.has_animation("attack"):
@@ -87,10 +104,68 @@ func _fire() -> void:
 		_sprite.frame = 0
 		_anim_lock = SHOOT_INTERVAL * 0.5
 	var origin := global_position + Vector2(0.0, -box_h * 0.5)   # altura do "peito"
+	_clear_cast_fx()
+	Juice.burst(get_parent(), origin, Color(0.80, 0.50, 1.0), 12, 120.0)   # estouro na saída
 	var proj := NecroProjectile.new()
 	proj.setup(target.global_position - origin, PROJECTILE_SPEED, data.stats, target)
 	proj.global_position = origin
 	get_parent().add_child(proj)
+
+# --- Aura de conjuração ---
+# Tiro e AoE compartilham a mesma aura: enquanto ele conjura, um halo roxo pulsa ao redor dele e
+# fagulhas sobem do chão. Isso existe porque o Necromante fica PARADO — sem um sinal no corpo
+# dele, o único aviso de que algo vem seria o "!", e o jogador que está de costas não o vê. A
+# aura é grande e brilha por baixo das entidades, então dá para notá-la pela periferia da tela.
+
+const CAST_RINGS := 3             # anéis concêntricos do halo
+const CAST_SPARKS := 5            # fagulhas subindo
+const CAST_PULSE := 9.0           # velocidade da pulsação (rad/s)
+
+func _show_cast_fx() -> void:
+	_clear_cast_fx()
+	_cast_t = 0.0
+	_cast_fx = Node2D.new()
+	_cast_fx.z_index = -1          # atrás dele: aura, não máscara
+	add_child(_cast_fx)
+
+	for i in CAST_RINGS:
+		var lado := 26.0 + i * 14.0
+		var anel := ColorRect.new()
+		anel.color = Color(0.72, 0.42, 1.0, 0.26 - i * 0.06)
+		anel.size = Vector2(lado, lado)
+		anel.position = Vector2(-lado * 0.5, -box_h * 0.5 - lado * 0.5)
+		_cast_fx.add_child(anel)
+
+	for i in CAST_SPARKS:
+		var f := ColorRect.new()
+		f.color = Color(0.90, 0.70, 1.0)
+		f.size = Vector2(3, 3)
+		f.position = Vector2(-18.0 + i * 9.0, 0.0)
+		f.set_meta("fase", float(i) * 0.7)
+		_cast_fx.add_child(f)
+
+## Pulsa os anéis e faz as fagulhas subirem em laço. Chamado a cada frame do windup.
+func _update_cast_fx(delta: float) -> void:
+	if not is_instance_valid(_cast_fx):
+		return
+	_cast_t += delta
+	var i := 0
+	for c in _cast_fx.get_children():
+		if c is ColorRect and c.size.x > 6.0:              # anel
+			var k := 1.0 + 0.14 * sin(_cast_t * CAST_PULSE - i * 0.6)
+			c.scale = Vector2(k, k)
+			c.pivot_offset = c.size * 0.5
+			i += 1
+		elif c is ColorRect:                                # fagulha
+			var fase := float(c.get_meta("fase", 0.0))
+			var t: float = fmod(_cast_t + fase, 0.9) / 0.9   # 0→1 em laço
+			c.position.y = -t * (box_h + 16.0)
+			c.modulate.a = 1.0 - t
+
+func _clear_cast_fx() -> void:
+	if is_instance_valid(_cast_fx):
+		_cast_fx.queue_free()
+	_cast_fx = null
 
 # --- Habilidade AoE ---
 
@@ -99,12 +174,14 @@ func _start_aoe() -> void:
 	_aoe_cd = AOE_INTERVAL      # próximo cast 6s após este (o cd conta durante o windup)
 	_show_warn()                # "!" (reusa o do EnemyView)
 	_show_aoe_fx()              # área roxa brilhante no chão
+	_show_cast_fx()             # e a aura de conjuração NELE (mesma do tiro, mais intensa)
 
 ## Fim do windup: some o aviso, aplica 40 de dano fixo SÓ no player se ele estiver na área
 ## (elipse 24×8). Outros inimigos não são afetados. Entra o cooldown global de 1.5s.
 func _resolve_aoe() -> void:
 	_hide_warn()
 	_clear_aoe_fx()
+	_clear_cast_fx()
 	_global_cd = AOE_AFTER_CD
 	if is_instance_valid(target):
 		var rel := target.global_position - global_position

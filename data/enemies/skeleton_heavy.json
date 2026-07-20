@@ -6,6 +6,8 @@
   "aggro_range": 200,
   "base_stats": { "max_hp": 70, "attack": 15, "defense": 4, "move_speed": 61 },
   "attack_range": 90,
+  "windup": 0.35,
+  "attack_cooldown": 1.5,
   "attack_step": 0,
   "attack_style": "thrust",
   "ai_profile": "aggressive",
