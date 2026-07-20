@@ -230,6 +230,13 @@ still deterministic, `randf_range`/`randi` are gone from enemy spawning entirely
 **`spawn_from`** to push the band's start: that is how `portao` guarantees nothing spawns before
 the city gate (gate at 320, `spawn_from: 400`, first skeleton at 520). A declared position outside
 the band is pulled in with a `push_warning` rather than silently dropping an enemy on the entrance.
+
+**No enemy may spawn inside a shortcut's aggro bubble** (`_afasta_do_atalho`): a shortcut exists to
+shorten the run-back, and stepping out of one into an already-awake enemy would turn that relief
+into an ambush the player cannot see before crossing. Anything landing within its own `aggro_range`
+of the well mouth is pushed out, with a warning. It applies to the refuge **guard** too, which is
+placed by geometry rather than authored and is therefore the one that most easily drifts in — in
+`cemiterio` a guard at 2385 sits 156px from the mouth at 2540 and gets moved to 2328.
 The only randomness left near level building is the scenery scatter, which uses its own seeded RNG
 on purpose (cosmetic, and identical on every rebuild).
 

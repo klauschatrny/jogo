@@ -1832,7 +1832,9 @@ func _spawn_guard() -> void:
 		var view := EnemyView.new()
 		view.set_meta("tier", "guard")
 		view.dormant = true                    # imóvel até o player chegar perto (_update_guard_wake)
-		var x := zone.x + band * (float(i) + 0.5)
+		# A guarda é posicionada por geometria, não autorada — então ela é justamente quem mais
+		# escorrega para dentro da bolha do atalho, que fica no mesmo refúgio.
+		var x := _afasta_do_atalho(zone.x + band * (float(i) + 0.5), _aggro_de(String(ids[i % ids.size()])))
 		_add_view(view, enemy, Vector2(x, GROUND_Y - 40.0))
 		_guard.append(view)
 
@@ -2024,6 +2026,27 @@ func _close_options() -> void:
 
 ## Posição inicial ESPALHADA pelo nível (não na porta). Zona de exclusão dos 180px iniciais;
 ## se second_half, restringe à metade direita do corredor (usado pelos elites).
+## Margem além do aggro, para o inimigo empurrado não ficar exatamente na borda da bolha.
+const ATALHO_FOLGA := 12.0
+
+## Empurra um spawn para FORA da bolha de aggro do atalho deste nível. Um atalho existe para
+## encurtar o run-back; se o jogador desembocasse nele já com um inimigo desperto em cima, o
+## atalho deixaria de ser alívio e viraria emboscada — e, pior, uma emboscada que ele não pode
+## ver antes de atravessar. Vale para os inimigos de sala E para a guarda do refúgio.
+func _afasta_do_atalho(x: float, aggro: float) -> float:
+	if _shortcut_x == 0.0 or absf(x - _shortcut_x) > aggro:
+		return x
+	var novo := _shortcut_x - aggro - ATALHO_FOLGA if x < _shortcut_x else _shortcut_x + aggro + ATALHO_FOLGA
+	push_warning("[floor_scene] spawn em x=%.0f caía a %.0fpx do atalho (aggro %.0f) no nível '%s' — movido para %.0f"
+		% [x, absf(x - _shortcut_x), aggro, _run.current_level, novo])
+	return novo
+
+## O raio de aggro que um id de inimigo terá (lido do JSON antes de a view existir).
+func _aggro_de(id: String) -> float:
+	var base := _enemy_repo.get_by_id(id)
+	var a := float(base.get("aggro_range", 0.0))
+	return a if a > 0.0 else EnemyView.AGGRO_RANGE
+
 ## Onde os inimigos de um tier nascem. FIXO, nunca sorteado: ou o nível declara as posições uma a
 ## uma ("at": [x, x, ...]), ou elas saem de uma divisão igual da faixa permitida. Spawn aleatório é
 ## de roguelike — num soulslike o nível é uma coisa que se APRENDE, e não dá para aprender o que
@@ -2040,10 +2063,11 @@ func _spawn_positions(spec: Dictionary, second_half: bool) -> Array:
 	var max_x := maxf(min_x, _fight_width - 48.0)      # margem antes do fim do combate
 	var out: Array = []
 
+	var aggro := _aggro_de(String((spec.get("ids", []) as Array)[0])) if not (spec.get("ids", []) as Array).is_empty() else EnemyView.AGGRO_RANGE
 	var at: Array = spec.get("at", [])
 	if not at.is_empty():
 		for v in at:
-			var x := float(v)
+			var x := _afasta_do_atalho(float(v), aggro)
 			var dentro := clampf(x, min_x, max_x)
 			if not is_equal_approx(x, dentro):
 				push_warning("[floor_scene] spawn em x=%.0f fora da faixa [%.0f, %.0f] do nível '%s' — movido para %.0f"
@@ -2058,7 +2082,7 @@ func _spawn_positions(spec: Dictionary, second_half: bool) -> Array:
 		return out
 	var band := (max_x - min_x) / float(n)
 	for i in n:
-		out.append(_off_pit(min_x + band * (float(i) + 0.5)))
+		out.append(_off_pit(_afasta_do_atalho(min_x + band * (float(i) + 0.5), aggro)))
 	return out
 
 ## Empurra um x para fora de qualquer poço, pela borda mais próxima. O sensor de beirada impede
