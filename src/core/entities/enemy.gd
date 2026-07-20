@@ -20,6 +20,15 @@ var attack_range: float = 0.0       # alcance de ACERTO do golpe melee (px). 0 =
 ## é assim que um inimigo pesado e lento se distingue de um que salta para cima do jogador.
 ## < 0 = a view usa seu padrão.
 var attack_step: float = -1.0
+## GUARDA: por quantos segundos ele baixa a defesa DEPOIS de atacar. > 0 liga a mecânica —
+## fora dessa janela ele bloqueia o dano por completo, e a única forma de feri-lo é puni-lo
+## logo depois de um golpe dele. 0 = sem guarda.
+var guard_drop: float = 0.0
+## COMBO: `combo_hits` estocadas seguidas a cada `combo_every` ataques, `combo_interval` entre
+## elas, parado no lugar. 0 = só o golpe único.
+var combo_hits: int = 0
+var combo_interval: float = 0.28
+var combo_every: int = 3
 var hit_range: float = 0.0          # alcance de DANO/efeito do golpe (px). 0 = usa attack_range
 var attack_style: String = ""       # estilo do efeito melee: "slash" | "thrust". "" = padrão (slash)
 var windup: float = -1.0            # tempo de windup do golpe melee (s). < 0 = a view usa seu padrão
@@ -47,6 +56,11 @@ func _populate(d: Dictionary) -> void:
 	aggro_range = float(d.get("aggro_range", 0.0))
 	attack_range = float(d.get("attack_range", 0.0))
 	attack_step = float(d.get("attack_step", -1.0))
+	guard_drop = float(d.get("guard_drop", 0.0))
+	var cb: Dictionary = d.get("combo", {})
+	combo_hits = int(cb.get("hits", 0))
+	combo_interval = float(cb.get("interval", 0.28))
+	combo_every = maxi(1, int(cb.get("every", 3)))
 	hit_range = float(d.get("hit_range", 0.0))
 	attack_style = String(d.get("attack_style", ""))
 	windup = float(d.get("windup", -1.0))

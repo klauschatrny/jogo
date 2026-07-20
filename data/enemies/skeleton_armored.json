@@ -8,6 +8,7 @@
   "attack_range": 50,
   "windup": 0.225,
   "attack_cooldown": 1.25,
+  "guard_drop": 2.0,
   "ai_profile": "aggressive",
   "attack_sfx": "skeleton_attack",
   "hurt_sfx": "skeleton_hurt",

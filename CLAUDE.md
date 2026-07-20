@@ -184,6 +184,25 @@ axis, and you can neither attack nor dodge — that cost is the point, since a p
 a free jump would be no decision at all. `_ladders` lives on `floor_scene` and is handed
 to `PlayerView.ladders`; it is cleared with the rest of `_env` on rebuild.
 
+**Done — each skeleton fights differently.** The three stopped being reskins of one behaviour:
+- **Minion** — unchanged. The baseline.
+- **Armoured** — **guards by default and blocks damage entirely**; attacking costs him the guard
+  for `guard_drop` (2s), and that window is the only way to hurt him. It turns him from "swing
+  until he falls" into "bait the swing, then answer", which is the conversation a soulslike wants.
+  A raised shield is drawn on the player's side while the guard is up — without it the block is
+  invisible and reads as a broken hitbox.
+- **Heavy** — two attacks: the single thrust, and every `combo.every` (3rd) a **5-thrust chain**
+  (`combo.hits`/`combo.interval`) delivered **standing still**. Fixed alternation, never rolled:
+  an enemy's pattern is meant to be *learned*, and what is drawn cannot be.
+
+**Done — enemies die by collapsing.** Everything, boss included, now tips over and fades
+(`_morrer`, `MORTE_QUEDA` 0.55s) instead of blinking out of existence on the fatal frame, which
+stole the moment the player had just earned. It reuses the read of the skeleton collapsing under
+the Necromancer. **`died` still fires immediately** — room counts, souls and the boss doors all
+depend on it; only the *node* lingers, with collision and AI off. A corpse is therefore no longer
+in `_enemies`, so `_clear_entities` sweeps stray `EnemyView` children too, or one caught mid-level-
+change would be orphaned into the new scene.
+
 **Done — per-enemy attack rhythm, and the Necromancer telegraphs.** The three skeletons used to be
 timing-identical (code defaults 0.18 / 1.0); now each declares its own in JSON — minion
 **0.2 / 1.0**, armoured **0.225 / 1.25**, heavy **0.35 / 1.5**. Remember the windup *freezes* the

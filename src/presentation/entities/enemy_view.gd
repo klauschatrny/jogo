@@ -36,6 +36,10 @@ var reassemble_time := 0.0
 var _downed := 0.0                  # segundos restantes de "monte de ossos" (0 = de pé)
 var aggro_range := AGGRO_RANGE      # a que distância desperta (dormente → agressivo)
 var attack_step := STEP_FRACTION    # fração do alcance avançada no golpe (0 = bate parado)
+var guard_drop := 0.0               # segundos sem guarda depois de atacar (0 = não tem guarda)
+var combo_hits := 0                 # estocadas seguidas no ataque em combo (0 = só o golpe único)
+var combo_interval := 0.28
+var combo_every := 3
 var attack_range := ATTACK_RANGE    # alcance de GATILHO/aproximação do golpe melee
 var hit_range := 0.0                # alcance de DANO/efeito do golpe (0 = usa attack_range)
 var attack_style := "slash"         # estilo do efeito melee: "slash" (arco) | "thrust" (estocada)
@@ -54,6 +58,12 @@ const KNOCKBACK_FORCE := 130.0     # base 640×360
 var _attack_cd := 0.0
 var _step := 0.0                   # impulso do passo à frente (px/s), decai em STEP_TIME
 var _step_dir := 0.0
+var _guard_down := 0.0              # >0 = guarda baixada (janela de punição)
+var _atk_count := 0                 # ataques resolvidos: decide quando sai o combo
+var _combo_left := 0                # estocadas restantes do combo em curso
+var _combo_cd := 0.0
+var _guard_fx: Node2D               # o escudo erguido, enquanto a guarda está de pé
+var _morrendo := 0.0                # >0 = cadáver tombando (sem IA, sem colisão), até sumir
 var _windup := 0.0                  # >0 = em windup (aviso "!" visível); ao zerar, resolve o golpe
 var _warn: Node2D                   # o "!" acima do inimigo durante o windup
 var _hp_bar: ColorRect
@@ -72,6 +82,11 @@ func setup(enemy: Enemy, target_node: Node2D) -> void:
 		aggro_range = enemy.aggro_range     # a que distância ele desperta (data-driven)
 	if enemy != null and enemy.attack_step >= 0.0:
 		attack_step = enemy.attack_step     # passo do golpe (0 = bate parado)
+	if enemy != null:
+		guard_drop = enemy.guard_drop
+		combo_hits = enemy.combo_hits
+		combo_interval = enemy.combo_interval
+		combo_every = enemy.combo_every
 	if enemy != null and enemy.hit_range > 0.0:
 		hit_range = enemy.hit_range         # alcance de dano/efeito (separado do gatilho)
 	if enemy != null and enemy.attack_style != "":
@@ -159,6 +174,33 @@ func _physics_process(delta: float) -> void:
 	# Gravidade contínua; o chão (camada 4) segura o inimigo.
 	if not is_on_floor():
 		velocity.y += GRAVITY * delta
+
+	# Cadáver: só a queda corre. Nada de perseguir, atacar ou tomar dano.
+	if _morrendo > 0.0:
+		_morrendo -= delta
+		velocity.x = 0.0
+		if not is_on_floor():
+			velocity.y += GRAVITY * delta
+		move_and_slide()
+		if _morrendo <= 0.0:
+			queue_free()
+		return
+
+	_guard_down = maxf(0.0, _guard_down - delta)
+	_atualiza_escudo()
+
+	# COMBO em curso: parado, soltando estocada após estocada. Ficar imóvel é o que dá ao jogador
+	# a leitura de que este é o golpe LONGO — e a saída, que é sair de perto em vez de trocar.
+	if _combo_left > 0 and _downed <= 0.0:
+		_combo_cd -= delta
+		velocity.x = 0.0
+		move_and_slide()
+		if _combo_cd <= 0.0:
+			_combo_left -= 1
+			_golpe(signf(target.global_position.x - global_position.x), false)
+			_combo_cd = combo_interval
+		_update_sprite(target.global_position.x - global_position.x, false)
+		return
 
 	# Monte de ossos: só a gravidade age. Nada de perseguir, atacar ou tomar dano — ele espera.
 	if _downed > 0.0:
@@ -269,9 +311,23 @@ func _start_windup() -> void:
 ## alcance evita; a esquiva também, via i-frames em apply_enemy_hit). O swing/anim sempre tocam.
 func _resolve_attack(dx: float) -> void:
 	_hide_warn()
+	_atk_count += 1
+	# Atacar CUSTA a guarda: é o preço de sair de trás do escudo, e a janela em que se leva dano.
+	if guard_drop > 0.0:
+		_guard_down = guard_drop
+	# A cada `combo_every` ataques sai a sequência longa. Alternância fixa, sem sorteio: num
+	# soulslike o padrão do inimigo é para ser APRENDIDO, e o que sorteia não se aprende.
+	if combo_hits > 1 and _atk_count % combo_every == 0:
+		_combo_left = combo_hits - 1
+		_combo_cd = combo_interval
+	_golpe(dx, true)
+
+## Uma estocada: o passo à frente, o dano se estiver ao alcance, a animação, o efeito e o som.
+## `com_passo` é falso nas estocadas seguintes de um combo — ele já avançou na primeira.
+func _golpe(dx: float, com_passo: bool) -> void:
 	# O passo à frente: sai JUNTO com o golpe, não no windup — o windup é a janela de fuga, e um
 	# inimigo que já avançasse nela tiraria do jogador o tempo que o "!" promete.
-	if dx != 0.0:
+	if com_passo and dx != 0.0:
 		_step_dir = signf(dx)
 		_step = _step_v0()
 	if is_instance_valid(target):
@@ -336,8 +392,18 @@ func _hide_warn() -> void:
 	_warn = null
 
 func apply_damage(amount: int, knockback_mult := 1.0) -> void:
-	if _downed > 0.0:
+	if _downed > 0.0 or _morrendo > 0.0:
 		return                      # um monte de ossos não sangra: o golpe passa reto
+	# GUARDA: de escudo erguido, o golpe não passa. A janela para feri-lo é logo DEPOIS de ele
+	# atacar — atacar custa a guarda. É o que transforma este inimigo de "bater até cair" em
+	# "esperar o golpe dele e responder", que é a conversa que um soulslike quer ter.
+	if esta_em_guarda():
+		Juice.burst(get_parent(), global_position, Color(0.92, 0.94, 1.0), 8, 90.0)
+		Sfx.play(data.hurt_sfx)
+		if is_instance_valid(target):
+			var d := signf(global_position.x - target.global_position.x)
+			_knockback = Vector2((d if d != 0.0 else 1.0) * KNOCKBACK_FORCE * 0.35, 0.0)
+		return
 	data.stats.current_hp -= amount
 	# Golpe fatal tem som próprio (o grito de morte); os demais, o de dano. Ids no JSON da
 	# entidade; sem eles, silêncio.
@@ -359,9 +425,73 @@ func apply_damage(amount: int, knockback_mult := 1.0) -> void:
 		if reassemble_time > 0.0:
 			_collapse()             # sob o Necromante: desaba, não morre
 			return
-		Juice.burst(get_parent(), global_position, body_color, 16, 140.0)
-		died.emit()
-		queue_free()
+		_morrer()
+
+## O escudo erguido, desenhado à frente do corpo. Sem ele o bloqueio seria invisível: o jogador
+## veria o golpe conectar e nada acontecer, e concluiria que o jogo está quebrado.
+func _atualiza_escudo() -> void:
+	if guard_drop <= 0.0:
+		return
+	var deve := esta_em_guarda()
+	if deve and not is_instance_valid(_guard_fx):
+		_guard_fx = Node2D.new()
+		_guard_fx.z_index = 5
+		add_child(_guard_fx)
+		var e := ColorRect.new()
+		e.color = Color(0.62, 0.66, 0.74)
+		e.size = Vector2(4.0, 22.0)
+		e.position = Vector2(-2.0, -box_h * 0.5 - 11.0)
+		_guard_fx.add_child(e)
+		var b := ColorRect.new()
+		b.color = Color(0.82, 0.86, 0.92)
+		b.size = Vector2(4.0, 5.0)
+		b.position = Vector2(0.0, 4.0)
+		e.add_child(b)
+	elif not deve and is_instance_valid(_guard_fx):
+		_guard_fx.queue_free()
+		_guard_fx = null
+	if is_instance_valid(_guard_fx):
+		# Sempre do lado do jogador: um escudo pelas costas não faria sentido.
+		var d := 1.0
+		if is_instance_valid(target):
+			d = signf(target.global_position.x - global_position.x)
+		_guard_fx.position.x = (d if d != 0.0 else 1.0) * (box_w * 0.5 + 3.0)
+
+## MORTE. O corpo tomba no chão e some — a mesma leitura do esqueleto que desaba sob o
+## Necromante, agora para todo inimigo e para o chefe. Antes o inimigo simplesmente PISCAVA para
+## fora da existência no frame do golpe fatal, o que roubava do jogador o instante que ele acabou
+## de conquistar.
+##
+## O sinal `died` sai NA HORA, não no fim da queda: é dele que dependem a contagem da sala, as
+## almas e a abertura das portas do chefe. Só o nó sobrevive mais um instante, já sem colisão e
+## sem IA — um cadáver, não um inimigo.
+const MORTE_QUEDA := 0.55
+
+func _morrer() -> void:
+	if _morrendo > 0.0:
+		return
+	_morrendo = MORTE_QUEDA
+	_windup = 0.0
+	_combo_left = 0
+	_hide_warn()
+	if is_instance_valid(_guard_fx):
+		_guard_fx.queue_free()
+	collision_layer = 0                 # deixa de ser alvo e de empurrar quem passa
+	collision_mask = 0
+	if _hp_bar != null:
+		_hp_bar.visible = false
+	Juice.burst(get_parent(), global_position, body_color, 16, 140.0)
+	var alvo: CanvasItem = _sprite if _sprite != null else _body
+	if alvo != null:
+		var tw := create_tween()
+		tw.tween_property(alvo, "rotation", PI * 0.5, MORTE_QUEDA * 0.45).set_trans(Tween.TRANS_QUAD)
+		tw.parallel().tween_property(alvo, "modulate", Color(0.72, 0.70, 0.62, 0.9), MORTE_QUEDA * 0.45)
+		tw.tween_property(alvo, "modulate:a", 0.0, MORTE_QUEDA * 0.55)
+	died.emit()
+
+## De guarda? Só quem tem a mecânica, está desperto, vivo e fora da janela pós-ataque.
+func esta_em_guarda() -> bool:
+	return guard_drop > 0.0 and _guard_down <= 0.0 and not dormant and _downed <= 0.0
 
 ## Desaba num monte de ossos, no lugar exato onde caiu. Não emite `died`: para a sala, este
 ## esqueleto continua existindo — é isso que faz o Necromante ser o único objetivo real.

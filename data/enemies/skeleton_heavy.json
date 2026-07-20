@@ -8,6 +8,7 @@
   "attack_range": 90,
   "windup": 0.35,
   "attack_cooldown": 1.5,
+  "combo": { "hits": 5, "interval": 0.28, "every": 3 },
   "attack_step": 0,
   "attack_style": "thrust",
   "ai_profile": "aggressive",

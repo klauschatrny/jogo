@@ -911,6 +911,12 @@ func _clear_entities() -> void:
 		if c is NecroProjectile or c is OgreRock or c is OgreShockwave:
 			remove_child(c)
 			c.queue_free()
+		# Cadáveres ainda tombando: a morte tira o inimigo de _enemies na hora, mas o nó sobrevive
+		# meio segundo para a queda ser vista. Sem esta varredura, um cadáver pego no meio de uma
+		# troca de nível ficaria órfão na cena nova.
+		elif c is EnemyView:
+			remove_child(c)
+			c.queue_free()
 	_boss_view = null
 	_necro = null
 	_heavy_stage.clear()
