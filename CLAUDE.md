@@ -149,7 +149,18 @@ persisted in `RunState`:
 All three sanctuary interactions (lever, rest, fog) share the `interact` key and are disambiguated
 purely by proximity — they sit far enough apart that only one is ever in reach.
 
-**Done — reach, aggro and the attack step.** Skeleton `attack_range` went 30/30/32 →
+**Done — trigger = reach + step.** `attack_range` is the **hit** distance; the distance at which a
+melee enemy *decides* to swing is `trigger_range()` = `attack_range + step_distance()`. Without
+that sum an enemy that lunges would connect from places it never committed to attack from, and one
+that does not lunge (step 0) aims at exactly its own reach. The step is per enemy —
+**`attack_step`** in the JSON, a fraction of the reach, default `STEP_FRACTION` 0.55, **0 = swings
+planted**. `enm_skeleton_heavy` is the first with 0 and reach **90**: heavy and slow, it does not
+leap at you. **Ranged enemies have no firing distance of their own** — the Necromancer's
+`SCREEN_RANGE` is gone; awake means shooting, and `aggro_range` alone decides when he joins. Two
+numbers for one question only produced a dead band where he stood awake doing nothing. Current
+aggro: skeletons **200**, Necromancer **300**.
+
+**Earlier pass on the same numbers.** Skeleton `attack_range` went 30/30/32 →
 **minion 40, armoured 50, heavy 70**, so reach now actually separates them (the player's sword is
 76, and before this every skeleton was interchangeable on that axis). Waking is data-driven per
 enemy — **`aggro_range`** in the enemy JSON (`EnemyView.AGGRO_RANGE` = 250 default): skeletons

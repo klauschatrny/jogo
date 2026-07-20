@@ -7,7 +7,9 @@ extends EnemyView
 
 const SHOOT_INTERVAL := 1.4       # cadência de disparo
 const PROJECTILE_SPEED := 150.0
-const SCREEN_RANGE := 340.0       # dispara quando o player está a ~meia tela (mesma tela)
+# RANGED não tem alcance de disparo próprio: acordou, atira. Quem decide a que distância ele
+# entra na briga é o aggro_range dele (data/enemies/necromancer.json) — dois números para a mesma
+# pergunta só criariam uma faixa morta, em que ele está desperto e encarando o jogador sem agir.
 const Z := 199                    # imediatamente abaixo do player (200), acima dos outros inimigos (~100)
 
 # Habilidade secundária (AoE), destravada ao tomar dano.
@@ -73,7 +75,7 @@ func _physics_process(delta: float) -> void:
 
 	# Projétil — a menos que a AoE esteja próxima (janela de 2s) ou em cooldown global.
 	_shoot_cd = maxf(0.0, _shoot_cd - delta)
-	if _global_cd <= 0.0 and _shoot_cd <= 0.0 and absf(dx) <= SCREEN_RANGE:
+	if _global_cd <= 0.0 and _shoot_cd <= 0.0:
 		if _enraged and _aoe_cd <= AOE_PREFER_WINDOW:
 			return                         # prefere a habilidade: não dispara
 		_shoot_cd = SHOOT_INTERVAL

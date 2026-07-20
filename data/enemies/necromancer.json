@@ -3,7 +3,7 @@
   "name": "Necromante",
   "archetype": "CASTER",
   "rank": "ELITE",
-  "aggro_range": 400,
+  "aggro_range": 300,
   "base_stats": { "max_hp": 45, "attack": 17, "defense": 3, "move_speed": 0 },
   "ai_profile": "necromancer",
   "abilities": ["abil_raise_dead"],

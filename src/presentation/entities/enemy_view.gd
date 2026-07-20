@@ -35,6 +35,7 @@ var dormant := false                # passivo: não persegue nem ataca até ser 
 var reassemble_time := 0.0
 var _downed := 0.0                  # segundos restantes de "monte de ossos" (0 = de pé)
 var aggro_range := AGGRO_RANGE      # a que distância desperta (dormente → agressivo)
+var attack_step := STEP_FRACTION    # fração do alcance avançada no golpe (0 = bate parado)
 var attack_range := ATTACK_RANGE    # alcance de GATILHO/aproximação do golpe melee
 var hit_range := 0.0                # alcance de DANO/efeito do golpe (0 = usa attack_range)
 var attack_style := "slash"         # estilo do efeito melee: "slash" (arco) | "thrust" (estocada)
@@ -69,6 +70,8 @@ func setup(enemy: Enemy, target_node: Node2D) -> void:
 		attack_range = enemy.attack_range   # alcance de gatilho/aproximação data-driven
 	if enemy != null and enemy.aggro_range > 0.0:
 		aggro_range = enemy.aggro_range     # a que distância ele desperta (data-driven)
+	if enemy != null and enemy.attack_step >= 0.0:
+		attack_step = enemy.attack_step     # passo do golpe (0 = bate parado)
 	if enemy != null and enemy.hit_range > 0.0:
 		hit_range = enemy.hit_range         # alcance de dano/efeito (separado do gatilho)
 	if enemy != null and enemy.attack_style != "":
@@ -189,7 +192,7 @@ func _physics_process(delta: float) -> void:
 
 	var dy := target.global_position.y - global_position.y
 	var moving := false
-	if absf(dx) > attack_range:
+	if absf(dx) > trigger_range():
 		# Beira de buraco: o inimigo não pula. Sem chão adiante ele PARA na borda, em vez de
 		# despencar no poço de espinhos e ficar preso lá para sempre. De quebra, o poço vira
 		# terreno tático: dá para separar a horda pondo um buraco no meio.
@@ -287,7 +290,18 @@ func _resolve_attack(dx: float) -> void:
 ## percorrida é a área do triângulo (v0·t/2) — daí o fator 2, sem o qual o passo cobriria metade
 ## do que a constante promete.
 func _step_v0() -> float:
-	return 2.0 * STEP_FRACTION * attack_range / STEP_TIME
+	return 2.0 * step_distance() / STEP_TIME
+
+## Quanto o inimigo cobre com o passo do golpe. É o que separa o alcance de ACERTO (attack_range)
+## do alcance de GATILHO: ele decide atacar de mais longe justamente porque vai avançar.
+func step_distance() -> float:
+	return attack_step * attack_range
+
+## De onde ele decide golpear: o alcance do golpe MAIS o que o passo cobre. Sem somar o passo, um
+## inimigo que avança acertaria de lugares de onde nunca se dispôs a atacar — e um que não avança
+## (passo 0) volta a mirar exatamente no próprio alcance.
+func trigger_range() -> float:
+	return attack_range + step_distance()
 
 ## "!" vermelho acima da cabeça (feito com ColorRects — nítido no low-res). Só durante o windup.
 func _show_warn() -> void:

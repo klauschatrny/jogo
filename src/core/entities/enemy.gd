@@ -15,7 +15,11 @@ var loot: Dictionary = {}
 ## agressivo quando o jogador entra neste raio — é o que deixa o jogador escolher a briga.
 ## 0 = a view usa o padrão dela.
 var aggro_range: float = 0.0
-var attack_range: float = 0.0       # alcance de GATILHO do golpe melee (px). 0 = a view usa seu padrão
+var attack_range: float = 0.0       # alcance de ACERTO do golpe melee (px). 0 = a view usa seu padrão
+## Fração do alcance que o inimigo AVANÇA ao golpear (o passo à frente). 0 = bate parado —
+## é assim que um inimigo pesado e lento se distingue de um que salta para cima do jogador.
+## < 0 = a view usa seu padrão.
+var attack_step: float = -1.0
 var hit_range: float = 0.0          # alcance de DANO/efeito do golpe (px). 0 = usa attack_range
 var attack_style: String = ""       # estilo do efeito melee: "slash" | "thrust". "" = padrão (slash)
 var windup: float = -1.0            # tempo de windup do golpe melee (s). < 0 = a view usa seu padrão
@@ -42,6 +46,7 @@ func _populate(d: Dictionary) -> void:
 	loot = lt.duplicate(true)
 	aggro_range = float(d.get("aggro_range", 0.0))
 	attack_range = float(d.get("attack_range", 0.0))
+	attack_step = float(d.get("attack_step", -1.0))
 	hit_range = float(d.get("hit_range", 0.0))
 	attack_style = String(d.get("attack_style", ""))
 	windup = float(d.get("windup", -1.0))

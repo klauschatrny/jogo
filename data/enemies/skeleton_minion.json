@@ -3,7 +3,7 @@
   "name": "Esqueleto Lacaio",
   "archetype": "MELEE",
   "rank": "NORMAL",
-  "aggro_range": 250,
+  "aggro_range": 200,
   "base_stats": { "max_hp": 30, "attack": 7, "defense": 1, "move_speed": 60 },
   "attack_range": 40,
   "ai_profile": "aggressive",
