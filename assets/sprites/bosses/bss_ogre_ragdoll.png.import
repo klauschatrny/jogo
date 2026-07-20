@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cchpkf4grpcqp"
-path="res://.godot/imported/bss_ogre.png-9f2c60d620703429220927e3b00d83cd.ctex"
+uid="uid://caxo4hgksu8sp"
+path="res://.godot/imported/bss_ogre_ragdoll.png-5709e789dccdafe1836510f5d6222f69.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/sprites/bosses/bss_ogre.png"
-dest_files=["res://.godot/imported/bss_ogre.png-9f2c60d620703429220927e3b00d83cd.ctex"]
+source_file="res://assets/sprites/bosses/bss_ogre_ragdoll.png"
+dest_files=["res://.godot/imported/bss_ogre_ragdoll.png-5709e789dccdafe1836510f5d6222f69.ctex"]
 
 [params]
 

@@ -1,7 +1,8 @@
 ## Monta um AnimatedSprite2D a partir de um spritesheet em grade + manifesto JSON (Leva 4).
 ##
 ## Convenção "1 linha por animação":
-##   - A arte fica em  res://assets/sprites/<subdir>/<id>.png  como uma grade de células de
+##   - A arte fica em  res://assets/sprites/<subdir>/<id>.png  (ou no arquivo que o manifesto
+##     nomear em "sheet", na mesma pasta) como uma grade de células de
 ##     tamanho cell_w × cell_h (retangular; use "cell" sozinho para quadrada). Cada animação
 ##     ocupa UMA linha (row), com N frames nas colunas (da esquerda para a direita).
 ##   - O sprite é ancorado pelos PÉS (bottom-center do quadro), então desenhe o personagem com
@@ -15,6 +16,9 @@
 ##           "attack": { "row": 2, "frames": 4, "fps": 12, "loop": false }
 ##         }
 ##       }
+##   - Uma animação pode declarar o "sheet" DELA e sair do PNG comum (mesma grade, mesma
+##     subpasta). Serve para a arte final de uma pose conviver com o resto ainda em rascunho:
+##     o idle vem do desenho bonito enquanto o andar sai do sheet de trabalho.
 ##
 ## Sem PNG ou sem manifesto válido, retorna null e a view mantém o placeholder ColorRect
 ## (degradação graciosa — o jogo nunca quebra por falta de arte).
@@ -24,9 +28,6 @@ extends RefCounted
 static func build(id: String, subdir: String) -> AnimatedSprite2D:
 	if id == "":
 		return null
-	var png := "res://assets/sprites/%s/%s.png" % [subdir, id]
-	if not ResourceLoader.exists(png):
-		return null
 	var manifest: Variant = JsonLoader.load_file("res://data/sprites/%s.json" % id)
 	if typeof(manifest) != TYPE_DICTIONARY or (manifest as Dictionary).is_empty():
 		return null
@@ -34,7 +35,7 @@ static func build(id: String, subdir: String) -> AnimatedSprite2D:
 	var anims: Dictionary = m.get("animations", {})
 	if anims.is_empty():
 		return null
-	var tex := load(png) as Texture2D
+	var tex := _sheet_texture(m, id, subdir, "")
 	if tex == null:
 		return null
 
@@ -45,6 +46,11 @@ static func build(id: String, subdir: String) -> AnimatedSprite2D:
 	sf.remove_animation("default")          # remove a animação vazia padrão
 	for anim_name in anims.keys():
 		var a: Dictionary = anims[anim_name]
+		# Cada animação pode ter o PNG dela (a do manifesto é só o padrão). É o que permite a
+		# pose desenhada "de verdade" servir de idle enquanto o resto ainda anima em rascunho.
+		var atex := _sheet_texture(a, id, subdir, String(m.get("sheet", "")))
+		if atex == null:
+			continue
 		var row := int(a.get("row", 0))
 		var frames := maxi(1, int(a.get("frames", 1)))
 		sf.add_animation(anim_name)
@@ -52,9 +58,11 @@ static func build(id: String, subdir: String) -> AnimatedSprite2D:
 		sf.set_animation_loop(anim_name, bool(a.get("loop", true)))
 		for i in frames:
 			var at := AtlasTexture.new()
-			at.atlas = tex
+			at.atlas = atex
 			at.region = Rect2(i * cell_w, row * cell_h, cell_w, cell_h)
 			sf.add_frame(anim_name, at)
+	if sf.get_animation_names().is_empty():
+		return null
 
 	var spr := AnimatedSprite2D.new()
 	spr.sprite_frames = sf
@@ -74,6 +82,17 @@ static func build(id: String, subdir: String) -> AnimatedSprite2D:
 	spr.animation = "idle" if sf.has_animation("idle") else String(anims.keys()[0])
 	spr.play()
 	return spr
+
+## Resolve o PNG de um bloco do manifesto (o manifesto inteiro ou uma animação): a chave
+## "sheet" nomeia o arquivo dentro da MESMA subpasta; sem ela, herda `fallback` (o sheet do
+## manifesto) e, por fim, o padrão <id>.png. Devolve null se o arquivo não existir — quem
+## chama decide se isso derruba o sprite todo ou só pula aquela animação.
+static func _sheet_texture(d: Dictionary, id: String, subdir: String, fallback: String) -> Texture2D:
+	var default_file := fallback if fallback != "" else "%s.png" % id
+	var png := "res://assets/sprites/%s/%s" % [subdir, String(d.get("sheet", default_file))]
+	if not ResourceLoader.exists(png):
+		return null
+	return load(png) as Texture2D
 
 ## Lê a hitbox opcional do manifesto (data/sprites/<id>.json → "hitbox": [largura, altura]).
 ## Retorna Vector2(w, h) em px (base 640×360), ou Vector2.ZERO se ausente/inválida (a view
