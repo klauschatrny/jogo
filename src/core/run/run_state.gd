@@ -24,7 +24,12 @@ var seed: int = 0
 var checkpoint_level: String = ""  # "" = nenhuma fogueira acesa ainda
 var checkpoint_x: float = 0.0      # onde, dentro do nível
 var lit_bonfires: Array = []       # ids ("nível:x") das fogueiras já acesas — acesas ficam acesas
-var cleared_levels: Array = []     # níveis já concluídos: não repovoam ao renascer
+var cleared_levels: Array = []     # níveis já CONCLUÍDOS: as passagens deles ficam abertas para sempre
+# Níveis cujos inimigos estão mortos AGORA. É diferente de "concluído": concluir abre o caminho
+# para sempre, mas os inimigos voltam. Descansar numa fogueira (ou morrer) esvazia esta lista e o
+# mundo inteiro se repovoa — a regra clássica do soulslike. Sem ela, limpar uma sala a esvaziava
+# para o resto da run e o caminho de volta ao chefe virava um corredor vazio.
+var emptied_levels: Array = []
 var bosses_seen: Array = []        # bosses cuja cutscene de entrada já rodou (não se repete na retentativa)
 var opened_gates: Array = []       # portões de mecanismo já abertos (por alavanca): abertos ficam abertos
 var deaths: int = 0
@@ -142,6 +147,22 @@ func mark_cleared(level_id: String) -> void:
 
 func is_cleared(level_id: String) -> bool:
 	return cleared_levels.has(level_id)
+
+# --- Inimigos vivos ou não (renascimento na fogueira) ---
+
+func mark_emptied(level_id: String) -> void:
+	if level_id != "" and not emptied_levels.has(level_id):
+		emptied_levels.append(level_id)
+
+func is_emptied(level_id: String) -> bool:
+	return emptied_levels.has(level_id)
+
+## Repovoa os níveis dados (os que renascem — quem decide isso é quem lê o levels.json, não o
+## core). Chamado ao descansar e ao renascer. Um nível fora da lista fica vazio para sempre, que
+## é como um nível marcado para NÃO renascer se comporta.
+func repopulate(level_ids: Array) -> void:
+	emptied_levels = emptied_levels.filter(
+		func(id: String) -> bool: return not level_ids.has(id))
 
 # ---------------------------------------------------------------------------
 # Portões de mecanismo (alavanca). Um portão de madeira fecha a passagem até o jogador puxar a

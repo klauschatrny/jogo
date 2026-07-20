@@ -440,9 +440,57 @@ func _spawn_hazards(list: Array) -> void:
 ## painel de atributos, que é onde os pontos ganhos subindo de nível viram poder de verdade.
 func _on_bonfire_rested(bf: BonfireView) -> void:
 	_run.rest_at(_run.current_level, bf.pos_x)
-	_reset_guard()   # descansar RENASCE a guarda do refúgio (o run-back clássico)
+	_repopulate_world()   # descansar RENASCE todo inimigo que não seja chefe (o run-back clássico)
 	Juice.burst(_env, bf.global_position + Vector2(0, -10), Color(1.0, 0.7, 0.25), 14, 90.0)
 	_open_attributes()
+
+## Sem nenhum inimigo de SALA vivo (a guarda não conta — ela é do refúgio e tem o ciclo dela),
+## este nível fica marcado como esvaziado: revisitá-lo não repovoa. Só descansar ou morrer
+## repovoa. É o que separa "já limpei isto agora" de "isto está limpo para sempre".
+func _marcar_se_esvaziou() -> void:
+	if _run == null or String(_floor_config.get("type", "")) != "room":
+		return
+	for v in _enemies:
+		if is_instance_valid(v) and not _guard.has(v):
+			return
+	_run.mark_emptied(_run.current_level)
+
+## Os níveis cujos inimigos RENASCEM. Todo nível de sala renasce, salvo se declarar
+## "respawns": false — a exceção existe para uma sala que deva ficar vazia depois de resolvida
+## (um evento único, um guardião que não se repete). Arenas de chefe nunca entram: chefe morto
+## fica morto, e é isso que faz a fogueira ser alívio em vez de zerar o progresso.
+func _respawning_ids() -> Array:
+	var ids: Array = []
+	for id in _levels:
+		var cfg: Dictionary = _levels[id]
+		if String(cfg.get("type", "")) == "boss":
+			continue
+		if not bool(cfg.get("respawns", true)):
+			continue
+		ids.append(id)
+	return ids
+
+## Repovoa o mundo e traz de volta, JÁ, os inimigos do nível onde se está. Os outros níveis
+## renascem sozinhos quando forem revisitados (_start_floor consulta is_emptied).
+func _repopulate_world() -> void:
+	_run.repopulate(_respawning_ids())
+	_reset_guard()
+	if String(_floor_config.get("type", "")) != "room":
+		return
+	if not bool(_floor_config.get("respawns", true)):
+		return
+	_clear_room_enemies()
+	_start_room()          # NÃO mexe em _phase: o caminho aberto continua aberto (ver _start_floor)
+
+## Tira da cena os inimigos de sala (a guarda tem a lista própria e o _reset_guard dela).
+func _clear_room_enemies() -> void:
+	for v in _enemies.duplicate():
+		if is_instance_valid(v) and not _guard.has(v):
+			_enemies.erase(v)
+			if v.get_parent() != null:
+				v.get_parent().remove_child(v)
+			v.queue_free()
+	_necro = null
 
 ## Painel de atributos (pausa o jogo enquanto está aberto, como as Opções).
 func _open_attributes() -> void:
@@ -957,8 +1005,12 @@ func _start_floor() -> void:
 	# se o portão já foi aberto antes); nada a fazer aqui além de marcar a fase e o Eco.
 	if _run.is_cleared(floor):
 		_phase = "cleared"
-		_msg.text = "Nível vencido: a fogueira e a névoa do chefe aguardam adiante →"
+		_msg.text = "Nível vencido: o caminho adiante está aberto →"
 		_spawn_guard()        # a guarda do run-back reocupa o caminho até a névoa
+		# VENCIDO não é VAZIO: o caminho fica aberto para sempre, mas os inimigos voltam depois de
+		# cada descanso/morte. Só ficam mortos os do nível que ainda está marcado como esvaziado.
+		if not _run.is_emptied(floor) and bool(_floor_config.get("respawns", true)):
+			_start_room()
 		_spawn_bloodstain_if_here()  # ...e a sua marca ainda pode estar esperando no caminho
 		return
 
@@ -1210,6 +1262,9 @@ func _process(delta: float) -> void:
 	# portas (voltar/seguir) cruzam andando.
 	if _phase == "cleared":
 		_update_guard_wake()
+		# Vencido não é vazio: os inimigos renascidos pela fogueira também nascem dormentes e
+		# precisam do mesmo despertar por proximidade, senão ficariam parados para sempre.
+		_update_room_wake()
 		if String(_floor_config.get("type", "")) == "boss":
 			_update_boss_doors()
 		else:
@@ -1399,6 +1454,7 @@ func _add_view(view: EnemyView, enemy: Enemy, pos: Vector2) -> void:
 func _on_enemy_died(view: EnemyView, enemy: Enemy) -> void:
 	_enemies.erase(view)
 	_guard.erase(view)   # se era da guarda, sai da lista (matou-se um esqueleto do run-back)
+	_marcar_se_esvaziou()
 
 	# Almas: TODO inimigo morto entrega as suas, direto para o bolso — inclusive os esqueletos que
 	# o Necromante reinvoca sem parar. Antes esses não davam XP, para não virar farm infinito de
@@ -1786,6 +1842,7 @@ func _respawn_at_checkpoint() -> void:
 		_death_banner.queue_free()
 		_death_banner = null
 	_run.respawn()
+	_run.repopulate(_respawning_ids())   # morrer repovoa o mundo, igual a descansar
 	# Duas saídas, e só duas: a fogueira ou o começo do jogo. Nunca o lugar onde se caiu —
 	# renascer na arena do chefe que acabou de te matar seria de graça. Com fogueira, reentra o
 	# nível dela pelo _start_floor: ele já vê o nível como vencido e põe o player na fogueira

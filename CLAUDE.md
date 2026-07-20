@@ -149,6 +149,22 @@ persisted in `RunState`:
 All three sanctuary interactions (lever, rest, fog) share the `interact` key and are disambiguated
 purely by proximity — they sit far enough apart that only one is ever in reach.
 
+**Done — resting respawns every non-boss enemy.** Two states that used to be one are now
+separate, and keeping them apart is the whole trick:
+- `RunState.cleared_levels` = **the level is beaten**. Permanent. Gate open, fog crossable, phase
+  stays `cleared`.
+- `RunState.emptied_levels` = **its enemies are dead right now**. Wiped by `repopulate()` on every
+  **rest** and every **death**, so the world refills.
+
+So *beaten is not empty*: a level you conquered keeps its passages open forever but fills back up
+with enemies each time you sit at a fire. Re-entering on foot does **not** repopulate (that would
+punish walking back through); only rest and death do — the Dark Souls rule. `_marcar_se_esvaziou`
+marks a level emptied when no **room** enemy is left alive (the refuge guard is excluded: it has
+its own cycle). Boss arenas are never in the respawn list — a dead boss stays dead, which is what
+makes the fire a relief instead of an undo. A level opts out with **`"respawns": false`**, for a
+room meant to stay quiet once resolved. Enemies respawned into a `cleared` level are dormant, so
+`_update_room_wake` now runs in that phase too, not only in `room`.
+
 **Done — the bonfire respawns enemies (the run-back).** Resting is not free: it **re-arms the
 world**. Once a room level is cleared, a small **guard** of skeletons (data-driven,
 `levels.json → guard = { ids, count }`, `_spawn_guard`) reoccupies the refuge stretch *between the
