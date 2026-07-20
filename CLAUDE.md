@@ -189,16 +189,24 @@ to `PlayerView.ladders`; it is cleared with the rest of `_env` on rebuild.
 - **Armoured** — **guards by default and blocks damage entirely**; attacking costs him the guard
   for `guard_drop` (2s), and that window is the only way to hurt him. It turns him from "swing
   until he falls" into "bait the swing, then answer", which is the conversation a soulslike wants.
-  A raised shield is drawn on the player's side while the guard is up — without it the block is
-  invisible and reads as a broken hitbox.
+  A **metal shield icon floats above his head** while the guard is up — without it the block is
+  invisible and reads as a broken hitbox, and *above* is where the game already puts state (the
+  windup `!`), so the eye looks there; beside the body it blended into the skeleton's own
+  silhouette and vanished in a crowd.
 - **Heavy** — two attacks: the single thrust, and every `combo.every` (3rd) a **5-thrust chain**
   (`combo.hits`/`combo.interval`) delivered **standing still**. Fixed alternation, never rolled:
   an enemy's pattern is meant to be *learned*, and what is drawn cannot be.
 
-**Done — enemies die by collapsing.** Everything, boss included, now tips over and fades
-(`_morrer`, `MORTE_QUEDA` 0.55s) instead of blinking out of existence on the fatal frame, which
-stole the moment the player had just earned. It reuses the read of the skeleton collapsing under
-the Necromancer. **`died` still fires immediately** — room counts, souls and the boss doors all
+**Done — enemies die by collapsing.** Everything, boss included, now **flattens where it stood**,
+holds on the ground so the kill is seen, then fades (`_morrer`: `MORTE_TOMBO` 0.22 + `MORTE_ESPERA`
+0.65 + `MORTE_FADE` 0.40), instead of blinking out of existence on the fatal frame. The first
+version *rotated* the body 90°, and since sprites are anchored at the **feet**, that swung the whole
+corpse sideways — on screen it read as the enemy flying off. Flattening keeps the heap exactly
+where it fell; `_knockback` is zeroed too, so the killing blow's recoil does not slide it. Skeletons collapsing under the Necromancer are told apart by a **purple
+enchanted halo** (`_acende_feitico`, the same visual language as his bolt: flattened pulsing rings
+plus rising sparks). It answers the question the player asks the moment a skeleton drops and does
+not die — *is this one getting back up?* Without it, bones that reassemble and bones that stay down
+are the same picture, and the room's rule becomes guesswork. **`died` still fires immediately** — room counts, souls and the boss doors all
 depend on it; only the *node* lingers, with collision and AI off. A corpse is therefore no longer
 in `_enemies`, so `_clear_entities` sweeps stray `EnemyView` children too, or one caught mid-level-
 change would be orphaned into the new scene.

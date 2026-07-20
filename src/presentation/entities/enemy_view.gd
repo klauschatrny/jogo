@@ -64,6 +64,8 @@ var _combo_left := 0                # estocadas restantes do combo em curso
 var _combo_cd := 0.0
 var _guard_fx: Node2D               # o escudo erguido, enquanto a guarda está de pé
 var _morrendo := 0.0                # >0 = cadáver tombando (sem IA, sem colisão), até sumir
+var _feitico_fx: Node2D             # o halo roxo dos ossos que vão se remontar
+var _feitico_t := 0.0
 var _windup := 0.0                  # >0 = em windup (aviso "!" visível); ao zerar, resolve o golpe
 var _warn: Node2D                   # o "!" acima do inimigo durante o windup
 var _hp_bar: ColorRect
@@ -205,6 +207,7 @@ func _physics_process(delta: float) -> void:
 	# Monte de ossos: só a gravidade age. Nada de perseguir, atacar ou tomar dano — ele espera.
 	if _downed > 0.0:
 		_downed -= delta
+		_atualiza_feitico(delta)
 		velocity.x = 0.0
 		move_and_slide()
 		if _downed <= 0.0:
@@ -429,43 +432,16 @@ func apply_damage(amount: int, knockback_mult := 1.0) -> void:
 
 ## O escudo erguido, desenhado à frente do corpo. Sem ele o bloqueio seria invisível: o jogador
 ## veria o golpe conectar e nada acontecer, e concluiria que o jogo está quebrado.
-func _atualiza_escudo() -> void:
-	if guard_drop <= 0.0:
-		return
-	var deve := esta_em_guarda()
-	if deve and not is_instance_valid(_guard_fx):
-		_guard_fx = Node2D.new()
-		_guard_fx.z_index = 5
-		add_child(_guard_fx)
-		var e := ColorRect.new()
-		e.color = Color(0.62, 0.66, 0.74)
-		e.size = Vector2(4.0, 22.0)
-		e.position = Vector2(-2.0, -box_h * 0.5 - 11.0)
-		_guard_fx.add_child(e)
-		var b := ColorRect.new()
-		b.color = Color(0.82, 0.86, 0.92)
-		b.size = Vector2(4.0, 5.0)
-		b.position = Vector2(0.0, 4.0)
-		e.add_child(b)
-	elif not deve and is_instance_valid(_guard_fx):
-		_guard_fx.queue_free()
-		_guard_fx = null
-	if is_instance_valid(_guard_fx):
-		# Sempre do lado do jogador: um escudo pelas costas não faria sentido.
-		var d := 1.0
-		if is_instance_valid(target):
-			d = signf(target.global_position.x - global_position.x)
-		_guard_fx.position.x = (d if d != 0.0 else 1.0) * (box_w * 0.5 + 3.0)
-
-## MORTE. O corpo tomba no chão e some — a mesma leitura do esqueleto que desaba sob o
-## Necromante, agora para todo inimigo e para o chefe. Antes o inimigo simplesmente PISCAVA para
-## fora da existência no frame do golpe fatal, o que roubava do jogador o instante que ele acabou
-## de conquistar.
+## MORTE. O corpo desaba no lugar e some — a mesma leitura do esqueleto que cai sob o Necromante,
+## agora para todo inimigo e para o chefe. Antes o inimigo PISCAVA para fora da existência no frame
+## do golpe fatal, o que roubava do jogador o instante que ele acabara de conquistar.
 ##
-## O sinal `died` sai NA HORA, não no fim da queda: é dele que dependem a contagem da sala, as
-## almas e a abertura das portas do chefe. Só o nó sobrevive mais um instante, já sem colisão e
-## sem IA — um cadáver, não um inimigo.
-const MORTE_QUEDA := 0.55
+## O sinal `died` sai NA HORA, não no fim da queda: dele dependem a contagem da sala, as almas e a
+## abertura das portas do chefe. Só o nó sobrevive mais um instante, já sem colisão e sem IA.
+const MORTE_TOMBO := 0.22          # o corpo desabar
+const MORTE_ESPERA := 0.65         # ficar caído, visível, antes de sumir
+const MORTE_FADE := 0.40
+const MORTE_QUEDA := MORTE_TOMBO + MORTE_ESPERA + MORTE_FADE
 
 func _morrer() -> void:
 	if _morrendo > 0.0:
@@ -474,20 +450,81 @@ func _morrer() -> void:
 	_windup = 0.0
 	_combo_left = 0
 	_hide_warn()
+	_apaga_feitico()
 	if is_instance_valid(_guard_fx):
 		_guard_fx.queue_free()
+		_guard_fx = null
 	collision_layer = 0                 # deixa de ser alvo e de empurrar quem passa
 	collision_mask = 0
 	if _hp_bar != null:
 		_hp_bar.visible = false
-	Juice.burst(get_parent(), global_position, body_color, 16, 140.0)
+	_knockback = Vector2.ZERO           # morre onde caiu: nada de deslizar com o recuo do golpe
+	velocity = Vector2.ZERO
+	Juice.burst(get_parent(), global_position, body_color, 10, 80.0)
 	var alvo: CanvasItem = _sprite if _sprite != null else _body
 	if alvo != null:
+		# DESABA NO LUGAR: achata contra o chão e escurece. A versão anterior girava 90°, e como o
+		# sprite é ancorado nos PÉS a rotação varria o corpo inteiro para o lado — na tela lia-se
+		# como o inimigo "saindo voado". Achatar mantém a pilha exatamente onde ele estava.
+		var e0: Vector2 = alvo.scale
 		var tw := create_tween()
-		tw.tween_property(alvo, "rotation", PI * 0.5, MORTE_QUEDA * 0.45).set_trans(Tween.TRANS_QUAD)
-		tw.parallel().tween_property(alvo, "modulate", Color(0.72, 0.70, 0.62, 0.9), MORTE_QUEDA * 0.45)
-		tw.tween_property(alvo, "modulate:a", 0.0, MORTE_QUEDA * 0.55)
+		tw.tween_property(alvo, "scale", Vector2(e0.x * 1.18, e0.y * 0.16), MORTE_TOMBO).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.parallel().tween_property(alvo, "modulate", Color(0.66, 0.64, 0.58, 1.0), MORTE_TOMBO)
+		tw.tween_interval(MORTE_ESPERA)    # o corpo FICA no chão: a morte precisa ser vista
+		tw.tween_property(alvo, "modulate:a", 0.0, MORTE_FADE)
 	died.emit()
+
+func _atualiza_escudo() -> void:
+	if guard_drop <= 0.0:
+		return
+	var deve := esta_em_guarda()
+	if deve and not is_instance_valid(_guard_fx):
+		_guard_fx = _monta_escudo()
+		add_child(_guard_fx)
+	elif not deve and is_instance_valid(_guard_fx):
+		_guard_fx.queue_free()
+		_guard_fx = null
+
+## Um escudo de metal ACIMA DA CABEÇA — não ao lado do corpo. Acima é onde o jogo já põe os avisos
+## de estado (o "!" do windup), então o olho procura ali; ao lado, o escudo se confundia com a
+## silhueta do próprio esqueleto e sumia no meio da horda.
+func _monta_escudo() -> Node2D:
+	var n := Node2D.new()
+	n.z_index = 30
+	n.position = Vector2(0.0, -box_h * 0.5 - 26.0)
+
+	var aco := Color(0.74, 0.78, 0.86)
+	var borda := Color(0.46, 0.50, 0.58)
+
+	# Corpo do escudo (heater shield): um retângulo em cima e uma ponta afunilada embaixo, feitos
+	# de faixas — pixel-art não pede polígono, e faixas ficam nítidas no low-res.
+	var topo := ColorRect.new()
+	topo.color = aco
+	topo.size = Vector2(12.0, 7.0)
+	topo.position = Vector2(-6.0, -6.0)
+	n.add_child(topo)
+	for i in 3:
+		var f := ColorRect.new()
+		f.color = aco
+		f.size = Vector2(10.0 - i * 3.0, 2.0)
+		f.position = Vector2(-(10.0 - i * 3.0) * 0.5, 1.0 + i * 2.0)
+		n.add_child(f)
+
+	# Contorno escuro em cima e nas laterais: separa o ícone do fundo claro do cenário.
+	var cima := ColorRect.new()
+	cima.color = borda
+	cima.size = Vector2(12.0, 2.0)
+	cima.position = Vector2(-6.0, -6.0)
+	n.add_child(cima)
+
+	# Brilho metálico na diagonal — é o que faz ler como AÇO e não como uma placa qualquer.
+	var brilho := ColorRect.new()
+	brilho.color = Color(0.96, 0.98, 1.0)
+	brilho.size = Vector2(2.0, 8.0)
+	brilho.position = Vector2(-3.0, -5.0)
+	brilho.rotation = 0.28
+	n.add_child(brilho)
+	return n
 
 ## De guarda? Só quem tem a mecânica, está desperto, vivo e fora da janela pós-ataque.
 func esta_em_guarda() -> bool:
@@ -501,8 +538,9 @@ func _collapse() -> void:
 	_windup = 0.0
 	if is_instance_valid(_warn):
 		_warn.queue_free()
-	Juice.burst(get_parent(), global_position, body_color, 14, 120.0)
+	Juice.burst(get_parent(), global_position, Color(0.80, 0.50, 1.0), 14, 120.0)
 	Sfx.play(data.death_sfx)
+	_acende_feitico()
 	# Achatado no chão e apagado: lê como pilha de ossos, e deixa claro que não é alvo.
 	if _sprite != null:
 		_sprite.rotation = PI * 0.5
@@ -512,10 +550,61 @@ func _collapse() -> void:
 	if _hp_bar != null:
 		_hp_bar.visible = false
 
+## O halo ROXO dos ossos caídos, na mesma linguagem visual do projétil do Necromante (núcleo,
+## halo translúcido, pulsação). Ele responde a uma pergunta que o jogador faz na hora em que vê um
+## esqueleto cair e não morrer: "isto vai levantar?". Sem o halo, ossos que se remontam e ossos
+## que ficam ali são exatamente a mesma imagem — e a regra da sala vira adivinhação.
+const FEITICO_PULSE := 6.0
+
+func _acende_feitico() -> void:
+	_apaga_feitico()
+	_feitico_t = 0.0
+	_feitico_fx = Node2D.new()
+	_feitico_fx.z_index = -1          # atrás dos ossos: aura, não máscara
+	_feitico_fx.position = Vector2(0.0, -6.0)
+	add_child(_feitico_fx)
+	for i in 3:
+		var lado := 30.0 + i * 12.0
+		var anel := ColorRect.new()
+		anel.color = Color(0.72, 0.42, 1.0, 0.30 - i * 0.08)
+		anel.size = Vector2(lado, lado * 0.42)     # achatado: acompanha a pilha no chão
+		anel.position = Vector2(-lado * 0.5, -lado * 0.21)
+		anel.pivot_offset = anel.size * 0.5
+		_feitico_fx.add_child(anel)
+	for i in 4:
+		var f := ColorRect.new()
+		f.color = Color(0.92, 0.74, 1.0)
+		f.size = Vector2(2, 2)
+		f.position = Vector2(-12.0 + i * 8.0, 0.0)
+		f.set_meta("fase", float(i) * 0.55)
+		_feitico_fx.add_child(f)
+
+func _atualiza_feitico(delta: float) -> void:
+	if not is_instance_valid(_feitico_fx):
+		return
+	_feitico_t += delta
+	var i := 0
+	for c in _feitico_fx.get_children():
+		if c is ColorRect and c.size.x > 6.0:
+			var k := 1.0 + 0.16 * sin(_feitico_t * FEITICO_PULSE - i * 0.7)
+			c.scale = Vector2(k, k)
+			i += 1
+		elif c is ColorRect:
+			var fase := float(c.get_meta("fase", 0.0))
+			var t: float = fmod(_feitico_t + fase, 1.1) / 1.1
+			c.position.y = -t * 22.0
+			c.modulate.a = 1.0 - t
+
+func _apaga_feitico() -> void:
+	if is_instance_valid(_feitico_fx):
+		_feitico_fx.queue_free()
+	_feitico_fx = null
+
 ## Remonta: vida cheia, de pé, no mesmo lugar. O jogador que "matou" e seguiu adiante tem um
 ## inimigo novo pelas costas — é o preço de ignorar o Necromante.
 func _rise() -> void:
 	_downed = 0.0
+	_apaga_feitico()
 	data.stats.current_hp = data.stats.max_hp
 	_refresh_hp_bar()
 	if _sprite != null:
@@ -531,6 +620,7 @@ func _rise() -> void:
 func final_death() -> void:
 	reassemble_time = 0.0
 	_downed = 0.0
+	_apaga_feitico()
 	Juice.burst(get_parent(), global_position, body_color, 16, 140.0)
 	died.emit()
 	queue_free()
