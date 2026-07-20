@@ -16,15 +16,20 @@ const REACH := 34.0              # distância para interagir (base 640×360)
 var _player: Node2D
 var _aberto := false
 var _pode_destrancar := false    # esta ponta tem a tranca? (só uma das duas tem)
+var _oculto := false             # invisível enquanto travada (a boca fica ESCONDIDA sob outra coisa,
+                                 # ex.: o Sir Big T. sentado em cima dela — ver floor_scene)
 var _tabuas: Node2D
 var _prompt: Label
 
-func setup(x: float, player: Node2D, aberto: bool, pode_destrancar: bool) -> void:
+func setup(x: float, player: Node2D, aberto: bool, pode_destrancar: bool, oculto := false) -> void:
 	position.x = x
 	_player = player
 	_aberto = aberto
 	_pode_destrancar = pode_destrancar
+	_oculto = oculto
 	_build()
+	if _oculto and not _aberto:
+		visible = false          # travada e escondida: nem se desenha nem se interage
 
 func _build() -> void:
 	z_index = -2                 # à frente do chão, atrás das entidades
@@ -78,6 +83,8 @@ func _verbo() -> String:
 	return "destrancar o poço" if _pode_destrancar else "poço travado (do outro lado)"
 
 func in_reach(player: Node2D) -> bool:
+	if _oculto and not _aberto:
+		return false             # escondida: não responde a INTERAGIR (quem age ali é o que a cobre)
 	return is_instance_valid(player) and absf(player.global_position.x - global_position.x) <= REACH
 
 ## Destrancou: as tábuas caem e a boca fica aberta.
@@ -85,6 +92,7 @@ func abrir() -> void:
 	if _aberto:
 		return
 	_aberto = true
+	visible = true               # aberta, aparece — mesmo que estivesse escondida enquanto travada
 	if is_instance_valid(_tabuas):
 		var tw := create_tween()
 		tw.tween_property(_tabuas, "modulate:a", 0.0, 0.25)

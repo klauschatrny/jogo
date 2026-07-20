@@ -1774,7 +1774,8 @@ func _spawn_shortcut(_level_id: String) -> void:
 	_shortcut = ShortcutView.new()
 	_shortcut.position = Vector2(_shortcut_x, GROUND_Y)
 	_env.add_child(_shortcut)
-	_shortcut.setup(_shortcut_x, _player_view, _run.is_gate_open(_shortcut_id), _shortcut_unlocks)
+	_shortcut.setup(_shortcut_x, _player_view, _run.is_gate_open(_shortcut_id), _shortcut_unlocks,
+		bool(sc.get("oculto_travado", false)))
 
 ## A ENTRADA de um nível de sala (levels.json → "entrance"): o que existe ANTES da zona de
 ## combate. É onde mora a fogueira do Portão — a primeira do jogo, e por isso onde nasce a lição
@@ -1795,13 +1796,16 @@ func _spawn_entrance(level_id: String) -> void:
 		bf.rested.connect(_on_bonfire_rested)
 		_bonfires.append(bf)
 
-		# O Sir Big T., à ESQUERDA da fogueira (ela fica à direita dele). Longe o bastante para que
-		# INTERAGIR nunca seja ambíguo — as interações do jogo se desambiguam só por proximidade.
-		var nx := bx - float(ent.get("npc_offset", 56.0))
-		_npc = NpcView.new()
-		_env.add_child(_npc)
-		_npc.setup(nx, GROUND_Y, _player_view, "Sir Big T.")
-		_npc.falado.connect(_on_npc_falado)
+		# O Sir Big T., à ESQUERDA da fogueira (ela fica à direita dele). Ele SOME quando o atalho
+		# deste nível é aberto: a boca do poço estava escondida SOB ele o tempo todo, e abri-la
+		# (pela outra ponta, no Cemitério) o dispensa — você desce e chega onde ele estava.
+		var sc_id := String(_floor_config.get("shortcut", {}).get("id", ""))
+		if sc_id == "" or not _run.is_gate_open(sc_id):
+			var nx := bx - float(ent.get("npc_offset", 56.0))
+			_npc = NpcView.new()
+			_env.add_child(_npc)
+			_npc.setup(nx, GROUND_Y, _player_view, "Sir Big T.")
+			_npc.falado.connect(_on_npc_falado)
 
 	var g: Dictionary = ent.get("gate", {})
 	if g.is_empty():

@@ -12,11 +12,11 @@
             "enm_skeleton_minion"
           ],
           "at": [
-            620,
-            800,
+            640,
+            810,
             980,
-            1140,
-            1270,
+            1130,
+            1260,
             1380
           ]
         }
@@ -26,25 +26,26 @@
       },
       "shortcut": {
         "id": "poco_cemiterio",
-        "at": 380,
+        "at": 150,
+        "oculto_travado": true,
         "to": {
           "level": "cemiterio",
           "x": 2540
         }
       },
       "entrance": {
-        "bonfire_at": 150,
+        "bonfire_at": 220,
         "gate": {
           "id": "portao_cidade",
-          "at": 320,
+          "at": 390,
           "w": 56,
           "h": 150,
           "lever_back": 50
         },
-        "npc_offset": 56
+        "npc_offset": 70
       },
       "sanctuary_bonfire": false,
-      "spawn_from": 400
+      "spawn_from": 470
     },
     "cemiterio": {
       "name": "Cemitério",
@@ -101,7 +102,7 @@
         "unlocks": true,
         "to": {
           "level": "portao",
-          "x": 380
+          "x": 150
         }
       },
       "sanctuary_bonfire": false,

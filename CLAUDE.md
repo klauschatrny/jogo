@@ -87,11 +87,14 @@ so the run-back is *portão entrance → open the well → out right before the 
 run-back is the whole of both levels on foot.
 
 **The shortcut is two well mouths in different levels sharing one `id`**, each pointing at where the
-other sits: `{ id, at (absolute x), to: { level, x }, unlocks }`. Opening either opens both, forever
-(`RunState.opened_gates`, survives death). Only the end with `unlocks: true` has the latch, and it
-sits on the **far** side — in `cemiterio`, right before the boss fog — so you never *find* the
-shortcut, you open it from inside after walking the hard way once. It lands in `portao` just past
-the city gate, which is what collapses the run-back. Both ends are **`interact`, never
+other sits: `{ id, at (absolute x), to: { level, x }, unlocks, oculto_travado }`. Opening either
+opens both, forever (`RunState.opened_gates`, survives death). Only the end with `unlocks: true` has
+the latch, and it sits on the **far** side — in `cemiterio`, right before the boss fog — so you
+never *find* the shortcut, you open it from inside after walking the hard way once. Its `portao`
+mouth sits **right under Sir Big T.**, at his exact x, `oculto_travado: true` so it is **invisible
+and inert while locked** (hidden beneath him). Opening it from the far end dismisses the knight
+(`_spawn_entrance` skips him once the gate is open) and reveals the mouth — you descend and arrive
+exactly where he sat, past the city gate, which is what collapses the run-back. Both ends are **`interact`, never
 walk-through** (the mouth sits on the mandatory path; walking through it would teleport the player
 every time they passed). `ShortcutView` draws it with two distinct states — boarded planks vs. an
 open black shaft — and **always prompts in reach**, including *"poço travado (do outro lado)"* on
