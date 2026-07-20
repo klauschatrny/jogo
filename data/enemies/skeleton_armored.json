@@ -7,7 +7,7 @@
   "base_stats": { "max_hp": 55, "attack": 9, "defense": 5, "move_speed": 44 },
   "attack_range": 50,
   "windup": 0.225,
-  "attack_cooldown": 0.9,
+  "attack_cooldown": 1.25,
   "ai_profile": "aggressive",
   "attack_sfx": "skeleton_attack",
   "hurt_sfx": "skeleton_hurt",

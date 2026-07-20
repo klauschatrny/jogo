@@ -151,9 +151,9 @@ purely by proximity — they sit far enough apart that only one is ever in reach
 
 **Done — per-enemy attack rhythm, and the Necromancer telegraphs.** The three skeletons used to be
 timing-identical (code defaults 0.18 / 1.0); now each declares its own in JSON — minion
-**0.2 / 1.5**, armoured **0.225 / 0.9**, heavy **0.35 / 1.5**. Remember the windup *freezes* the
-cooldown, so the real cycle is their sum (1.70 / 1.125 / 1.85): the armoured is the fast one, the
-heavy the slow heavy hitter.
+**0.2 / 1.0**, armoured **0.225 / 1.25**, heavy **0.35 / 1.5**. Remember the windup *freezes* the
+cooldown, so the real cycle is their sum (**1.20 / 1.475 / 1.85**): a clean ladder from the quick
+harassing minion to the slow heavy hitter.
 
 The **Necromancer's projectile was the only attack in the game with no tell** — and now that he
 fires from any distance, that was punishing rather than teachable. It gained a **0.35s windup** and
