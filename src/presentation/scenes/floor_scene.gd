@@ -124,7 +124,7 @@ const BOSS_DOOR_IN := 26.0     # as portas da arena do chefe, este tanto para de
 # dela, um trecho seguro de SANCTUARY_LEN com o portão, a fogueira e a névoa do chefe. Assim a
 # sala da fogueira deixou de ser uma tela à parte (com fade) e virou parte contínua do mapa, que o
 # jogador percorre indo e voltando.
-const SANCTUARY_LEN := 980.0   # comprimento do refúgio, somado à zona de combate (folga p/ a guarda)
+const SANCTUARY_LEN := 980.0   # comprimento PADRÃO do refúgio, somado à zona de combate (folga p/ a guarda)
 const LEVER_BACK := 96.0       # a alavanca fica este tanto à ESQUERDA do portão (depois do Necromante)
 const BONFIRE_IN := 160.0      # a fogueira, este tanto à DIREITA do portão (logo depois dele)
 const FOG_BACK := 34.0         # a névoa, este tanto antes da parede do fim
@@ -678,15 +678,19 @@ func _start_tutorial() -> void:
 
 ## Boneco de treino: esqueleto blindado passivo (dormant) pra praticar o ataque. Some se
 ## derrotado. Não dá XP (tier "minion") nem participa da lógica de sala.
+## Espantalho de treino da Cidade: um boneco de palha que reage ao golpe (balança, pisca) mas não
+## é inimigo — não persegue, não ataca, não morre. Trocou o esqueleto dormente que fazia esse papel
+## antes: um esqueleto parado na vila sugeria que a Cidade tinha combate, o que ela não tem. Vai
+## direto na cena (não em _enemies): não conta para nada, não emite `died`.
 func _spawn_training_dummy(x: float) -> void:
-	var base := _enemy_repo.get_by_id("enm_skeleton_minion")
-	if base.is_empty():
-		return
-	var enemy := EnemyFactory.build(base)
-	var view := EnemyView.new()
-	view.set_meta("tier", "minion")
-	view.dormant = true
-	_add_view(view, enemy, Vector2(x, GROUND_Y - 40.0))
+	var enemy := Enemy.from_dict({
+		"id": "boneco_treino", "name": "Espantalho", "rank": "NORMAL",
+		"base_stats": { "max_hp": 99999, "attack": 0, "defense": 0, "move_speed": 0 },
+	})
+	var view := ScarecrowView.new()
+	view.setup(enemy, _player_view)
+	view.position = Vector2(x, GROUND_Y - 40.0)
+	_env.add_child(view)
 
 # ---------------------------------------------------------------------------
 # Toast de dica (HUD). Uma caixa centrada na parte INFERIOR da tela com uma instrução. Aparece por
@@ -1035,8 +1039,13 @@ func _start_floor() -> void:
 
 	# O corredor tem duas partes: a ZONA DE COMBATE (corridor_length) e, depois dela, o REFÚGIO
 	# (SANCTUARY_LEN) com o portão, a fogueira e a névoa do chefe — tudo contínuo, sem fade.
+	# O refúgio (o trecho após o combate) tem SANCTUARY_LEN por padrão — espaço para o portão, a
+	# fogueira, a guarda e a névoa do chefe. Um nível que não usa nada disso (o Portão: fogueira e
+	# portão ficam na ENTRADA, sem guarda e sem chefe adiante) sobra com um vão vazio enorme até a
+	# porta de saída; "sanctuary_len" encurta esse trecho por nível.
 	_corridor_length = float(_floor_config.get("corridor_length", _corridor_length))
-	_build_environment(_corridor_length + SANCTUARY_LEN, false, hazards)
+	var sanct := float(_floor_config.get("sanctuary_len", SANCTUARY_LEN))
+	_build_environment(_corridor_length + sanct, false, hazards)
 	_fight_width = _corridor_length          # combate só na 1ª parte; _build_environment o resetara p/ o total
 	var start_x := _run.respawn_x(PLAYER_START_X)   # início do nível, ou a fogueira ao renascer
 	if from_right:

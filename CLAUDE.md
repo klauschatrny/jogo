@@ -474,6 +474,17 @@ is stuck forever. **Right now there is no pit anywhere** (the tutorial's was rem
 `_TUTORIAL_HAZARDS` is empty and no level declares `"hazards"`, so the whole hazard machinery
 (`HazardView`, `_off_pit`, `_ledge_ahead`) sits idle, ready for a level that places one.
 
+**Done — the training scarecrow, and a shorter Portão tail.** The tutorial village's practice
+target is a **`ScarecrowView`** (straw dummy on a post: it flashes, sheds straw and *wobbles* on a
+damped spring when hit, but has no HP loss, no AI, no death) — it replaced the dormant skeleton that
+used to stand in, which wrongly implied the Cidade had combat. It extends `EnemyView` only to pass
+the sword's `is EnemyView` check; `setup` is minimal and `_build`/`_physics_process` are fully
+overridden (collision shape + straw drawing, gravity + wobble, nothing else). It is spawned
+straight into `_env`, not `_enemies`. **Sanctuary length is now per-level** (`sanctuary_len`,
+default `SANCTUARY_LEN` 980): the refuge stretch appended after combat holds the gate, bonfire,
+guard and boss fog, but `portao` has none of those in its sanctuary (its fire and gate are in the
+`entrance`), so it was leaving a ~950px empty run to the exit door — cut to 170.
+
 **Scenery decoration** (`_decorate_scenery`, called from `_build_environment`) scatters placeholder
 background props — dead trees, rocks, wooden fences, ruined buildings (ColorRect/Polygon2D, no art
 yet, no collision, `z = DECO_Z = -4`, behind entities and in front of the ground) — so levels don't

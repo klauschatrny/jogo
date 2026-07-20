@@ -45,7 +45,8 @@
         "npc_offset": 70
       },
       "sanctuary_bonfire": false,
-      "spawn_from": 470
+      "spawn_from": 470,
+      "sanctuary_len": 170
     },
     "cemiterio": {
       "name": "Cemitério",
