@@ -19,6 +19,13 @@ const LEDGE_DEPTH := 20.0          # o quanto abaixo dos pés ainda conta como "
 var data: Enemy                     # entidade Core
 var target: Node2D                  # quem perseguir (o PlayerView)
 var dormant := false                # passivo: não persegue nem ataca até ser ativado (elites em estágio)
+# --- Remontagem (esqueletos sob um Necromante) ---
+# >0 = este esqueleto NÃO MORRE: ao zerar a vida ele DESABA em ossos ali mesmo e se remonta,
+# inteiro, depois deste tanto de segundos. Enquanto está caído é um monte de ossos: não anda, não
+# ataca e não recebe dano — bater nele é desperdiçar golpe. Só matando o Necromante ele morre de
+# verdade (floor_scene chama final_death). 0 = morte normal, como qualquer inimigo.
+var reassemble_time := 0.0
+var _downed := 0.0                  # segundos restantes de "monte de ossos" (0 = de pé)
 var attack_range := ATTACK_RANGE    # alcance de GATILHO/aproximação do golpe melee
 var hit_range := 0.0                # alcance de DANO/efeito do golpe (0 = usa attack_range)
 var attack_style := "slash"         # estilo do efeito melee: "slash" (arco) | "thrust" (estocada)
@@ -136,6 +143,15 @@ func _physics_process(delta: float) -> void:
 	# Gravidade contínua; o chão (camada 4) segura o inimigo.
 	if not is_on_floor():
 		velocity.y += GRAVITY * delta
+
+	# Monte de ossos: só a gravidade age. Nada de perseguir, atacar ou tomar dano — ele espera.
+	if _downed > 0.0:
+		_downed -= delta
+		velocity.x = 0.0
+		move_and_slide()
+		if _downed <= 0.0:
+			_rise()
+		return
 
 	# IA lateral: avança no eixo X em direção ao player.
 	var dx := target.global_position.x - global_position.x
@@ -274,6 +290,8 @@ func _hide_warn() -> void:
 	_warn = null
 
 func apply_damage(amount: int, knockback_mult := 1.0) -> void:
+	if _downed > 0.0:
+		return                      # um monte de ossos não sangra: o golpe passa reto
 	data.stats.current_hp -= amount
 	# Golpe fatal tem som próprio (o grito de morte); os demais, o de dano. Ids no JSON da
 	# entidade; sem eles, silêncio.
@@ -292,9 +310,54 @@ func apply_damage(amount: int, knockback_mult := 1.0) -> void:
 		_knockback = Vector2(dir * KNOCKBACK_FORCE * knockback_mult, 0.0)
 	_on_after_damage()
 	if data.stats.current_hp <= 0:
+		if reassemble_time > 0.0:
+			_collapse()             # sob o Necromante: desaba, não morre
+			return
 		Juice.burst(get_parent(), global_position, body_color, 16, 140.0)
 		died.emit()
 		queue_free()
+
+## Desaba num monte de ossos, no lugar exato onde caiu. Não emite `died`: para a sala, este
+## esqueleto continua existindo — é isso que faz o Necromante ser o único objetivo real.
+func _collapse() -> void:
+	_downed = reassemble_time
+	data.stats.current_hp = 0        # zera o excedente: caído é caído, não "-99929 de vida"
+	_windup = 0.0
+	if is_instance_valid(_warn):
+		_warn.queue_free()
+	Juice.burst(get_parent(), global_position, body_color, 14, 120.0)
+	Sfx.play(data.death_sfx)
+	# Achatado no chão e apagado: lê como pilha de ossos, e deixa claro que não é alvo.
+	if _sprite != null:
+		_sprite.rotation = PI * 0.5
+		_sprite.modulate = Color(0.72, 0.70, 0.62, 0.85)
+	else:
+		_body.rotation = PI * 0.5
+	if _hp_bar != null:
+		_hp_bar.visible = false
+
+## Remonta: vida cheia, de pé, no mesmo lugar. O jogador que "matou" e seguiu adiante tem um
+## inimigo novo pelas costas — é o preço de ignorar o Necromante.
+func _rise() -> void:
+	_downed = 0.0
+	data.stats.current_hp = data.stats.max_hp
+	_refresh_hp_bar()
+	if _sprite != null:
+		_sprite.rotation = 0.0
+		_sprite.modulate = Color.WHITE
+	else:
+		_body.rotation = 0.0
+	if _hp_bar != null:
+		_hp_bar.visible = hp_bar_visible
+	Juice.burst(get_parent(), global_position, body_color, 12, 110.0)
+
+## O Necromante caiu: acaba a remontagem e este esqueleto morre de verdade, esteja de pé ou caído.
+func final_death() -> void:
+	reassemble_time = 0.0
+	_downed = 0.0
+	Juice.burst(get_parent(), global_position, body_color, 16, 140.0)
+	died.emit()
+	queue_free()
 
 func _refresh_hp_bar() -> void:
 	if _hp_bar == null:   # bosses não têm barra acima da cabeça

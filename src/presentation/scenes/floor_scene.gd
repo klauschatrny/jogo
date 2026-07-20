@@ -38,17 +38,16 @@ var _fade_layer: CanvasLayer         # camada do fade — o letreiro da morte mo
 var _death_banner: Label             # letreiro "VOCÊ MORREU" (some quando a tela volta)
 
 # --- Sala (regida pelo Necromante) ---
-# O Necromante (classe "elite") nasce no fim da sala, estático e ranged. Enquanto vive, cada
-# esqueleto morto (minion/normal/heavy) renasce após respawn_delay num raio ao redor dele. Ao
-# morrer, TODOS os esqueletos morrem e a sala é liberada. Heavies mantêm o encadeamento a/b/c (andar 1).
+# O Necromante (classe "elite") nasce no fim da sala, estático e ranged. Enquanto vive, esqueleto
+# nenhum morre: zerada a vida, ele DESABA em ossos onde estava e se remonta inteiro em
+# room.reassemble_time segundos. Ao Necromante cair, TODOS caem junto e a sala é liberada.
+# Heavies mantêm o encadeamento a/b/c.
 var _room: Dictionary = {}
 var _alive := { "minion": 0, "normal": 0, "heavy": 0, "elite": 0 }
 # Andar 1: heavies a/b/c em estágio. Cada item: { view, spawn_x, activated, dead }.
 var _heavy_stage: Array = []
 var _first_kill_done := false   # 1º esqueleto da horda morto (um dos gatilhos do heavy 'a')
 var _necro: NecromancerView     # o Necromante (objetivo da sala); null se morto/inexistente
-var _dead_pool: Array = []      # tiers de esqueletos eliminados aguardando reinvocação (1 por cast)
-var _respawn_running := false   # o loop de cast de respawn está ativo?
 var _current_boss_id := ""
 var _boss_view: EnemyView
 var _intro_token := 0           # invalida cutscenes de entrada antigas ainda no ar (ver _boss_intro)
@@ -863,9 +862,7 @@ func _clear_entities() -> void:
 	_boss_view = null
 	_necro = null
 	_heavy_stage.clear()
-	_dead_pool.clear()
 	_alive = { "minion": 0, "normal": 0, "heavy": 0, "elite": 0 }
-	_respawn_running = false
 	_first_kill_done = false
 
 func _start_floor() -> void:
@@ -978,8 +975,6 @@ func _start_room() -> void:
 	_heavy_stage.clear()
 	_first_kill_done = false
 	_necro = null
-	_dead_pool.clear()
-	_respawn_running = false
 
 	# Necromante(s): objetivo da sala. Nasce(m) no FIM do corredor, estático(s).
 	for spec in _room.get("elites", []):
@@ -1002,7 +997,6 @@ func _start_room() -> void:
 		_msg.text = "%s: o Necromante comanda a horda. Elimine-o!" % _level_name()
 	else:
 		_msg.text = "%s: limpe a sala de esqueletos." % _level_name()
-	_start_respawn_cast()   # loop de reinvocação: 1 esqueleto do pool por cast, enquanto o Necromante vive (sem ele, no-op)
 	_check_room_cleared()   # fallback: sem Necromante, a sala limpa por contagem
 
 ## Spec de um tier: { "ids": [...], "count": N }.
@@ -1034,6 +1028,10 @@ func _spawn_room_enemy(tier: String, id: String, pos: Vector2) -> EnemyView:
 	var enemy := EnemyFactory.build(base)
 	var view := EnemyView.new()
 	view.set_meta("tier", tier)
+	# Sob um Necromante, esqueleto não morre: desaba em ossos e se remonta sozinho (ver
+	# EnemyView._collapse). Quem apaga isso é a morte do Necromante — ele é o objetivo real.
+	if tier != "elite" and _has_necro():
+		view.reassemble_time = float(_room.get("reassemble_time", 2.0))
 	_alive[tier] += 1
 	_add_view(view, enemy, pos)
 	return view
@@ -1092,13 +1090,9 @@ func _on_room_enemy_died(view: EnemyView) -> void:
 			_on_floor_cleared()
 			return
 		"heavy":
-			_mark_heavy_dead(view)            # andar 1: destrava o próximo heavy da cadeia
-			if _has_necro():
-				_dead_pool.append("heavy")    # entra no pool; renasce num cast futuro
+			_mark_heavy_dead(view)            # destrava o próximo heavy da cadeia
 		"minion", "normal":
 			_first_kill_done = true           # 1º esqueleto da horda → gatilho do heavy 'a'
-			if _has_necro():
-				_dead_pool.append(tier)
 	_update_heavy_chain()
 	_check_room_cleared()
 
@@ -1150,62 +1144,17 @@ func _update_room_wake() -> void:
 		if absf(px - v.global_position.x) <= MINION_WAKE:
 			v.dormant = false
 
-# --- Respawn automático por morte (perto do Necromante) ---
-# Ao morrer um esqueleto (minion/normal/heavy) com o Necromante vivo, ele renasce após
-# respawn_delay dentro de um raio ao redor do Necromante. Matar o Necromante encerra tudo.
-
-const RESPAWN_RADIUS := 24.0
+# --- A REMONTAGEM (esqueletos sob o Necromante) ---
+# Enquanto ele vive, esqueleto nenhum morre: zerou a vida, DESABA em ossos ali mesmo e se remonta
+# inteiro alguns segundos depois (EnemyView._collapse/_rise, tempo em room.reassemble_time). Não
+# adianta limpar a sala — ela se refaz. Matar o Necromante é a única saída, e aí todos caem juntos.
 
 func _has_necro() -> bool:
 	return is_instance_valid(_necro)
 
-## Ponto aleatório uniforme num disco de RESPAWN_RADIUS ao redor do Necromante.
-func _necro_spawn_pos() -> Vector2:
-	var c := _necro.global_position if _has_necro() else Vector2(_fight_width - 198.0, GROUND_Y - 40.0)
-	var ang := randf() * TAU
-	var r := sqrt(randf()) * RESPAWN_RADIUS
-	var p := c + Vector2(cos(ang), sin(ang)) * r
-	p.x = _off_pit(p.x)          # o reinvocado não pode brotar dentro de um poço (não sairia)
-	return p
-
-## Loop de reinvocação do Necromante: a cada respawn_delay, revive UMA unidade aleatória do pool
-## de esqueletos eliminados (se houver). Um cast por vez. Para de reagendar quando o Necromante cai.
-func _start_respawn_cast() -> void:
-	if _respawn_running or not _has_necro():
-		return
-	_respawn_running = true
-	_queue_next_cast()
-
-func _queue_next_cast() -> void:
-	var delay := float(_room.get("respawn_delay", 4.0))
-	get_tree().create_timer(delay).timeout.connect(_respawn_cast)
-
-func _respawn_cast() -> void:
-	if _phase != "room" or not _has_necro():
-		_respawn_running = false
-		return   # sala acabou / Necromante morto → encerra o loop
-	if not _dead_pool.is_empty():
-		var idx := randi() % _dead_pool.size()
-		var tier := String(_dead_pool[idx])   # 1 unidade aleatória do pool
-		_dead_pool.remove_at(idx)
-		var ids: Array = _tier_spec(tier).get("ids", [])
-		if not ids.is_empty():
-			var v := _spawn_room_enemy(tier, String(ids[randi() % ids.size()]), _necro_spawn_pos())
-			if tier == "heavy" and v != null:
-				_reassign_heavy(v)
-	_queue_next_cast()
-
-## Reassocia um heavy renascido (já ativo) ao primeiro estágio morto, para o encadeamento seguir.
-func _reassign_heavy(v: EnemyView) -> void:
-	for st in _heavy_stage:
-		if bool(st["dead"]):
-			st["view"] = v
-			st["dead"] = false
-			st["activated"] = true
-			return
-
 ## Necromante caiu → todos os esqueletos morrem. Libera o resto da sala.
 func _kill_all_skeletons() -> void:
+	# Sem quem os remonte, os ossos param de se levantar — os de pé e os caídos caem juntos.
 	for v in _enemies.duplicate():
 		if is_instance_valid(v):
 			v.queue_free()
@@ -1214,7 +1163,6 @@ func _kill_all_skeletons() -> void:
 		if c is NecroProjectile:
 			c.queue_free()
 	_alive = { "minion": 0, "normal": 0, "heavy": 0, "elite": 0 }
-	_dead_pool.clear()
 
 ## Sala limpa: com Necromante vivo, só ao matá-lo (trata direto no _on_room_enemy_died). Sem
 ## Necromante (fallback), limpa quando não sobra ninguém → conclui o nível.
@@ -1724,23 +1672,20 @@ func _has_exit(nome: String) -> bool:
 	var e := _exit(nome)
 	return not e.is_empty() and _levels.has(e["level"])
 
-## Atravessa uma saída. `heal` = curar ao chegar: hoje só a travessia "para frente" cura, herança
-## do fim-de-andar do roguelike. Num soulslike isso é discutível — curar deveria ser papel
-## exclusivo da fogueira e do frasco —, mas mexer nisso muda o feel do jogo, então fica como está
-## até ser uma decisão de design tomada de propósito.
-func _go_through(nome: String, heal: bool = true) -> void:
+## Atravessa uma saída. Nenhuma travessia cura: a vida só volta na fogueira e no frasco.
+func _go_through(nome: String) -> void:
 	var e := _exit(nome)
 	if e.is_empty():
 		return
 	_entry_point = String(e.get("entry", "inicio"))
-	_run.go_to(String(e["level"]), heal)
+	_run.go_to(String(e["level"]))
 	_start_floor()
 
 func _next_floor() -> void:
-	_go_through("frente", true)
+	_go_through("frente")
 
 func _prev_floor() -> void:
-	_go_through("tras", false)   # revisitar não cura
+	_go_through("tras")
 
 ## Morte (soulslike): a run NÃO acaba mais. A tela escurece com "VOCÊ MORREU", o mundo se refaz
 ## e o jogador levanta na última fogueira em que descansou, com vida e stamina cheias. Ele mantém
@@ -1971,7 +1916,7 @@ func _debug_skip_floors(n: int) -> void:
 		if not _has_exit("frente"):
 			break
 		var e := _exit("frente")
-		_run.go_to(String(e["level"]), true)
+		_run.go_to(String(e["level"]))
 		_floor_config = _levels.get(_run.current_level, {})
 	_start_floor()
 

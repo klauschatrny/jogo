@@ -167,16 +167,16 @@ func boss_seen(boss_id: String) -> bool:
 
 ## Vai para outro nível do grafo. Substituiu advance_floor/retreat_floor: com um mapa, "avançar"
 ## e "recuar" deixaram de ser direções — são só arestas, e quem sabe para onde levam é o levels.json.
-## `heal` distingue os dois usos que sobraram: seguir adiante cura (herança do fim-de-andar do
-## roguelike), revisitar não. Ver a nota em floor_scene._go_to sobre isto ser discutível num
-## soulslike, onde curar deveria ser papel exclusivo da fogueira e do frasco.
-func go_to(level_id: String, heal: bool = false) -> void:
+##
+## NÃO CURA, em nenhuma direção. Atravessar para o próximo andar com a vida cheia era uma herança
+## do roguelike, e desfazia o jogo inteiro: chegar ao chefe com o frasco intacto e a barra cheia
+## de graça apaga a conta de recursos que a área anterior acabou de cobrar. Vida só volta pela
+## FOGUEIRA e pelo FRASCO — são as duas únicas fontes, de propósito.
+func go_to(level_id: String) -> void:
 	if level_id == "":
 		return
 	clear_vengeance()                  # o buff de Vingança dura só até o fim do nível (§1.4.3)
 	current_level = level_id
-	if heal:
-		player.heal(player.stats.max_hp)
 	EventBus.level_changed.emit(current_level)
 
 ## Buff de Vingança (§1.4.3): +VENGEANCE_DAMAGE_BUFF de dano até o fim do andar. Implementado

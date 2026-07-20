@@ -82,6 +82,21 @@ path to the boss fog, so crossing it by walking would teleport the player to the
 they went to fight. The village end sits **behind** the spawn point (`VILLAGE_SHORTCUT_X`) for the
 same reason. Today: `poco_cripta` in `cripta_entrada`.
 
+**Done — traversal never heals.** `go_to()` lost its `heal` flag: walking into the next area used
+to restore full HP (a roguelike end-of-floor convention), which erased the resource bill the
+previous area had just charged — you reached the boss topped up and with a full flask for free.
+**HP now comes from exactly two places: the bonfire and the flask.**
+
+**Done — the Ossuary, and the new reassembly mechanic.** `cripta_ossario` sits between the
+skeleton room and the Ogre arena: armoured skeletons + heavies + the Necromancer. **While the
+Necromancer lives, no skeleton dies.** At 0 HP it *collapses into bones where it stood*
+(`EnemyView._collapse`), takes no further damage in that state, and **reassembles intact** after
+`room.reassemble_time` seconds (2.0). Clearing the room is impossible by force; killing the
+Necromancer is the only exit, and it drops every skeleton at once. This **replaced** the older
+pool-based revival (`_dead_pool`/`_respawn_cast`, deleted): that one spawned a *new* skeleton near
+the Necromancer after a delay, so the room slowly refilled from one point. The new one is the *same*
+skeleton getting back up where you left it — you can't create safe ground, only spend the time.
+
 **Passages — lever/gate and fog, not walk-through doors.** The village entrance is still a plain
 door you walk into. *Inside* the dungeon there are two mechanism passages, both persisted in
 `RunState`:

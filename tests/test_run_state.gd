@@ -39,13 +39,17 @@ func test_go_to_com_id_vazio_nao_move() -> void:
 	rs.go_to("")
 	assert_eq(rs.current_level, INICIO)
 
-func test_go_to_cura_so_quando_pedido() -> void:
+## Trocar de nível NUNCA cura, em direção nenhuma. Chegar ao chefe com a barra cheia de graça
+## apagaria a conta de recursos que a área anterior acabou de cobrar — vida só volta na fogueira
+## e no frasco.
+func test_go_to_nunca_cura() -> void:
 	var rs := _run()
 	rs.player.take_damage(80)
+	var hp := rs.player.stats.current_hp
 	rs.go_to(ADIANTE)
-	assert_true(rs.player.stats.current_hp < rs.player.stats.max_hp, "revisitar não cura")
-	rs.go_to(INICIO, true)
-	assert_eq(rs.player.stats.current_hp, rs.player.stats.max_hp)
+	assert_eq(rs.player.stats.current_hp, hp, "seguir adiante não cura")
+	rs.go_to(INICIO)
+	assert_eq(rs.player.stats.current_hp, hp, "voltar também não")
 
 func test_offer_augments_quantidade_padrao() -> void:
 	var rs := _run()
