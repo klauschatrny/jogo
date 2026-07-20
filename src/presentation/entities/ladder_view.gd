@@ -13,34 +13,46 @@ const RUNG_GAP := 9.0            # espaçamento dos degraus
 
 var altura := 0.0                # do chão até o topo da plataforma
 var _topo_y := 0.0               # y do topo (onde se sai para a plataforma)
-var _saida_x := 0.0              # onde o corpo é posto ao chegar no topo (em cima do tabuleiro)
+## Quanto se sobe ACIMA do tabuleiro antes de largar a escada. Precisa caber o corpo inteiro:
+## largando exatamente na altura da laje, os pés ficariam dentro dela. Com esta folga, o jogador
+## termina a subida com o corpo acima do piso e a gravidade simplesmente o assenta — sem nenhum
+## reposicionamento, que era o solavanco da versão anterior.
+const SAIDA_ACIMA := 34.0
+## E onde a descida termina: um pouco acima do chão, para a gravidade assentar o corpo.
+const SAIDA_ABAIXO := 20.0
 var _player: Node2D
 var _prompt: Label
 var em_uso := false              # o floor_scene/PlayerView avisa: escondendo o convite enquanto escala
 ## Quanto se pode estar fora do eixo e ainda contar como "na escada". Precisa cobrir o
 ## deslocamento da saída no topo: quem sobe por um alçapão sai AO LADO do buraco (senão cairia
 ## por ele), e sem essa folga não conseguiria remontar para descer — ficaria preso lá em cima.
-var tolerancia_x := WIDTH * 0.5 + 14.0
+var tolerancia_x := WIDTH * 0.5 + 10.0
 
 ## `saida_x` = para onde o jogador escorrega ao terminar a subida. A escada fica encostada na
 ## BORDA de fora da plataforma (senão o tabuleiro barraria a subida por baixo), então chegar ao
 ## topo tem de deslocá-lo alguns px para dentro — sem isso ele terminaria a subida no ar,
 ## agarrado à borda, e cairia de volta.
-func setup(x: float, chao_y: float, h: float, saida_x := 0.0, player: Node2D = null, tol_x := 0.0) -> void:
-	if tol_x > 0.0:
-		tolerancia_x = tol_x
+func setup(x: float, chao_y: float, h: float, player: Node2D = null) -> void:
 	position = Vector2(x, chao_y)
 	altura = h
 	_topo_y = chao_y - h
-	_saida_x = saida_x if saida_x != 0.0 else x
 	_player = player
 	_build()
 
-func saida_x() -> float:
-	return _saida_x
+## Até onde se sobe: um corpo acima do piso do tabuleiro, para a gravidade assentá-lo em cima.
+func fim_da_subida() -> float:
+	return _topo_y - SAIDA_ACIMA
+
+## E até onde se desce, antes de a gravidade assumir.
+func fim_da_descida() -> float:
+	return global_position.y - SAIDA_ABAIXO
 
 func _build() -> void:
 	z_index = -2                 # à frente do chão, atrás das entidades
+
+	# Os montantes passam do piso do tabuleiro, como numa escada de verdade — é o que se agarra
+	# ao terminar a subida, e o que faz o topo dela ser visível de cima.
+	altura += SAIDA_ACIMA
 
 	# Dois montantes verticais + degraus. Madeira clara para destacar da pedra da torre: a escada
 	# precisa ser LIDA de longe, senão a torre parece só um bloco intransponível.

@@ -359,21 +359,25 @@ func _update_ladder(delta: float) -> bool:
 		return false
 
 	var iy := Input.get_axis("move_up", "move_down")
+	# Na escada o corpo é movido DIRETO, sem move_and_slide: o tabuleiro é plataforma de sentido
+	# único e, por definição, barra quem vem de cima — com física, dava para subir atravessando e
+	# depois não dava para descer de volta. A escada é um corredor controlado; deixá-la fora da
+	# resolução de colisão é mais simples do que abrir exceções para ela.
 	global_position.x = _on_ladder.eixo_x()   # alinha ao eixo: nada de subir raspando a parede
-	velocity.x = 0.0
-	velocity.y = iy * CLIMB_SPEED
+	global_position.y += iy * CLIMB_SPEED * delta
+	velocity = Vector2.ZERO
 
-	# SAÍDA 1 — o topo: sobe no tabuleiro. Precisa deslocar em X também, porque a escada encosta
-	# na borda de FORA da plataforma; terminar a subida no eixo dela deixaria o jogador no ar.
-	if iy < 0.0 and global_position.y <= _on_ladder.topo_y():
-		global_position = Vector2(_on_ladder.saida_x(), _on_ladder.topo_y() - 6.0)
+	# SAÍDA 1 — o topo. Sobe-se um corpo inteiro ACIMA do piso e larga-se a escada ali mesmo, sem
+	# mexer no X: o tabuleiro é plataforma de sentido único, então o corpo o atravessou de baixo e
+	# a gravidade o assenta em cima. Nada de reposicionar — era isso que se via como solavanco.
+	if iy < 0.0 and global_position.y <= _on_ladder.fim_da_subida():
+		global_position.y = _on_ladder.fim_da_subida()
 		_soltar_escada()
 		return false
 
-	move_and_slide()
-
-	# SAÍDA 2 — a base: desceu até o chão.
-	if iy > 0.0 and is_on_floor():
+	# SAÍDA 2 — a base: desceu até perto do chão e a gravidade assenta o resto.
+	if iy > 0.0 and global_position.y >= _on_ladder.fim_da_descida():
+		global_position.y = _on_ladder.fim_da_descida()
 		_soltar_escada()
 		return false
 

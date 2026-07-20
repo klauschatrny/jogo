@@ -1167,29 +1167,21 @@ func _spawn_necro_tower(spec: Dictionary) -> float:
 		a.position = Vector2(-larg * 0.5 + 4.0 + i * 22.0, -alt - 10.0)
 		torre.add_child(a)
 
-	# A escada sobe por um ALÇAPÃO no tabuleiro, não pela borda de fora. Foi o que permitiu fechar
-	# o andar de cima: com a escada do lado de fora, a única forma de o jogador entrar seria uma
-	# abertura na parede — e por essa abertura o golpe voltaria a alcançar o Necromante.
-	# O alçapão tem de ser bem mais largo que a caixa do jogador: com folga curta ele encosta nas
-	# lajes ao subir e trava no meio do vão, sem nenhum aviso de que está preso.
-	var vao_esc := float(spec.get("alcapao", 40.0))
 	var lx := tx + float(spec.get("escada_em", -larg * 0.25))
 
-	# COLISÃO DO TABULEIRO em duas lajes, com o buraco do alçapão entre elas. Os pilares e o arco
-	# seguem sendo só desenho: passar por baixo é livre.
-	for lado in [-1.0, 1.0]:
-		var x0 := (-larg * 0.5) if lado < 0.0 else (lx - tx + vao_esc * 0.5)
-		var x1 := (lx - tx - vao_esc * 0.5) if lado < 0.0 else (larg * 0.5)
-		if x1 - x0 <= 1.0:
-			continue
-		_solido(torre, Vector2((x0 + x1) * 0.5, -alt + deck * 0.5), Vector2(x1 - x0, deck))
+	# O TABULEIRO é uma PLATAFORMA DE SENTIDO ÚNICO: sólida por cima, atravessável por baixo. É o
+	# que deixa a escada terminar de forma natural — sobe-se atravessando a laje e simplesmente
+	# pisa-se nela. A versão anterior tinha um alçapão e teleportava o jogador para o lado ao
+	# chegar no topo, o que se via na tela como um solavanco.
+	# Ela continua barrando o RAYCAST de linha de visada (o sentido único vale para a resolução
+	# de colisão, não para consultas), então o golpe segue sem atravessar de baixo.
+	_solido(torre, Vector2(0.0, -alt + deck * 0.5), Vector2(larg, deck), true)
 
 	# A CÂMARA: paredes nas duas bordas e teto. Sem isso o jogador pulava ao lado da torre e
 	# acertava o Necromante no ar — o pulo alcança 76px e o Necromante fica a ~110, mas a lâmina
 	# tem 76 de comprimento e cobria a diferença. Com a câmara fechada, a linha de visada do golpe
-	# (ver PlayerView._tem_linha_de_visada) bate na parede e o dano não sai. A escada deixa de ser
-	# um caminho alternativo e passa a ser o único.
-	var par_h := float(spec.get("camara_h", 52.0))
+	# (ver PlayerView._tem_linha_de_visada) bate na parede e o dano não sai.
+	var par_h := float(spec.get("camara_h", 64.0))
 	var esp := 6.0
 	for lado2 in [-1.0, 1.0]:
 		_solido(torre, Vector2(lado2 * (larg * 0.5 - esp * 0.5), -alt - par_h * 0.5), Vector2(esp, par_h))
@@ -1208,14 +1200,9 @@ func _spawn_necro_tower(spec: Dictionary) -> float:
 	teto.position = Vector2(-larg * 0.5, -alt - par_h - esp)
 	torre.add_child(teto)
 
-	# A escada sobe pelo alçapão; ao chegar em cima o jogador sai AO LADO do buraco (senão cairia
-	# de volta por ele). A tolerância em X do LadderView cobre esse deslocamento, para que ele
-	# ainda consiga remontar a escada e descer.
 	var esc := LadderView.new()
 	_env.add_child(esc)
-	# A tolerância acompanha a largura do alçapão: a saída no topo fica ao lado do buraco, e a
-	# escada precisa continuar "alcançável" de lá, senão o jogador sobe e não consegue mais descer.
-	esc.setup(lx, GROUND_Y, alt, lx + vao_esc * 0.85, _player_view, vao_esc * 0.5 + 16.0)
+	esc.setup(lx, GROUND_Y, alt, _player_view)
 	_ladders.append(esc)
 	if is_instance_valid(_player_view):
 		_player_view.ladders = _ladders
@@ -1720,7 +1707,7 @@ func _gate_id(level_id: String) -> String:
 
 ## Um bloco sólido na camada 4 (a mesma do chão), filho de `pai`, sem desenho. Serve às lajes do
 ## tabuleiro, às paredes e ao teto da câmara.
-func _solido(pai: Node2D, centro: Vector2, tam: Vector2) -> void:
+func _solido(pai: Node2D, centro: Vector2, tam: Vector2, sentido_unico := false) -> void:
 	var b := StaticBody2D.new()
 	b.collision_layer = 4
 	b.collision_mask = 0
@@ -1729,6 +1716,7 @@ func _solido(pai: Node2D, centro: Vector2, tam: Vector2) -> void:
 	r.size = tam
 	c.shape = r
 	c.position = centro
+	c.one_way_collision = sentido_unico   # sólido por cima, atravessável por baixo
 	b.add_child(c)
 	pai.add_child(b)
 

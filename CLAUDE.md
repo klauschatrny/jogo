@@ -151,8 +151,8 @@ purely by proximity — they sit far enough apart that only one is ever in reach
 
 **Done — the Necromancer's tower, and the first vertical geometry.** `cemiterio` lost its
 wooden gate + lever, and the Necromancer now stands on a raised stone tower (`room.tower =
-{ at, altura, largura, perna, escada_em }`). The deck is **two slabs with a hatch between them**, and the ladder rises
-through the hatch; on top sits a **closed chamber** (walls on both edges + ceiling, all layer-4
+{ at, altura, largura, perna, escada_em }`). The deck is a **one-way platform** — solid from above, passable from below — so the ladder simply
+goes *through* it; on top sits a **closed chamber** (walls on both edges + ceiling, all layer-4
 solids). The legs and the arch beneath are drawing only, so the gap at ground level stays
 walk-through for everyone.
 
@@ -163,12 +163,14 @@ raycast from player to enemy on layer 4 now vetoes the hit. Chamber + line-of-si
 what make the climb mandatory: the jump reaches 76px and the deck is 96 up, so you cannot jump in
 either. The first version was solid ground-to-top and became a **wall that
 cut the corridor in two**. The **only** way up is a **`LadderView`** — the game's first vertical
-traversal, in a world that was flat continuous ground until now. It rises through the deck's hatch and drops the player
-*beside* the hole on arrival (`saida_x`) — landing on the hole would drop him straight back down.
-Three tuning traps, all found by probe: the hatch must be **much** wider than the player's box
-(24px jammed him mid-climb with no feedback; 40 works), and `contem()` needs slack in **both**
-axes — in x to cover the sideways exit, in y (`_topo_y - 44`) to fit a body *standing* on the deck.
-Miss either and the player climbs up and can never climb back down. The contract is: **`interact` (E) mounts, feet on the ground**, `move_up`/`move_down` climb, and you
+traversal, in a world that was flat continuous ground until now. It goes straight through the one-way deck and the climb ends
+**`SAIDA_ACIMA` (34px) above the floor**, releasing with **x untouched** — gravity then settles the
+body onto the deck. An earlier version cut a hatch in the deck and *teleported* the player sideways
+on arrival, which read on screen as a jolt. While mounted the body is moved **directly**, not via
+`move_and_slide`: a one-way platform blocks whoever comes from above by definition, so with physics
+you could climb up through the deck and then never climb back down. A ladder is a controlled
+corridor; keeping it out of collision resolution is simpler than carving exceptions into it. The
+descent likewise ends `SAIDA_ABAIXO` (20px) short of the ground and lets gravity finish. The contract is: **`interact` (E) mounts, feet on the ground**, `move_up`/`move_down` climb, and you
 **only leave by the two ends** — reaching the deck at the top or setting foot on the ground at the
 bottom. No jumping off, no sliding out sideways. That is what settles the key conflict at the root:
 mounted, the whole frame belongs to the ladder, so `W` never reaches the jump code (`W` is bound to

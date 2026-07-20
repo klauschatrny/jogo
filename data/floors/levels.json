@@ -82,8 +82,7 @@
           "altura": 96,
           "largura": 132,
           "escada_em": -38,
-          "camara_h": 64,
-          "alcapao": 40
+          "camara_h": 64
         }
       },
       "guard": {
