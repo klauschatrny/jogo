@@ -496,8 +496,10 @@ is stuck forever. **Right now there is no pit anywhere** (the tutorial's was rem
 (`HazardView`, `_off_pit`, `_ledge_ahead`) sits idle, ready for a level that places one.
 
 **Done — the training scarecrow, and a shorter Portão tail.** The tutorial village's practice
-target is a **`ScarecrowView`** (straw dummy on a post: it flashes, sheds straw and *wobbles* on a
-damped spring when hit, but has no HP loss, no AI, no death) — it replaced the dormant skeleton that
+target is a **`ScarecrowView`** — the `combat_doll` art (a target dummy: post + bullseye + base,
+`assets/sprites/Objects/`, loaded through `SpriteLoader` with a hand-drawn straw fallback). It
+flashes and *wobbles* on a damped spring when hit (the sprite rotates around its base), but has no
+HP loss, no AI, no death — it replaced the dormant skeleton that
 used to stand in, which wrongly implied the Cidade had combat. It extends `EnemyView` only to pass
 the sword's `is EnemyView` check; `setup` is minimal and `_build`/`_physics_process` are fully
 overridden (collision shape + straw drawing, gravity + wobble, nothing else). It is spawned

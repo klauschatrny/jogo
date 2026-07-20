@@ -13,7 +13,7 @@ const CAIXA := Vector2(24.0, 46.0)
 const BALANCO_MAX := 0.5           # empurrão no balanço a cada golpe (rad/s)
 const BALANCO_DECAI := 6.0         # rapidez com que a mola volta ao prumo
 
-var _corpo: Node2D                 # a parte que balança (tudo menos o poste)
+var _corpo: Node2D                 # o que balança: a arte do boneco (ou o desenho de reserva)
 var _balanco := 0.0
 var _balanco_vel := 0.0
 
@@ -37,6 +37,19 @@ func _build() -> void:
 	_desenha()
 
 func _desenha() -> void:
+	# Arte oficial: o boneco de combate (poste + alvo + base num quadro só). Ancorado pelos PÉS
+	# como todo sprite do jogo; o balanço gira o próprio sprite em torno da base. Sem a arte, cai
+	# no desenho de reserva (as tábuas de palha) — a mesma degradação graciosa do SpriteLoader.
+	var spr := SpriteLoader.build("combat_doll", "Objects")
+	if spr != null:
+		spr.position.y = box_h * 0.5   # base do sprite = base da hitbox (o chão)
+		add_child(spr)
+		_corpo = spr
+		return
+	_desenha_reserva()
+
+## Reserva (arte ausente): o boneco de palha desenhado à mão de antes.
+func _desenha_reserva() -> void:
 	# Poste fincado (não balança).
 	var poste := ColorRect.new()
 	poste.color = Color(0.40, 0.28, 0.16)

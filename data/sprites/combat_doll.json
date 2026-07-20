@@ -1,0 +1,10 @@
+{
+  "_comment": "Boneco de combate da Cidade (espantalho de treino). Frame unico; o balanco ao ser atingido e feito por codigo (ScarecrowView gira o sprite no pe). Arte em assets/sprites/Objects/combat_doll.png.",
+  "cell_w": 48, "cell_h": 48,
+  "hitbox": [8, 40],
+  "facing": "right",
+  "scale": 2,
+  "animations": {
+    "idle": { "row": 0, "frames": 1, "fps": 1 }
+  }
+}
