@@ -29,6 +29,8 @@ var _souls: Label
 var _flask_icon: Node2D
 var _flask_body: Polygon2D
 var _flask_core: Polygon2D
+var _flask_cork: ColorRect
+var _flask_neck: ColorRect
 var _flask_count: Label
 
 func _ready() -> void:
@@ -147,17 +149,17 @@ func _build_flask() -> void:
 	inner.size = Vector2(26, 30)
 	_flask_icon.add_child(inner)
 
-	# Rolha e gargalo.
-	var cork := ColorRect.new()
-	cork.color = Color(0.35, 0.22, 0.10)
-	cork.position = Vector2(-4, 4)
-	cork.size = Vector2(8, 4)
-	_flask_icon.add_child(cork)
-	var neck := ColorRect.new()
-	neck.color = Color(0.72, 0.46, 0.14)
-	neck.position = Vector2(-3, 7)
-	neck.size = Vector2(6, 5)
-	_flask_icon.add_child(neck)
+	# Rolha e gargalo — guardados para SUMIR com o resto do vidro quando não se tem o frasco.
+	_flask_cork = ColorRect.new()
+	_flask_cork.color = Color(0.35, 0.22, 0.10)
+	_flask_cork.position = Vector2(-4, 4)
+	_flask_cork.size = Vector2(8, 4)
+	_flask_icon.add_child(_flask_cork)
+	_flask_neck = ColorRect.new()
+	_flask_neck.color = Color(0.72, 0.46, 0.14)
+	_flask_neck.position = Vector2(-3, 7)
+	_flask_neck.size = Vector2(6, 5)
+	_flask_icon.add_child(_flask_neck)
 
 	# Corpo (âmbar) + núcleo brilhante — guardados para recolorir quando o frasco esvazia.
 	_flask_body = Polygon2D.new()
@@ -238,9 +240,13 @@ func _refresh() -> void:
 		# SEM O FRASCO o slot fica VAZIO — só o quadro, sem vidro e sem número. É diferente de
 		# "frasco vazio" (que mostra o vidro apagado e um 0): aqui o jogador ainda nem tem o objeto,
 		# e o slot vazio é a pergunta que o leva a falar com o Sir Big T.
+		# Sem o frasco o slot fica COMPLETAMENTE vazio: some todo o vidro, inclusive rolha e
+		# gargalo (que antes ficavam para trás e denunciavam um frasco que ainda não existe).
 		var tem_frasco: bool = _player.has_flask
 		_flask_body.visible = tem_frasco
 		_flask_core.visible = tem_frasco
+		_flask_cork.visible = tem_frasco
+		_flask_neck.visible = tem_frasco
 		if not tem_frasco:
 			_flask_count.text = ""
 		else:
