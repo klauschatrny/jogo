@@ -13,12 +13,21 @@ const RUNG_GAP := 9.0            # espaçamento dos degraus
 
 var altura := 0.0                # do chão até o topo da plataforma
 var _topo_y := 0.0               # y do topo (onde se sai para a plataforma)
+var _saida_x := 0.0              # onde o corpo é posto ao chegar no topo (em cima do tabuleiro)
 
-func setup(x: float, chao_y: float, h: float) -> void:
+## `saida_x` = para onde o jogador escorrega ao terminar a subida. A escada fica encostada na
+## BORDA de fora da plataforma (senão o tabuleiro barraria a subida por baixo), então chegar ao
+## topo tem de deslocá-lo alguns px para dentro — sem isso ele terminaria a subida no ar,
+## agarrado à borda, e cairia de volta.
+func setup(x: float, chao_y: float, h: float, saida_x := 0.0) -> void:
 	position = Vector2(x, chao_y)
 	altura = h
 	_topo_y = chao_y - h
+	_saida_x = saida_x if saida_x != 0.0 else x
 	_build()
+
+func saida_x() -> float:
+	return _saida_x
 
 func _build() -> void:
 	z_index = -2                 # à frente do chão, atrás das entidades

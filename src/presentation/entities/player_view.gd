@@ -332,7 +332,12 @@ var _on_ladder: LadderView = null
 func _update_ladder(delta: float) -> bool:
 	if _dodge_time > 0.0 or _drink_time > 0.0:
 		return false                      # gestos comprometidos têm prioridade
-	var iy := Input.get_axis("move_up", "move_down")
+	# INTERAGIR (E) sobe; move_down desce. E é o mesmo verbo de "usar" do resto do jogo (fogueira,
+	# alavanca, poço), e usar uma escada é exatamente isso — além de não competir com o pulo, que
+	# divide tecla com move_up e por isso soltava a escada no frame em que ela era agarrada.
+	var subindo := Input.is_action_pressed("interact")
+	var descendo := Input.is_action_pressed("move_down")
+	var iy := (-1.0 if subindo else 0.0) + (1.0 if descendo else 0.0)
 
 	if _on_ladder == null:
 		if iy == 0.0:
@@ -352,9 +357,8 @@ func _update_ladder(delta: float) -> bool:
 		_on_ladder = null
 		return false
 
-	# Solta ao pular — mas só com um PULO de verdade. W é ao mesmo tempo "jump" e "move_up", então
-	# sem esta condição subir a escada soltaria dela no mesmo frame em que a agarrou.
-	if Input.is_action_just_pressed("jump") and not Input.is_action_pressed("move_up"):
+	# Solta ao pular: dá para saltar da escada em vez de terminar a subida.
+	if Input.is_action_just_pressed("jump"):
 		_on_ladder = null
 		velocity.y = JUMP_VELOCITY
 		return false
@@ -368,11 +372,13 @@ func _update_ladder(delta: float) -> bool:
 	global_position.x = _on_ladder.eixo_x()   # alinha ao eixo: nada de subir raspando a parede
 	velocity.x = 0.0
 	velocity.y = iy * CLIMB_SPEED
-	# Chegou ao topo subindo: larga a escada em cima, para o chão da plataforma segurá-lo.
+	# Chegou ao topo subindo: sobe no tabuleiro. Precisa deslocar em X também — a escada encosta
+	# na borda de FORA da plataforma, então terminar a subida no eixo dela deixaria o jogador no
+	# ar, ao lado da torre, e ele cairia de volta.
 	if iy < 0.0 and global_position.y <= _on_ladder.topo_y():
-		global_position.y = _on_ladder.topo_y() - 2.0
+		global_position = Vector2(_on_ladder.saida_x(), _on_ladder.topo_y() - 6.0)
 		_on_ladder = null
-		velocity.y = 0.0
+		velocity = Vector2.ZERO
 		return false
 	move_and_slide()
 	_play_anim("idle" if iy == 0.0 else "run")

@@ -1116,7 +1116,9 @@ func _spawn_necro_tower(spec: Dictionary) -> float:
 		return 0.0
 	var tx := float(spec.get("at", _fight_width - 198.0))
 	var alt := float(spec.get("altura", 92.0))
-	var larg := float(spec.get("largura", 120.0))
+	var larg := float(spec.get("largura", 132.0))
+	var perna := float(spec.get("perna", 22.0))     # espessura de cada pilar
+	var deck := 12.0                                # espessura do tabuleiro
 	var topo_y := GROUND_Y - alt
 
 	var torre := Node2D.new()
@@ -1124,14 +1126,39 @@ func _spawn_necro_tower(spec: Dictionary) -> float:
 	torre.z_index = DECO_Z + 1        # à frente do cenário de fundo, atrás das entidades
 	_env.add_child(torre)
 
-	# Corpo de pedra.
-	var corpo := ColorRect.new()
-	corpo.color = Color(0.29, 0.28, 0.33)
-	corpo.size = Vector2(larg, alt)
-	corpo.position = Vector2(-larg * 0.5, -alt)
-	torre.add_child(corpo)
+	# DOIS PILARES com um VÃO EM ARCO entre eles. A primeira versão era um bloco maciço do chão ao
+	# topo, e virava uma parede que partia o corredor em dois — o jogador (e a horda) simplesmente
+	# não passava. A torre tem de ser passagem embaixo e plataforma em cima.
+	for lado in [-1.0, 1.0]:
+		var pilar := ColorRect.new()
+		pilar.color = Color(0.29, 0.28, 0.33)
+		pilar.size = Vector2(perna, alt)
+		pilar.position = Vector2(lado * (larg * 0.5) - (0.0 if lado < 0.0 else perna), -alt)
+		torre.add_child(pilar)
 
-	# Ameias no topo (a silhueta é o que faz ler como torre de castelo, não como caixa).
+	# A curva do arco, em degraus (pixel-art não pede curva de verdade): blocos que avançam para o
+	# centro conforme sobem, desenhando o intradorso.
+	var vao := larg - perna * 2.0
+	var passos := 5
+	for i in passos:
+		var t := float(i + 1) / float(passos)
+		var av := (vao * 0.5) * (1.0 - sqrt(1.0 - t * t))    # perfil de quarto de círculo
+		var h := (alt - deck) / float(passos)
+		for lado2 in [-1.0, 1.0]:
+			var b := ColorRect.new()
+			b.color = Color(0.27, 0.26, 0.31)
+			b.size = Vector2(av, h + 1.0)
+			b.position = Vector2(
+				lado2 * (vao * 0.5) - (av if lado2 > 0.0 else 0.0),
+				-alt + deck + (passos - 1 - i) * h)
+			torre.add_child(b)
+
+	# Tabuleiro (o piso lá em cima) e as ameias que fazem a silhueta ler como torre de castelo.
+	var piso := ColorRect.new()
+	piso.color = Color(0.38, 0.37, 0.43)
+	piso.size = Vector2(larg, deck)
+	piso.position = Vector2(-larg * 0.5, -alt)
+	torre.add_child(piso)
 	var n_ameias := int(larg / 22.0)
 	for i in n_ameias:
 		var a := ColorRect.new()
@@ -1140,30 +1167,27 @@ func _spawn_necro_tower(spec: Dictionary) -> float:
 		a.position = Vector2(-larg * 0.5 + 4.0 + i * 22.0, -alt - 10.0)
 		torre.add_child(a)
 
-	# Faixa mais clara marcando o piso onde se pisa.
-	var piso := ColorRect.new()
-	piso.color = Color(0.38, 0.37, 0.43)
-	piso.size = Vector2(larg, 4.0)
-	piso.position = Vector2(-larg * 0.5, -alt)
-	torre.add_child(piso)
-
-	# A colisão: camada 4, a mesma do chão, então player E inimigos pisam nela.
+	# COLISÃO SÓ NO TABULEIRO. Os pilares e o arco são desenho: quem passa por baixo não esbarra
+	# em nada, nem o jogador nem os esqueletos. Camada 4 = a do chão, então dá para pisar em cima.
 	var corpo_fis := StaticBody2D.new()
 	corpo_fis.collision_layer = 4
 	corpo_fis.collision_mask = 0
 	var col := CollisionShape2D.new()
 	var r := RectangleShape2D.new()
-	r.size = Vector2(larg, alt)
+	r.size = Vector2(larg, deck)
 	col.shape = r
-	col.position = Vector2(0.0, -alt * 0.5)
+	col.position = Vector2(0.0, -alt + deck * 0.5)
 	corpo_fis.add_child(col)
 	torre.add_child(corpo_fis)
 
-	# A escada, encostada num dos lados: o ÚNICO acesso.
-	var lx := tx + float(spec.get("escada_em", -larg * 0.5 - 12.0))
+	# A escada encostada na BORDA de fora do tabuleiro — por dentro, o próprio tabuleiro barraria
+	# a subida. Ao chegar ao topo o jogador é posto alguns px para DENTRO (saida_x), senão
+	# terminaria a subida no ar, ao lado da torre.
+	var borda := larg * 0.5
+	var lx := tx + float(spec.get("escada_em", borda + LadderView.WIDTH * 0.5))
 	var esc := LadderView.new()
 	_env.add_child(esc)
-	esc.setup(lx, GROUND_Y, alt)
+	esc.setup(lx, GROUND_Y, alt, tx + borda - 16.0 if lx > tx else tx - borda + 16.0)
 	_ladders.append(esc)
 	if is_instance_valid(_player_view):
 		_player_view.ladders = _ladders
