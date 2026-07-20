@@ -10,6 +10,27 @@ game already was one: stamina gates every attack and dodge, the dodge roll has i
 has a telegraphed charge with a 3-second punish window (a tell you only learn by dying to it), the
 levels are hand-authored with no procgen, and the 50-floor tower + Nemesis were both switched off.
 
+## Two structural rules for the presentation layer
+
+**The test suite loads every `src/**/*.gd` and fails if any won't compile** (`test_scripts_compile.gd`).
+The unit tests only exercise the *core*; they never instantiate the views or `floor_scene`, so for a
+long time a compile error there (missing identifier, deleted function still called, a `:=` that
+infers `Variant` under warnings-as-errors) passed all tests and only a throwaway probe caught it —
+it bit at least four times. The compile test closes that gap: a broken script makes `load()` return
+a non-instantiable `GDScript`, which the test reports. It does **not** run gameplay; behavioural
+checks still need a probe (the suite can't load `floor_scene.tscn`).
+
+**Enemy subclasses override `_tick_ai(delta)`, never `_physics_process`.** `EnemyView._physics_process`
+is the one template for the whole hierarchy: it handles the universal frame concerns — the corpse
+fall + `queue_free` (`_tick_cadaver`) and the existence guards — then calls the virtual `_tick_ai`.
+Default `_tick_ai` is the melee AI; `NecromancerView` overrides it with casting, `OgreView` with its
+state machine (its old `super._physics_process` calls became `super._tick_ai`), `ScarecrowView` with
+a wobble. This exists because the old pattern — each subclass replacing `_physics_process` wholesale
+— silently dropped every rule the parent added later: a **dead Necromancer kept casting forever** and
+a **dead Ogre kept running its state machine (invisible, still able to throw rocks)** because their
+overrides never ran the corpse branch. With the template, a new universal rule is written once and
+every enemy inherits it.
+
 **Done so far — bonfires (checkpoints).** Death no longer ends the run: `_on_player_died` shows a
 "VOCÊ MORREU" banner, fades to black, and `RunState.respawn()` puts the player back at the last
 bonfire he rested at, with HP and stamina full, while the world is rebuilt around him. He keeps

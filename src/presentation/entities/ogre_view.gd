@@ -118,7 +118,11 @@ func _on_after_damage() -> void:
 	else:
 		_rage_pending = true
 
-func _physics_process(delta: float) -> void:
+# O _tick_ai do template (EnemyView): o cadáver e os guards de existência já rodaram — inclusive a
+# queda do Ogro morto, que ANTES não acontecia (ele sobrescrevia o _physics_process inteiro e o
+# corpo seguia a máquina de estados para sempre). "super._tick_ai" chama a IA melee do EnemyView,
+# que é o mesmo que o antigo "super._physics_process" fazia (o template só tirou os guards).
+func _tick_ai(delta: float) -> void:
 	# Passos: parte-se de "não está andando" e só quem ANDA neste frame reafirma (em _update_sprite).
 	# Assim um estado novo que não mexa no sprite (a baderna é um) nunca deixa o som de passos preso.
 	_walking = false
@@ -126,7 +130,7 @@ func _physics_process(delta: float) -> void:
 	# Dormente (cutscene de entrada): nenhuma habilidade, nem as de distância — o super trata
 	# o estado passivo (só gravidade/recuo). Sem isto o ogro arremessaria rochas na cutscene.
 	if dormant:
-		super._physics_process(delta)
+		super._tick_ai(delta)
 		return
 	_rock_cd = maxf(0.0, _rock_cd - delta)         # cooldowns próprios (rochas/baderna/slam) correm em qualquer estado
 	_baderna_cd = maxf(0.0, _baderna_cd - delta)
@@ -140,7 +144,7 @@ func _physics_process(delta: float) -> void:
 				return
 			if _handle_ranged(delta):
 				return
-		super._physics_process(delta)
+		super._tick_ai(delta)
 		return
 	if data == null or not is_instance_valid(target):
 		return

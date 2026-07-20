@@ -169,18 +169,32 @@ func _resolve_hitbox() -> void:
 		box_w = box_size * s
 		box_h = box_size * s
 
+# TEMPLATE. Este é o ÚNICO _physics_process da hierarquia de EnemyView, e ele trata o que vale
+# para TODO inimigo sem exceção: o cadáver (a queda + o queue_free) e os guards de existência.
+# O comportamento específico de cada tipo vem do _tick_ai, sobrescrito pelas subclasses — que
+# assim NUNCA precisam lembrar de replicar a lógica do cadáver. Foi o esquecimento disso (o
+# Necromante e o Ogro sobrescreviam o _physics_process inteiro) que deixava um chefe morto
+# atacando para sempre. Subclasses: sobrescrevam _tick_ai, jamais _physics_process.
 func _physics_process(delta: float) -> void:
-	if data == null or not is_instance_valid(target):
+	if data == null:
 		return
-	_anim_lock = maxf(0.0, _anim_lock - delta)
-	# Gravidade contínua; o chão (camada 4) segura o inimigo.
-	if not is_on_floor():
-		velocity.y += GRAVITY * delta
-
-	# Cadáver: só a queda corre. Nada de perseguir, atacar ou tomar dano.
+	# Cadáver: corre antes de tudo e NÃO precisa de alvo — um inimigo morto tem de cair e se
+	# liberar mesmo que o player já não exista.
 	if _morrendo > 0.0:
 		_tick_cadaver(delta)
 		return
+	if not is_instance_valid(target):
+		return
+	_anim_lock = maxf(0.0, _anim_lock - delta)
+	_tick_ai(delta)
+
+## O comportamento por frame do inimigo. Padrão: a IA melee (gravidade, perseguir, windup, golpe,
+## passo, combo, guarda, ossos, dormência). É ISTO que as subclasses trocam — o Necromante por
+## conjuração, o Ogro por sua máquina de estados, o Espantalho por um balanço.
+func _tick_ai(delta: float) -> void:
+	# Gravidade contínua; o chão (camada 4) segura o inimigo.
+	if not is_on_floor():
+		velocity.y += GRAVITY * delta
 
 	_guard_down = maxf(0.0, _guard_down - delta)
 	_atualiza_escudo()

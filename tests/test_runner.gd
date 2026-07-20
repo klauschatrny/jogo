@@ -28,6 +28,7 @@ const SUITES := {
 	"NemesisRules": "res://tests/test_nemesis_rules.gd",
 	"GhostFactory": "res://tests/test_ghost_factory.gd",
 	"GhostRepository": "res://tests/test_ghost_repository.gd",
+	"ScriptsCompile": "res://tests/test_scripts_compile.gd",
 }
 
 func _initialize() -> void:

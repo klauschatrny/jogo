@@ -44,18 +44,9 @@ func _on_after_damage() -> void:
 		_aoe_cd = AOE_INTERVAL
 
 ## Substitui totalmente a IA do EnemyView: estático, ranged, com a AoE quando em fúria.
-func _physics_process(delta: float) -> void:
-	if data == null:
-		return
-	# Morto: este _physics_process substitui o do EnemyView por inteiro, então a queda do cadáver
-	# (e o queue_free ao fim dela) tem de ser disparada AQUI também — senão o Necromante morto nunca
-	# se libera e segue atirando/castando para sempre. É o bug que este ramo conserta.
-	if morrendo():
-		_tick_cadaver(delta)
-		return
-	if not is_instance_valid(target):
-		return
-	_anim_lock = maxf(0.0, _anim_lock - delta)
+# Só o comportamento: o cadáver e os guards de existência ficam no template do EnemyView. Sem
+# duplicá-los, o Necromante morto se libera sozinho (era o bug que o fazia castar do além).
+func _tick_ai(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y += GRAVITY * delta
 	velocity.x = 0.0                       # mantém a posição (não persegue, ignora knockback)
@@ -64,9 +55,7 @@ func _physics_process(delta: float) -> void:
 	var dx := target.global_position.x - global_position.x
 	_update_sprite(dx, false)              # encara o player, idle
 
-	# Dormente: encara o jogador e espera. Este _physics_process substitui o do EnemyView por
-	# inteiro, então a checagem precisa existir aqui também — sem ela o Necromante lançaria do
-	# outro lado do mapa enquanto todo o resto ainda dorme.
+	# Dormente: encara o jogador e espera — só começa a lançar quando o player se aproxima.
 	if dormant:
 		return
 

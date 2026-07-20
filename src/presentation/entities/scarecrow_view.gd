@@ -92,9 +92,9 @@ func _desenha() -> void:
 		olho.position = Vector2(ox, -10.0)
 		_corpo.add_child(olho)
 
-func _physics_process(delta: float) -> void:
-	# Só a gravidade e o balanço voltando ao prumo. Este _physics_process substitui o do EnemyView
-	# de propósito, e aqui NÃO há windup, perseguição nem ataque para replicar.
+func _tick_ai(delta: float) -> void:
+	# Só a gravidade e o balanço voltando ao prumo — sem windup, perseguição nem ataque. O cadáver
+	# nunca acontece (o espantalho não morre), mas herdar o template mantém a regra uniforme.
 	if not is_on_floor():
 		velocity.y += GRAVITY * delta
 	velocity.x = 0.0
