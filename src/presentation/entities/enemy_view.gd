@@ -179,13 +179,7 @@ func _physics_process(delta: float) -> void:
 
 	# Cadáver: só a queda corre. Nada de perseguir, atacar ou tomar dano.
 	if _morrendo > 0.0:
-		_morrendo -= delta
-		velocity.x = 0.0
-		if not is_on_floor():
-			velocity.y += GRAVITY * delta
-		move_and_slide()
-		if _morrendo <= 0.0:
-			queue_free()
+		_tick_cadaver(delta)
 		return
 
 	_guard_down = maxf(0.0, _guard_down - delta)
@@ -443,6 +437,26 @@ const MORTE_ESPERA := 0.65         # ficar caído, visível, antes de sumir
 const MORTE_FADE := 0.40
 const MORTE_QUEDA := MORTE_TOMBO + MORTE_ESPERA + MORTE_FADE
 
+## O tique do cadáver: pousa no chão e, ao fim do tempo, se libera. Extraído para que subclasses
+## que sobrescrevem _physics_process por inteiro (o Necromante) também o rodem — sem isso, o corpo
+## delas nunca decrementava _morrendo nem chamava queue_free, e ficava vivo agindo para sempre.
+func _tick_cadaver(delta: float) -> void:
+	_morrendo -= delta
+	velocity.x = 0.0
+	if not is_on_floor():
+		velocity.y += GRAVITY * delta
+	move_and_slide()
+	if _morrendo <= 0.0:
+		queue_free()
+
+## Está morrendo (cadáver tombando)? As subclasses consultam para abortar a própria lógica.
+func morrendo() -> bool:
+	return _morrendo > 0.0
+
+## Hook para a subclasse limpar o que é dela ao morrer (o Necromante apaga aura/AoE). Padrão: nada.
+func _ao_morrer() -> void:
+	pass
+
 func _morrer() -> void:
 	if _morrendo > 0.0:
 		return
@@ -454,6 +468,7 @@ func _morrer() -> void:
 	if is_instance_valid(_guard_fx):
 		_guard_fx.queue_free()
 		_guard_fx = null
+	_ao_morrer()                        # a subclasse encerra os efeitos dela (o Necromante, a aura/AoE)
 	# Sai da camada 2: deixa de ser ALVO do golpe do jogador e de contar como inimigo.
 	# Mas a MÁSCARA continua 4 — é ela que faz o corpo enxergar o CHÃO. Zerá-la (o que eu havia
 	# feito) tirava o chão de baixo do cadáver, e a gravidade o levava para fora da tela, caindo

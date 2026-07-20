@@ -45,7 +45,15 @@ func _on_after_damage() -> void:
 
 ## Substitui totalmente a IA do EnemyView: estático, ranged, com a AoE quando em fúria.
 func _physics_process(delta: float) -> void:
-	if data == null or not is_instance_valid(target):
+	if data == null:
+		return
+	# Morto: este _physics_process substitui o do EnemyView por inteiro, então a queda do cadáver
+	# (e o queue_free ao fim dela) tem de ser disparada AQUI também — senão o Necromante morto nunca
+	# se libera e segue atirando/castando para sempre. É o bug que este ramo conserta.
+	if morrendo():
+		_tick_cadaver(delta)
+		return
+	if not is_instance_valid(target):
 		return
 	_anim_lock = maxf(0.0, _anim_lock - delta)
 	if not is_on_floor():
@@ -97,6 +105,14 @@ func _physics_process(delta: float) -> void:
 		_shoot_windup = SHOOT_WINDUP
 		_show_warn()
 		_show_cast_fx()
+
+## Ao morrer: apaga a aura de conjuração e a área da AoE, e zera qualquer windup em curso — sem
+## isso, um cast disparado no frame da morte ainda resolveria (dano ou projétil) do além.
+func _ao_morrer() -> void:
+	_shoot_windup = 0.0
+	_aoe_windup = 0.0
+	_clear_cast_fx()
+	_clear_aoe_fx()
 
 func _fire() -> void:
 	if _sprite != null and _sprite.sprite_frames != null and _sprite.sprite_frames.has_animation("attack"):

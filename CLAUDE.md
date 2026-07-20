@@ -219,7 +219,12 @@ not die — *is this one getting back up?* Without it, bones that reassemble and
 are the same picture, and the room's rule becomes guesswork. **`died` still fires immediately** — room counts, souls and the boss doors all
 depend on it; only the *node* lingers, with collision and AI off. A corpse is therefore no longer
 in `_enemies`, so `_clear_entities` sweeps stray `EnemyView` children too, or one caught mid-level-
-change would be orphaned into the new scene.
+change would be orphaned into the new scene. The corpse-fall (decrement `_morrendo`, land,
+`queue_free`) lives in `_tick_cadaver`, and a `_ao_morrer()` hook lets a subclass end its own
+effects: **`NecromancerView` overrides `_physics_process` wholesale**, so it must call
+`_tick_cadaver` itself (via the `morrendo()` guard) — without it the dead Necromancer's node never
+freed and kept shooting and casting forever. `_ao_morrer` there also kills the cast aura, the AoE
+field, and any windup in flight, so no spell resolves from beyond the grave.
 
 **Done — per-enemy attack rhythm, and the Necromancer telegraphs.** The three skeletons used to be
 timing-identical (code defaults 0.18 / 1.0); now each declares its own in JSON — minion
