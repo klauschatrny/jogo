@@ -554,6 +554,15 @@ func _enemies_in_reach() -> Array:
 	var result: Array = []
 	for hit in get_world_2d().direct_space_state.intersect_shape(query, 16):
 		var b: Variant = hit.get("collider")
-		if b is EnemyView and b.data != null:
+		if b is EnemyView and b.data != null and _tem_linha_de_visada(b):
 			result.append(b)
 	return result
+
+## O golpe não atravessa parede. A busca acima é por FORMA na camada 2 (inimigos) e ignora
+## solenemente a camada 4 (chão, tabuleiros, paredes), então sem esta checagem a lâmina acertava
+## através de qualquer estrutura — dava para matar o Necromante da torre lá de baixo, e a escada
+## que deveria ser o único acesso virava enfeite.
+func _tem_linha_de_visada(alvo: Node2D) -> bool:
+	var q := PhysicsRayQueryParameters2D.create(global_position, alvo.global_position, 4)
+	q.hit_from_inside = false
+	return get_world_2d().direct_space_state.intersect_ray(q).is_empty()

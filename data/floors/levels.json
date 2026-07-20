@@ -81,7 +81,9 @@
           "at": 1482,
           "altura": 96,
           "largura": 132,
-          "escada_em": -82
+          "escada_em": -38,
+          "camara_h": 64,
+          "alcapao": 40
         }
       },
       "guard": {

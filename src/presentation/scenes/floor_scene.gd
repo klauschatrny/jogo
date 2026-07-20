@@ -1167,27 +1167,55 @@ func _spawn_necro_tower(spec: Dictionary) -> float:
 		a.position = Vector2(-larg * 0.5 + 4.0 + i * 22.0, -alt - 10.0)
 		torre.add_child(a)
 
-	# COLISÃO SÓ NO TABULEIRO. Os pilares e o arco são desenho: quem passa por baixo não esbarra
-	# em nada, nem o jogador nem os esqueletos. Camada 4 = a do chão, então dá para pisar em cima.
-	var corpo_fis := StaticBody2D.new()
-	corpo_fis.collision_layer = 4
-	corpo_fis.collision_mask = 0
-	var col := CollisionShape2D.new()
-	var r := RectangleShape2D.new()
-	r.size = Vector2(larg, deck)
-	col.shape = r
-	col.position = Vector2(0.0, -alt + deck * 0.5)
-	corpo_fis.add_child(col)
-	torre.add_child(corpo_fis)
+	# A escada sobe por um ALÇAPÃO no tabuleiro, não pela borda de fora. Foi o que permitiu fechar
+	# o andar de cima: com a escada do lado de fora, a única forma de o jogador entrar seria uma
+	# abertura na parede — e por essa abertura o golpe voltaria a alcançar o Necromante.
+	# O alçapão tem de ser bem mais largo que a caixa do jogador: com folga curta ele encosta nas
+	# lajes ao subir e trava no meio do vão, sem nenhum aviso de que está preso.
+	var vao_esc := float(spec.get("alcapao", 40.0))
+	var lx := tx + float(spec.get("escada_em", -larg * 0.25))
 
-	# A escada encostada na BORDA de fora do tabuleiro — por dentro, o próprio tabuleiro barraria
-	# a subida. Ao chegar ao topo o jogador é posto alguns px para DENTRO (saida_x), senão
-	# terminaria a subida no ar, ao lado da torre.
-	var borda := larg * 0.5
-	var lx := tx + float(spec.get("escada_em", borda + LadderView.WIDTH * 0.5))
+	# COLISÃO DO TABULEIRO em duas lajes, com o buraco do alçapão entre elas. Os pilares e o arco
+	# seguem sendo só desenho: passar por baixo é livre.
+	for lado in [-1.0, 1.0]:
+		var x0 := (-larg * 0.5) if lado < 0.0 else (lx - tx + vao_esc * 0.5)
+		var x1 := (lx - tx - vao_esc * 0.5) if lado < 0.0 else (larg * 0.5)
+		if x1 - x0 <= 1.0:
+			continue
+		_solido(torre, Vector2((x0 + x1) * 0.5, -alt + deck * 0.5), Vector2(x1 - x0, deck))
+
+	# A CÂMARA: paredes nas duas bordas e teto. Sem isso o jogador pulava ao lado da torre e
+	# acertava o Necromante no ar — o pulo alcança 76px e o Necromante fica a ~110, mas a lâmina
+	# tem 76 de comprimento e cobria a diferença. Com a câmara fechada, a linha de visada do golpe
+	# (ver PlayerView._tem_linha_de_visada) bate na parede e o dano não sai. A escada deixa de ser
+	# um caminho alternativo e passa a ser o único.
+	var par_h := float(spec.get("camara_h", 52.0))
+	var esp := 6.0
+	for lado2 in [-1.0, 1.0]:
+		_solido(torre, Vector2(lado2 * (larg * 0.5 - esp * 0.5), -alt - par_h * 0.5), Vector2(esp, par_h))
+	_solido(torre, Vector2(0.0, -alt - par_h - esp * 0.5), Vector2(larg, esp))
+
+	# Desenho das paredes/teto (a colisão acima é invisível).
+	for lado3 in [-1.0, 1.0]:
+		var pr := ColorRect.new()
+		pr.color = Color(0.31, 0.30, 0.35)
+		pr.size = Vector2(esp, par_h)
+		pr.position = Vector2(lado3 * (larg * 0.5) - (0.0 if lado3 < 0.0 else esp), -alt - par_h)
+		torre.add_child(pr)
+	var teto := ColorRect.new()
+	teto.color = Color(0.25, 0.24, 0.29)
+	teto.size = Vector2(larg, esp)
+	teto.position = Vector2(-larg * 0.5, -alt - par_h - esp)
+	torre.add_child(teto)
+
+	# A escada sobe pelo alçapão; ao chegar em cima o jogador sai AO LADO do buraco (senão cairia
+	# de volta por ele). A tolerância em X do LadderView cobre esse deslocamento, para que ele
+	# ainda consiga remontar a escada e descer.
 	var esc := LadderView.new()
 	_env.add_child(esc)
-	esc.setup(lx, GROUND_Y, alt, tx + borda - 16.0 if lx > tx else tx - borda + 16.0, _player_view)
+	# A tolerância acompanha a largura do alçapão: a saída no topo fica ao lado do buraco, e a
+	# escada precisa continuar "alcançável" de lá, senão o jogador sobe e não consegue mais descer.
+	esc.setup(lx, GROUND_Y, alt, lx + vao_esc * 0.85, _player_view, vao_esc * 0.5 + 16.0)
 	_ladders.append(esc)
 	if is_instance_valid(_player_view):
 		_player_view.ladders = _ladders
@@ -1689,6 +1717,20 @@ func _spawn_exit_passage(_level_id: String) -> void:
 ## Id estável do portão de mecanismo de um nível (persistido no RunState). Um por nível de sala.
 func _gate_id(level_id: String) -> String:
 	return "gate_%s" % level_id
+
+## Um bloco sólido na camada 4 (a mesma do chão), filho de `pai`, sem desenho. Serve às lajes do
+## tabuleiro, às paredes e ao teto da câmara.
+func _solido(pai: Node2D, centro: Vector2, tam: Vector2) -> void:
+	var b := StaticBody2D.new()
+	b.collision_layer = 4
+	b.collision_mask = 0
+	var c := CollisionShape2D.new()
+	var r := RectangleShape2D.new()
+	r.size = tam
+	c.shape = r
+	c.position = centro
+	b.add_child(c)
+	pai.add_child(b)
 
 ## A boca do ATALHO deste nível (levels.json → "shortcut"), em x ABSOLUTO — ela pode estar na
 ## entrada tanto quanto no fim do refúgio, e as duas pontas de um mesmo atalho são justamente

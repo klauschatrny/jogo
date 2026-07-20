@@ -17,12 +17,18 @@ var _saida_x := 0.0              # onde o corpo é posto ao chegar no topo (em c
 var _player: Node2D
 var _prompt: Label
 var em_uso := false              # o floor_scene/PlayerView avisa: escondendo o convite enquanto escala
+## Quanto se pode estar fora do eixo e ainda contar como "na escada". Precisa cobrir o
+## deslocamento da saída no topo: quem sobe por um alçapão sai AO LADO do buraco (senão cairia
+## por ele), e sem essa folga não conseguiria remontar para descer — ficaria preso lá em cima.
+var tolerancia_x := WIDTH * 0.5 + 14.0
 
 ## `saida_x` = para onde o jogador escorrega ao terminar a subida. A escada fica encostada na
 ## BORDA de fora da plataforma (senão o tabuleiro barraria a subida por baixo), então chegar ao
 ## topo tem de deslocá-lo alguns px para dentro — sem isso ele terminaria a subida no ar,
 ## agarrado à borda, e cairia de volta.
-func setup(x: float, chao_y: float, h: float, saida_x := 0.0, player: Node2D = null) -> void:
+func setup(x: float, chao_y: float, h: float, saida_x := 0.0, player: Node2D = null, tol_x := 0.0) -> void:
+	if tol_x > 0.0:
+		tolerancia_x = tol_x
 	position = Vector2(x, chao_y)
 	altura = h
 	_topo_y = chao_y - h
@@ -86,9 +92,14 @@ func _na_base(player: Node2D) -> bool:
 ## O corpo está na escada? Testa a faixa horizontal e a vertical (do chão ao topo, com folga em
 ## cima para ainda "agarrar" quem está pisando na plataforma e quer descer).
 func contem(pos: Vector2) -> bool:
-	if absf(pos.x - global_position.x) > WIDTH * 0.5 + 4.0:
+	# Tolerância generosa em X: no topo o jogador sai da escada ao LADO do alçapão (senão cairia
+	# de volta pelo buraco), e precisa continuar contando como "na escada" para poder descer.
+	if absf(pos.x - global_position.x) > tolerancia_x:
 		return false
-	return pos.y <= global_position.y + 4.0 and pos.y >= _topo_y - 20.0
+	# A folga para CIMA precisa caber um corpo DE PÉ sobre o tabuleiro: quem terminou a subida
+	# tem o centro acima do topo (a altura dele inteiro), e sem essa folga não conseguiria
+	# remontar a escada para descer — subiria e ficaria preso lá em cima.
+	return pos.y <= global_position.y + 4.0 and pos.y >= _topo_y - 44.0
 
 ## Altura do topo (y do mundo): quem sobe até aqui já pode pisar na plataforma.
 func topo_y() -> float:
