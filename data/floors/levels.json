@@ -1,5 +1,5 @@
 {
-  "_comment": "O MAPA da dungeon, como GRAFO. Cada nível tem um id (a chave), um 'name' de exibição e 'exits': para onde se pode ir DAQUI. Não existe mais 'próximo nível' por aritmética — se não houver uma saída apontando para um nível, ele é inalcançável. É isso que permite bifurcações, becos e ATALHOS (duas arestas ligando os mesmos dois lugares por caminhos de custo diferente). 'start' é onde a dungeon começa, depois da vila.\n\nSAÍDAS: o nome da saída diz QUAL passagem do nível ela é, e o código conhece dois nomes: 'frente' (a névoa/porta no fim do nível) e 'tras' (a porta de trás, que só as arenas de chefe têm). O destino pode ser o id do nível (entra pelo começo dele) ou { level, entry } para escolher POR ONDE se entra. Pontos de entrada: 'inicio' (padrão), 'fim' (desemboca no extremo direito — é como se volta por uma porta de trás) e 'fogueira' (desemboca na fogueira do refúgio, o que faz de uma passagem um atalho de verdade).\n\nTIPOS: 'room' = sala a limpar (o refúgio com portão+fogueira+névoa é anexado pelo floor_scene, ver _spawn_sanctuary); 'boss' = arena fechada; 'rest' = área segura, só fogueira e névoa.\n\nDIFICULDADE não se escala aqui: não há curva por andar. O inimigo vale o que o JSON dele em data/enemies/ diz. Para um encontro mais duro, afine o JSON do inimigo ou crie uma variante com id próprio e use-a só onde quiser.\n\n'hazards' (opcional) = armadilhas de cenário, 'id' do catálogo em data/hazards.json, 'x' no corredor e 'width' opcional. Cair num poço MATA. 'guard' (opcional, só 'room') = a guarda do refúgio: { ids, count } de esqueletos que reocupam o trecho entre a fogueira e a névoa DEPOIS que o nível é vencido; descansar na fogueira os renasce (o run-back do soulslike).\n\n'shortcut' (opcional, só 'room') = O ATALHO: a boca de um poço plantada no refúgio, em 'at' px depois do portão. Nasce FECHADA e só se destranca do lado de dentro — é o que dá sentido à primeira travessia longa, porque a porta se abre pelas costas. Destrancada, liga a vila direto à fogueira deste nível (entrada 'fogueira'), pulando a zona de combate inteira, e fica aberta para sempre ('id' é gravado em RunState.opened_gates, sobrevivendo à morte). Nas duas pontas é INTERAGIR, nunca walk-through: no refúgio ela fica no caminho obrigatório até a névoa do chefe, e cruzá-la andando teleportaria o jogador para a vila toda vez que ele fosse lutar.\n\n'room.reassemble_time' (segundos) = quanto um esqueleto leva para se REMONTAR depois de desabar, enquanto houver Necromante vivo na sala. Enquanto ele vive nenhum esqueleto morre: zerada a vida, o esqueleto cai em ossos ali mesmo (não recebe mais golpe nesse estado) e volta inteiro depois desse tempo. Matar o Necromante é a única forma de limpar a sala — e derruba todos de uma vez.\n\n'gate' (opcional, so 'room', padrao false) = este nivel tem PORTAO DE MADEIRA com alavanca, trancando o refugio ate a sala ser vencida. Sem ele o jogador alcanca a fogueira quando quiser. Use so onde trancar a passagem E o desenho do nivel. A NEVOA nao se declara: ela nasce sozinha quando a saida 'frente' leva a um nivel 'boss' ainda vivo, e so ai — nevoa e o selo do chefe, nao um enfeite de porta.",
+  "_comment": "O MAPA da dungeon, como GRAFO. Cada nível tem um id (a chave), um 'name' de exibição e 'exits': para onde se pode ir DAQUI. Não existe 'próximo nível' por aritmética — se nada aponta para um nível, ele é inalcançável. É isso que permite bifurcações, becos e ATALHOS. 'start' é onde a dungeon começa, depois da Cidade.\n\nSAÍDAS: o código conhece dois nomes — 'frente' (a passagem no fim do nível) e 'tras' (a porta de trás, só nas arenas de chefe). O destino é o id do nível, ou { level, entry } para escolher por onde se entra. Entradas: 'inicio' (padrão), 'fim' (extremo direito, como se volta por uma porta de trás) e 'fogueira' (a fogueira do refúgio).\n\nTIPOS: 'room' = sala a limpar; 'boss' = arena fechada; 'rest' = área segura.\n\nESTRUTURA DE UM 'room', da esquerda para a direita: 'entrance' (opcional) = o que vem ANTES do combate — 'bonfire_at' (x da fogueira) e 'gate' { id, at, w, h, lever_back } = um portão com alavanca JÁ DESTRAVADA, que marca a saída de um lugar em vez de trancar uma recompensa (é o portão da Cidade). Depois vem a zona de combate ('corridor_length'). Depois o REFÚGIO, montado pelo floor_scene: 'gate': true põe ali o portão de madeira que só abre com a sala vencida; 'sanctuary_bonfire' (padrão true) põe a fogueira; 'guard' { ids, count } põe os esqueletos do run-back, que renascem a cada descanso. A NÉVOA no fim não se declara: ela nasce sozinha quando a saída 'frente' leva a um nível 'boss' ainda vivo — névoa é o selo do chefe, não enfeite de porta. Toda outra saída é porta comum.\n\nATALHO ('shortcut'): duas bocas de poço, em níveis diferentes, com o MESMO id, cada uma apontando para onde a outra está — { id, at (x absoluto neste nível), to: { level, x }, unlocks }. Abrir uma abre as duas, para sempre (RunState.opened_gates, sobrevive à morte). Só a ponta com 'unlocks': true destranca, e ela fica do lado LONGE, logo antes do chefe: você não acha o atalho, você o abre por dentro depois de já ter feito o caminho difícil. É sempre INTERAGIR, nunca walk-through — a boca fica no caminho obrigatório e cruzá-la andando teleportaria o jogador toda vez que ele passasse.\n\n'room.reassemble_time' (s) = quanto um esqueleto leva para se REMONTAR depois de desabar, enquanto houver Necromante vivo. Enquanto ele vive nenhum esqueleto morre: cai em ossos ali mesmo (e não recebe mais golpe) e volta inteiro. Matar o Necromante é a única saída, e derruba todos de uma vez.\n\nDIFICULDADE não se escala: o inimigo vale o que o JSON dele em data/enemies/ diz. Para um encontro mais duro, afine o JSON ou crie uma variante com id próprio. 'hazards' (opcional) = armadilhas do catálogo data/hazards.json.",
   "start": "portao",
   "levels": {
     "portao": {
@@ -14,19 +14,28 @@
           "count": 6
         }
       },
-      "guard": {
-        "ids": [
-          "enm_skeleton_minion"
-        ],
-        "count": 3
-      },
       "exits": {
         "frente": "cemiterio"
       },
       "shortcut": {
-        "id": "poco_portao",
-        "at": 260
-      }
+        "id": "poco_cemiterio",
+        "at": 380,
+        "to": {
+          "level": "cemiterio",
+          "x": 2540
+        }
+      },
+      "entrance": {
+        "bonfire_at": 150,
+        "gate": {
+          "id": "portao_cidade",
+          "at": 320,
+          "w": 56,
+          "h": 150,
+          "lever_back": 50
+        }
+      },
+      "sanctuary_bonfire": false
     },
     "cemiterio": {
       "name": "Cemitério",
@@ -62,7 +71,16 @@
       "exits": {
         "frente": "bosque_ogro"
       },
-      "gate": true
+      "gate": true,
+      "shortcut": {
+        "id": "poco_cemiterio",
+        "at": 2540,
+        "unlocks": true,
+        "to": {
+          "level": "portao",
+          "x": 380
+        }
+      }
     },
     "bosque_ogro": {
       "name": "Bosque do Ogro",

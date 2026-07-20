@@ -5,7 +5,9 @@
 ##   - TRANCADA: tábuas cruzadas sobre a boca. Ainda assim CONVIDA ("destrancar"), porque um atalho
 ##     que não se anuncia não é um atalho — é cenário que o jogador passa reto. Foi o que aconteceu
 ##     na primeira versão, feita com a porta comum escurecida: lia como porta quebrada.
-##   - ABERTA: as tábuas somem, o buraco fica preto e fundo, e o convite vira "descer"/"subir".
+##   - ABERTA: as tábuas somem, o buraco fica preto e fundo, e o convite vira "atravessar".
+## Trancada SEM a tranca deste lado (a outra ponta é que destranca), o convite diz isso em vez de
+## prometer uma ação que não vai acontecer.
 class_name ShortcutView
 extends Node2D
 
@@ -13,15 +15,15 @@ const REACH := 34.0              # distância para interagir (base 640×360)
 
 var _player: Node2D
 var _aberto := false
-var _na_vila := false            # muda só o verbo do convite (descer x subir)
+var _pode_destrancar := false    # esta ponta tem a tranca? (só uma das duas tem)
 var _tabuas: Node2D
 var _prompt: Label
 
-func setup(x: float, player: Node2D, aberto: bool, na_vila: bool) -> void:
+func setup(x: float, player: Node2D, aberto: bool, pode_destrancar: bool) -> void:
 	position.x = x
 	_player = player
 	_aberto = aberto
-	_na_vila = na_vila
+	_pode_destrancar = pode_destrancar
 	_build()
 
 func _build() -> void:
@@ -69,9 +71,11 @@ func _process(_delta: float) -> void:
 	_prompt.text = "%s  %s" % [KeyBinds.key_name("interact"), _verbo()]
 
 func _verbo() -> String:
-	if not _aberto:
-		return "destrancar o poço"
-	return "descer pelo poço" if _na_vila else "subir pelo poço"
+	if _aberto:
+		return "atravessar o poço"
+	# Trancado e sem a tranca deste lado: o convite tem de dizer isso, senão promete uma ação
+	# que não acontece e o jogador conclui que o botão está quebrado.
+	return "destrancar o poço" if _pode_destrancar else "poço travado (do outro lado)"
 
 func in_reach(player: Node2D) -> bool:
 	return is_instance_valid(player) and absf(player.global_position.x - global_position.x) <= REACH

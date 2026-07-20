@@ -71,21 +71,37 @@ Entry points replaced the old `_entry_from_right` boolean. The core still never 
 whoever builds the run passes `start_level`. `Player.current_floor` is **frozen at 1** — only the
 parked Nemesis reads it (note left in `ghost_factory`).
 
-**Done — the first shortcut (`levels.json → shortcut`).** A `"room"` level may declare
-`{ id, at }`: the mouth of a shaft placed `at` px past the gate, inside the sanctuary. It starts
-**locked and only unlocks from the far side** — which is what gives the first long traversal its
-point: you open the door from behind it. Unlocked, it links the **village straight to that level's
-bonfire** (`entry: "fogueira"`), skipping the whole combat corridor, and stays open forever
-(`id` goes into `RunState.opened_gates`, surviving death — same machinery as the lever's gate).
-It draws itself through **`ShortcutView`**, which has two visually distinct states — boarded
-(crossed planks) and open (a black shaft) — and **always shows a prompt in reach**
-(`destrancar / descer / subir o poço`). The first version reused the ordinary door with a dark
-`modulate` and no prompt, and it read as a *broken door*: a shortcut that does not announce itself
-is not a shortcut, it is scenery the player walks past. Both ends are **`interact`, never
-walk-through**: in the sanctuary the mouth sits on the mandatory
-path to the boss fog, so crossing it by walking would teleport the player to the village every time
-they went to fight. The village end sits **behind** the spawn point (`VILLAGE_SHORTCUT_X`) for the
-same reason. Today: `poco_portao` in `portao`.
+**Done — the shortcut, and the shape of `portao`.** A `"room"` level is now three stretches left
+to right: an optional **`entrance`** (before the fight), the **combat corridor**
+(`corridor_length`), and the **sanctuary** the engine appends.
+
+`portao` puts its bonfire in the `entrance` (`bonfire_at`) — it is the **first bonfire of the game**
+and therefore where the flask lesson fires (`_update_flask_tip` finds any bonfire on `start_level`).
+Right after it stands the **big city gate** (`entrance.gate`, 56×150 vs the ordinary 34×92), whose
+lever is **armed from the start**: it marks *leaving a place*, so pulling it is a departure, not a
+reward for clearing a room. `portao` therefore sets `sanctuary_bonfire: false` — a level whose fire
+is at the door does not want a second one at the back — and has no `guard` (the guard exists for a
+boss run-back it does not have).
+
+**The shortcut is two well mouths in different levels sharing one `id`**, each pointing at where the
+other sits: `{ id, at (absolute x), to: { level, x }, unlocks }`. Opening either opens both, forever
+(`RunState.opened_gates`, survives death). Only the end with `unlocks: true` has the latch, and it
+sits on the **far** side — in `cemiterio`, right before the boss fog — so you never *find* the
+shortcut, you open it from inside after walking the hard way once. It lands in `portao` just past
+the city gate, which is what collapses the run-back. Both ends are **`interact`, never
+walk-through** (the mouth sits on the mandatory path; walking through it would teleport the player
+every time they passed). `ShortcutView` draws it with two distinct states — boarded planks vs. an
+open black shaft — and **always prompts in reach**, including *"poço travado (do outro lado)"* on
+the latchless end. The first version reused the ordinary door with a dark `modulate` and no prompt,
+and it simply read as a broken door.
+
+**The Cidade is not a shortcut endpoint.** It is the tutorial village and stays outside the graph;
+an earlier version ran the shortcut from `portao` up to the Cidade, which made no sense — you do
+not build a shortcut back to the tutorial.
+
+**Ordering gotcha:** `_spawn_sanctuary` clears `_bonfires`/`_lever`/`_gate` at its top, so
+`_spawn_entrance` must run **after** it or the refuge wipes the entrance out. Also, `_gate`/`_lever`
+are single references: a level uses either an entrance gate or a sanctuary gate, not both.
 
 **Done — traversal never heals.** `go_to()` lost its `heal` flag: walking into the next area used
 to restore full HP (a roguelike end-of-floor convention), which erased the resource bill the
