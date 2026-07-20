@@ -14,16 +14,20 @@ const RUNG_GAP := 9.0            # espaçamento dos degraus
 var altura := 0.0                # do chão até o topo da plataforma
 var _topo_y := 0.0               # y do topo (onde se sai para a plataforma)
 var _saida_x := 0.0              # onde o corpo é posto ao chegar no topo (em cima do tabuleiro)
+var _player: Node2D
+var _prompt: Label
+var em_uso := false              # o floor_scene/PlayerView avisa: escondendo o convite enquanto escala
 
 ## `saida_x` = para onde o jogador escorrega ao terminar a subida. A escada fica encostada na
 ## BORDA de fora da plataforma (senão o tabuleiro barraria a subida por baixo), então chegar ao
 ## topo tem de deslocá-lo alguns px para dentro — sem isso ele terminaria a subida no ar,
 ## agarrado à borda, e cairia de volta.
-func setup(x: float, chao_y: float, h: float, saida_x := 0.0) -> void:
+func setup(x: float, chao_y: float, h: float, saida_x := 0.0, player: Node2D = null) -> void:
 	position = Vector2(x, chao_y)
 	altura = h
 	_topo_y = chao_y - h
 	_saida_x = saida_x if saida_x != 0.0 else x
+	_player = player
 	_build()
 
 func saida_x() -> float:
@@ -41,6 +45,16 @@ func _build() -> void:
 		m.position = Vector2(lado * (WIDTH * 0.5) - (0.0 if lado < 0.0 else 3.0), -altura)
 		add_child(m)
 
+	# O convite na BASE. Sem ele a escada é só cenário de madeira — o jogador não tem como saber
+	# que aquilo é usável, muito menos com qual tecla.
+	_prompt = Label.new()
+	_prompt.add_theme_color_override("font_color", Palette.TEXT)
+	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_prompt.size = Vector2(180.0, 18.0)
+	_prompt.position = Vector2(-90.0, -22.0)
+	_prompt.visible = false
+	add_child(_prompt)
+
 	var n := int(altura / RUNG_GAP)
 	for i in n:
 		var d := ColorRect.new()
@@ -48,6 +62,21 @@ func _build() -> void:
 		d.size = Vector2(WIDTH, 2.0)
 		d.position = Vector2(-WIDTH * 0.5, -altura + i * RUNG_GAP + 4.0)
 		add_child(d)
+
+func _process(_delta: float) -> void:
+	if _prompt == null:
+		return
+	# Só na BASE e só fora de uso: quem já está escalando não precisa do convite, e quem está lá
+	# em cima também não.
+	_prompt.visible = not em_uso and _na_base(_player)
+	_prompt.text = "%s  escalar" % KeyBinds.key_name("interact")
+
+func _na_base(player: Node2D) -> bool:
+	if not is_instance_valid(player):
+		return false
+	if absf(player.global_position.x - global_position.x) > WIDTH * 0.5 + 8.0:
+		return false
+	return absf(player.global_position.y - global_position.y) <= 46.0
 
 ## O corpo está na escada? Testa a faixa horizontal e a vertical (do chão ao topo, com folga em
 ## cima para ainda "agarrar" quem está pisando na plataforma e quer descer).

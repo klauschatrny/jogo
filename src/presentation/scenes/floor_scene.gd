@@ -1187,7 +1187,7 @@ func _spawn_necro_tower(spec: Dictionary) -> float:
 	var lx := tx + float(spec.get("escada_em", borda + LadderView.WIDTH * 0.5))
 	var esc := LadderView.new()
 	_env.add_child(esc)
-	esc.setup(lx, GROUND_Y, alt, tx + borda - 16.0 if lx > tx else tx - borda + 16.0)
+	esc.setup(lx, GROUND_Y, alt, tx + borda - 16.0 if lx > tx else tx - borda + 16.0, _player_view)
 	_ladders.append(esc)
 	if is_instance_valid(_player_view):
 		_player_view.ladders = _ladders

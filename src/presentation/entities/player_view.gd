@@ -328,61 +328,60 @@ func _drink_finish_fx() -> void:
 var ladders: Array = []
 var _on_ladder: LadderView = null
 
-## Devolve true se ESTE frame foi consumido pela escada (subindo/descendo).
+## Devolve true se ESTE frame foi consumido pela escada (montado nela).
+##
+## Contrato: ENTRA com INTERAGIR (E), SOBE/DESCE com cima/baixo, e SÓ SAI pelas duas pontas —
+## chegando ao tabuleiro em cima ou pisando o chão embaixo. Não há como pular fora nem escorregar
+## para o lado. Isso resolve o conflito de teclas de raiz: montado, o frame inteiro pertence à
+## escada, então W não chega ao pulo e não há como soltar sem querer no meio da subida. E também
+## é mais honesto — uma escada de que se cai ao encostar em qualquer tecla não é uma escada.
 func _update_ladder(delta: float) -> bool:
 	if _dodge_time > 0.0 or _drink_time > 0.0:
 		return false                      # gestos comprometidos têm prioridade
-	# INTERAGIR (E) sobe; move_down desce. E é o mesmo verbo de "usar" do resto do jogo (fogueira,
-	# alavanca, poço), e usar uma escada é exatamente isso — além de não competir com o pulo, que
-	# divide tecla com move_up e por isso soltava a escada no frame em que ela era agarrada.
-	var subindo := Input.is_action_pressed("interact")
-	var descendo := Input.is_action_pressed("move_down")
-	var iy := (-1.0 if subindo else 0.0) + (1.0 if descendo else 0.0)
 
+	# MONTAR: só com INTERAGIR, e só estando na faixa dela.
 	if _on_ladder == null:
-		if iy == 0.0:
+		if not Input.is_action_just_pressed("interact"):
 			return false
 		for l in ladders:
-			if not is_instance_valid(l) or not l.contem(global_position):
-				continue
-			# Só AGARRA subindo; para descer é preciso estar no topo (senão qualquer toque em
-			# "baixo" perto do pé da escada colaria o player nela).
-			if iy < 0.0 or global_position.y <= l.topo_y() + 8.0:
+			if is_instance_valid(l) and l.contem(global_position):
 				_on_ladder = l
+				l.em_uso = true
 				break
 		if _on_ladder == null:
 			return false
 
-	if not is_instance_valid(_on_ladder) or not _on_ladder.contem(global_position):
+	if not is_instance_valid(_on_ladder):
 		_on_ladder = null
 		return false
 
-	# Solta ao pular: dá para saltar da escada em vez de terminar a subida.
-	if Input.is_action_just_pressed("jump"):
-		_on_ladder = null
-		velocity.y = JUMP_VELOCITY
-		return false
-
-	# Andar para os lados sem estar subindo também solta: quem está no pé da escada e quer ir
-	# embora não pode ficar colado nela.
-	if iy == 0.0 and Input.get_axis("move_left", "move_right") != 0.0:
-		_on_ladder = null
-		return false
-
+	var iy := Input.get_axis("move_up", "move_down")
 	global_position.x = _on_ladder.eixo_x()   # alinha ao eixo: nada de subir raspando a parede
 	velocity.x = 0.0
 	velocity.y = iy * CLIMB_SPEED
-	# Chegou ao topo subindo: sobe no tabuleiro. Precisa deslocar em X também — a escada encosta
-	# na borda de FORA da plataforma, então terminar a subida no eixo dela deixaria o jogador no
-	# ar, ao lado da torre, e ele cairia de volta.
+
+	# SAÍDA 1 — o topo: sobe no tabuleiro. Precisa deslocar em X também, porque a escada encosta
+	# na borda de FORA da plataforma; terminar a subida no eixo dela deixaria o jogador no ar.
 	if iy < 0.0 and global_position.y <= _on_ladder.topo_y():
 		global_position = Vector2(_on_ladder.saida_x(), _on_ladder.topo_y() - 6.0)
-		_on_ladder = null
-		velocity = Vector2.ZERO
+		_soltar_escada()
 		return false
+
 	move_and_slide()
+
+	# SAÍDA 2 — a base: desceu até o chão.
+	if iy > 0.0 and is_on_floor():
+		_soltar_escada()
+		return false
+
 	_play_anim("idle" if iy == 0.0 else "run")
 	return true
+
+func _soltar_escada() -> void:
+	if is_instance_valid(_on_ladder):
+		_on_ladder.em_uso = false
+	_on_ladder = null
+	velocity = Vector2.ZERO
 
 func _flip(dir: Vector2) -> void:
 	if _sprite != null and dir.x != 0.0:

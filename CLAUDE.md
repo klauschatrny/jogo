@@ -157,13 +157,16 @@ is walk-through for everyone. The first version was solid ground-to-top and beca
 cut the corridor in two**. The **only** way up is a **`LadderView`** — the game's first vertical
 traversal, in a world that was flat continuous ground until now. It stands just *outside* the
 deck's edge (inside, the deck itself would block the climb) and drops the player a few px inward on
-arrival (`saida_x`), or he would finish the climb in mid-air beside the tower. Climb with
-**`interact` (E)**, descend with `move_down`; gravity off, snapped to the ladder's axis, and while
-climbing you can neither attack nor dodge — that cost is the point, since a platform reachable by a
-free jump would be no decision at all. E was chosen over `move_up` because **`W` is bound to both
-`jump` and `move_up`**, so climbing released the ladder on the very frame it grabbed; E is also the
-same "use" verb as the bonfire, lever and well. Walking sideways while not climbing releases the
-ladder, so nobody gets glued to it at the bottom. `_ladders` lives on `floor_scene` and is handed
+arrival (`saida_x`), or he would finish the climb in mid-air beside the tower. The contract is: **`interact` (E) mounts**, `move_up`/`move_down` climb, and you
+**only leave by the two ends** — reaching the deck at the top or setting foot on the ground at the
+bottom. No jumping off, no sliding out sideways. That is what settles the key conflict at the root:
+mounted, the whole frame belongs to the ladder, so `W` never reaches the jump code (`W` is bound to
+both `jump` and `move_up`, and an earlier version dropped you on the frame you grabbed). It is also
+just truer — a ladder you fall off by brushing any key is not a ladder. A **`E escalar` prompt**
+sits at the base, visible only when you are near it and not already climbing; without it the ladder
+is anonymous wooden scenery. Gravity is off while mounted, position is snapped to the ladder's
+axis, and you can neither attack nor dodge — that cost is the point, since a platform reachable by
+a free jump would be no decision at all. `_ladders` lives on `floor_scene` and is handed
 to `PlayerView.ladders`; it is cleared with the rest of `_env` on rebuild.
 
 **Done — per-enemy attack rhythm, and the Necromancer telegraphs.** The three skeletons used to be
