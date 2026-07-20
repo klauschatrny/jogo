@@ -454,8 +454,12 @@ func _morrer() -> void:
 	if is_instance_valid(_guard_fx):
 		_guard_fx.queue_free()
 		_guard_fx = null
-	collision_layer = 0                 # deixa de ser alvo e de empurrar quem passa
-	collision_mask = 0
+	# Sai da camada 2: deixa de ser ALVO do golpe do jogador e de contar como inimigo.
+	# Mas a MÁSCARA continua 4 — é ela que faz o corpo enxergar o CHÃO. Zerá-la (o que eu havia
+	# feito) tirava o chão de baixo do cadáver, e a gravidade o levava para fora da tela, caindo
+	# para sempre. O corpo tem de POUSAR, como os ossos do Necromante — a diferença é que este
+	# não levanta: só espera e some.
+	collision_layer = 0
 	if _hp_bar != null:
 		_hp_bar.visible = false
 	_knockback = Vector2.ZERO           # morre onde caiu: nada de deslizar com o recuo do golpe

@@ -202,7 +202,12 @@ holds on the ground so the kill is seen, then fades (`_morrer`: `MORTE_TOMBO` 0.
 0.65 + `MORTE_FADE` 0.40), instead of blinking out of existence on the fatal frame. The first
 version *rotated* the body 90°, and since sprites are anchored at the **feet**, that swung the whole
 corpse sideways — on screen it read as the enemy flying off. Flattening keeps the heap exactly
-where it fell; `_knockback` is zeroed too, so the killing blow's recoil does not slide it. Skeletons collapsing under the Necromancer are told apart by a **purple
+where it fell; `_knockback` is zeroed too, so the killing blow's recoil does not slide it.
+**Only `collision_layer` is cleared, never `collision_mask`** — the layer is what makes the body a
+*target*, the mask is what makes it see the *ground*. Zeroing both (an earlier bug) pulled the
+floor out from under the corpse and gravity carried it off the bottom of the screen forever. The
+body must land, like the Necromancer's bones; the difference is that this one does not get up —
+it just waits and fades. Skeletons collapsing under the Necromancer are told apart by a **purple
 enchanted halo** (`_acende_feitico`, the same visual language as his bolt: flattened pulsing rings
 plus rising sparks). It answers the question the player asks the moment a skeleton drops and does
 not die — *is this one getting back up?* Without it, bones that reassemble and bones that stay down
