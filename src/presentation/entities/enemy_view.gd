@@ -275,7 +275,7 @@ func _resolve_attack(dx: float) -> void:
 		_step_dir = signf(dx)
 		_step = _step_v0()
 	if is_instance_valid(target):
-		var in_range := absf(dx) <= _hit_range() \
+		var in_range := absf(dx) <= _effective_hit_range() \
 			and absf(target.global_position.y - global_position.y) <= ATTACK_VRANGE
 		if in_range and target.has_method("apply_enemy_hit"):
 			target.apply_enemy_hit(data.stats)
@@ -291,6 +291,13 @@ func _resolve_attack(dx: float) -> void:
 ## do que a constante promete.
 func _step_v0() -> float:
 	return 2.0 * step_distance() / STEP_TIME
+
+## Até onde o golpe ACERTA de fato, contando o passo. O dano é resolvido no instante em que o
+## windup acaba, mas o inimigo ainda vai avançar step_distance() com a lâmina no ar — e o arco do
+## efeito é filho DELE, então viaja junto. Sem somar o passo aqui, o golpe conectava na tela e
+## errava nos números: o alcance de acerto era conferido contra a distância de ANTES do avanço.
+func _effective_hit_range() -> float:
+	return _hit_range() + step_distance()
 
 ## Quanto o inimigo cobre com o passo do golpe. É o que separa o alcance de ACERTO (attack_range)
 ## do alcance de GATILHO: ele decide atacar de mais longe justamente porque vai avançar.

@@ -149,6 +149,14 @@ persisted in `RunState`:
 All three sanctuary interactions (lever, rest, fog) share the `interact` key and are disambiguated
 purely by proximity — they sit far enough apart that only one is ever in reach.
 
+**Done — the step counts for damage too.** The swing resolves the instant the windup ends, but the
+enemy then travels `step_distance()` with the blade out, and the slash arc is a **child of the
+enemy**, so it rides along. Checking damage against `_hit_range()` alone meant the hit *landed on
+screen and missed in the numbers* — exactly what a player would read as a broken hitbox.
+`_resolve_attack` now tests `_effective_hit_range()` = `_hit_range() + step_distance()`, which is
+the same distance the enemy committed from. `BossView` sets `attack_step = 0`, so bosses (whose
+moves are hand-written — the Ogre has his own lunge) are untouched by any of this.
+
 **Done — trigger = reach + step.** `attack_range` is the **hit** distance; the distance at which a
 melee enemy *decides* to swing is `trigger_range()` = `attack_range + step_distance()`. Without
 that sum an enemy that lunges would connect from places it never committed to attack from, and one
