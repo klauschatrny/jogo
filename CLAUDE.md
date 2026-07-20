@@ -157,13 +157,15 @@ is walk-through for everyone. The first version was solid ground-to-top and beca
 cut the corridor in two**. The **only** way up is a **`LadderView`** — the game's first vertical
 traversal, in a world that was flat continuous ground until now. It stands just *outside* the
 deck's edge (inside, the deck itself would block the climb) and drops the player a few px inward on
-arrival (`saida_x`), or he would finish the climb in mid-air beside the tower. The contract is: **`interact` (E) mounts**, `move_up`/`move_down` climb, and you
+arrival (`saida_x`), or he would finish the climb in mid-air beside the tower. The contract is: **`interact` (E) mounts, feet on the ground**, `move_up`/`move_down` climb, and you
 **only leave by the two ends** — reaching the deck at the top or setting foot on the ground at the
 bottom. No jumping off, no sliding out sideways. That is what settles the key conflict at the root:
 mounted, the whole frame belongs to the ladder, so `W` never reaches the jump code (`W` is bound to
 both `jump` and `move_up`, and an earlier version dropped you on the frame you grabbed). It is also
-just truer — a ladder you fall off by brushing any key is not a ladder. A **`E escalar` prompt**
-sits at the base, visible only when you are near it and not already climbing; without it the ladder
+just truer — a ladder you fall off by brushing any key is not a ladder. Mounting requires `is_on_floor()` — grabbing the ladder mid-jump would hand over
+for free exactly the vertical distance the ladder is supposed to charge for. The check covers both
+ends: the ground below, the deck above. A **`E escalar` prompt** sits at the base, visible only
+when you are near it, standing, and not already climbing; without it the ladder
 is anonymous wooden scenery. Gravity is off while mounted, position is snapped to the ladder's
 axis, and you can neither attack nor dodge — that cost is the point, since a platform reachable by
 a free jump would be no decision at all. `_ladders` lives on `floor_scene` and is handed

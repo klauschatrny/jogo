@@ -68,8 +68,13 @@ func _process(_delta: float) -> void:
 		return
 	# Só na BASE e só fora de uso: quem já está escalando não precisa do convite, e quem está lá
 	# em cima também não.
-	_prompt.visible = not em_uso and _na_base(_player)
+	# O convite também respeita os pés no chão: prometer "escalar" a quem está no ar seria
+	# prometer uma ação que não acontece.
+	_prompt.visible = not em_uso and _na_base(_player) and _player_apoiado()
 	_prompt.text = "%s  escalar" % KeyBinds.key_name("interact")
+
+func _player_apoiado() -> bool:
+	return is_instance_valid(_player) and _player.has_method("is_on_floor") and _player.is_on_floor()
 
 func _na_base(player: Node2D) -> bool:
 	if not is_instance_valid(player):

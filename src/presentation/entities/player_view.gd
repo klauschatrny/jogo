@@ -339,9 +339,12 @@ func _update_ladder(delta: float) -> bool:
 	if _dodge_time > 0.0 or _drink_time > 0.0:
 		return false                      # gestos comprometidos têm prioridade
 
-	# MONTAR: só com INTERAGIR, e só estando na faixa dela.
+	# MONTAR: só com INTERAGIR, com os PÉS NO CHÃO e estando na faixa dela. A exigência de estar
+	# apoiado é o que impede agarrar a escada no meio de um pulo — o que daria de graça exatamente
+	# a subida vertical que a escada deveria cobrar, e permitiria alcançar o tabuleiro pelo ar.
+	# Serve para as duas pontas: embaixo o chão, em cima o próprio tabuleiro.
 	if _on_ladder == null:
-		if not Input.is_action_just_pressed("interact"):
+		if not Input.is_action_just_pressed("interact") or not is_on_floor():
 			return false
 		for l in ladders:
 			if is_instance_valid(l) and l.contem(global_position):
