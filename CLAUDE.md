@@ -149,6 +149,18 @@ persisted in `RunState`:
 All three sanctuary interactions (lever, rest, fog) share the `interact` key and are disambiguated
 purely by proximity — they sit far enough apart that only one is ever in reach.
 
+**Done — enemy spawns are FIXED, never rolled.** Each `room` tier declares its positions one by
+one (`"at": [x, x, …]`), and with several `ids` the one at each slot is chosen by **index**, not
+drawn. Random placement is a roguelike device; in a soulslike the level is a thing you *learn*, and
+you cannot learn what moves every time you die. Knowing a heavy waits past the bend is knowledge
+the player earned and keeps. Without `at`, positions fall back to an even split of the band —
+still deterministic, `randf_range`/`randi` are gone from enemy spawning entirely. A level may set
+**`spawn_from`** to push the band's start: that is how `portao` guarantees nothing spawns before
+the city gate (gate at 320, `spawn_from: 400`, first skeleton at 520). A declared position outside
+the band is pulled in with a `push_warning` rather than silently dropping an enemy on the entrance.
+The only randomness left near level building is the scenery scatter, which uses its own seeded RNG
+on purpose (cosmetic, and identical on every rebuild).
+
 **Done — every non-boss enemy starts dormant.** Uniform rule: anything that is not a boss spawns
 `dormant` (still, facing the player, no chase and no attack) and only turns aggressive when the
 player comes within `MINION_WAKE` (150px) — `GUARD_WAKE` (140px) for the refuge guard, which keeps

@@ -1066,17 +1066,18 @@ func _tier_spec(tier: String) -> Dictionary:
 		"heavy": return _room.get("heavies", {})
 	return {}
 
-## Spawna até o pool do tier encher. No início do nível a horda nasce espalhada (_scatter_pos) e
-## DORMENTE: fica imóvel, encarando o player, até ele se aproximar (_update_room_wake). É o mesmo
-## comportamento da guarda do refúgio — o esqueleto ganha vida quando você chega perto.
+## Spawna a horda do tier nas posições FIXAS do nível (_spawn_positions), toda ela DORMENTE:
+## imóvel, encarando o player, até ele se aproximar (_update_room_wake). É o mesmo comportamento
+## da guarda do refúgio — o esqueleto ganha vida quando você chega perto.
 func _fill_pool(tier: String) -> void:
 	var spec := _tier_spec(tier)
-	var cap := int(spec.get("count", 0))
 	var ids: Array = spec.get("ids", [])
-	while _alive[tier] < cap and not ids.is_empty():
-		var v := _spawn_room_enemy(tier, String(ids[randi() % ids.size()]), _scatter_pos(false))
-		if v != null:
-			v.dormant = true
+	if ids.is_empty():
+		return
+	# Id por ÍNDICE, não sorteado: com vários ids, a mesma posição traz sempre o mesmo inimigo.
+	var pos := _spawn_positions(spec, false)
+	for i in pos.size():
+		_spawn_room_enemy(tier, String(ids[i % ids.size()]), Vector2(pos[i], GROUND_Y - 40.0))
 
 func _spawn_room_enemy(tier: String, id: String, pos: Vector2) -> EnemyView:
 	if id == "":
@@ -1115,32 +1116,28 @@ func _spawn_necromancer(id: String) -> void:
 	_necro = view
 	_add_view(view, enemy, Vector2(_fight_width - 198.0, GROUND_Y - 40.0))   # 150px à esquerda do fim do COMBATE
 
-## Andar 1: os heavies a<b<c EM ORDEM de proximidade, um em cada terço da 2ª metade, dormentes.
+## Heavies a<b<c EM ORDEM de proximidade, nas posições fixas do nível, dormentes.
 ## Acordam em cadeia — ver _update_heavy_chain.
 func _spawn_l1_heavies() -> void:
 	var spec: Dictionary = _room.get("heavies", {})
 	var ids: Array = spec.get("ids", [])
-	var n := int(spec.get("count", 3))
 	if ids.is_empty():
 		return
-	var half := _fight_width * 0.5
-	var right := _fight_width - 48.0
-	var band := (right - half) / maxf(1.0, float(n))
-	for i in n:
-		var x := _off_pit(randf_range(half + band * i, half + band * (i + 1)))
+	var pos := _spawn_positions(spec, true)
+	for i in pos.size():
+		var x := float(pos[i])
 		var v := _spawn_room_enemy("heavy", String(ids[i % ids.size()]), Vector2(x, GROUND_Y - 40.0))
-		if v != null:
-			v.dormant = true
 		_heavy_stage.append({ "view": v, "spawn_x": x, "activated": false, "dead": false })
 
-## Demais andares: heavies já ativos, espalhados na 2ª metade (sem encadeamento).
+## Demais níveis: heavies sem encadeamento, nas posições fixas que o nível declarar.
 func _spawn_heavies_simple() -> void:
 	var spec: Dictionary = _room.get("heavies", {})
 	var ids: Array = spec.get("ids", [])
-	for i in int(spec.get("count", 0)):
-		if ids.is_empty():
-			break
-		_spawn_room_enemy("heavy", String(ids[i % ids.size()]), _scatter_pos(true))
+	if ids.is_empty():
+		return
+	var pos := _spawn_positions(spec, true)
+	for i in pos.size():
+		_spawn_room_enemy("heavy", String(ids[i % ids.size()]), Vector2(float(pos[i]), GROUND_Y - 40.0))
 
 func _on_room_enemy_died(view: EnemyView) -> void:
 	var tier := String(view.get_meta("tier", ""))
@@ -1930,12 +1927,42 @@ func _close_options() -> void:
 
 ## Posição inicial ESPALHADA pelo nível (não na porta). Zona de exclusão dos 180px iniciais;
 ## se second_half, restringe à metade direita do corredor (usado pelos elites).
-func _scatter_pos(second_half: bool) -> Vector2:
-	var min_x := SPAWN_EXCLUSION                        # exclusão dos px iniciais (folga do ponto de partida)
+## Onde os inimigos de um tier nascem. FIXO, nunca sorteado: ou o nível declara as posições uma a
+## uma ("at": [x, x, ...]), ou elas saem de uma divisão igual da faixa permitida. Spawn aleatório é
+## de roguelike — num soulslike o nível é uma coisa que se APRENDE, e não dá para aprender o que
+## muda de lugar a cada morte. Com posições fixas, saber que há um pesado depois da curva é
+## conhecimento que o jogador conquistou e leva consigo.
+##
+## A faixa começa em "spawn_from" do nível (ou SPAWN_EXCLUSION), que é como o Portão garante que
+## nada nasça antes do portão da cidade. Posições declaradas fora da faixa são puxadas para dentro,
+## com aviso — melhor corrigir e reclamar do que largar um inimigo em cima do ponto de partida.
+func _spawn_positions(spec: Dictionary, second_half: bool) -> Array:
+	var min_x := maxf(SPAWN_EXCLUSION, float(_floor_config.get("spawn_from", 0.0)))
 	if second_half:
 		min_x = maxf(min_x, _fight_width * 0.5)
-	var max_x := maxf(min_x, _fight_width - 48.0)      # margem antes do portão (fim do combate)
-	return Vector2(_off_pit(randf_range(min_x, max_x)), GROUND_Y - 40.0)
+	var max_x := maxf(min_x, _fight_width - 48.0)      # margem antes do fim do combate
+	var out: Array = []
+
+	var at: Array = spec.get("at", [])
+	if not at.is_empty():
+		for v in at:
+			var x := float(v)
+			var dentro := clampf(x, min_x, max_x)
+			if not is_equal_approx(x, dentro):
+				push_warning("[floor_scene] spawn em x=%.0f fora da faixa [%.0f, %.0f] do nível '%s' — movido para %.0f"
+					% [x, min_x, max_x, _run.current_level, dentro])
+			out.append(_off_pit(dentro))
+		return out
+
+	# Sem posições declaradas: divisão igual da faixa. Continua determinístico — o mesmo nível
+	# monta o mesmo layout toda vez.
+	var n := int(spec.get("count", 0))
+	if n <= 0:
+		return out
+	var band := (max_x - min_x) / float(n)
+	for i in n:
+		out.append(_off_pit(min_x + band * (float(i) + 0.5)))
+	return out
 
 ## Empurra um x para fora de qualquer poço, pela borda mais próxima. O sensor de beirada impede
 ## que um inimigo ANDE para dentro do buraco, mas não o salvaria de NASCER em cima de um — e lá
