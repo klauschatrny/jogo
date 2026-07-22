@@ -16,6 +16,8 @@ var _trauma := 0.0
 var follow_target: Node2D                  # segue este nó no eixo X (o PlayerView)
 var _base_y := SCREEN_H * 0.5              # Y fixo: corredor é plano, câmera só anda em X
 var _look := 0.0                           # avanço horizontal atual, já suavizado
+var _follow_y := false                     # escadaria: a câmera também sobe com o player
+const CLIMB_Y_BIAS := 30.0                 # olha um pouco ACIMA do player: subindo, o que importa vem de cima
 
 func add_trauma(amount: float) -> void:
 	_trauma = clampf(_trauma + amount, 0.0, 1.0)
@@ -27,6 +29,17 @@ func setup_corridor(length: float) -> void:
 	limit_right = int(length)
 	limit_top = 0
 	limit_bottom = int(SCREEN_H)
+	_follow_y = false
+
+## Escadaria (nível vertical): o teto sobe até `top_limit` (y do mundo, negativo = acima da tela
+## base) e a câmera passa a seguir o player também no Y. Os limit_* seguram a vista nas bordas,
+## então no chão a tela é idêntica à do corredor — a rolagem só aparece quando se sobe.
+func setup_climb(length: float, top_limit: float) -> void:
+	limit_left = 0
+	limit_right = int(length)
+	limit_top = int(top_limit)
+	limit_bottom = int(SCREEN_H)
+	_follow_y = true
 
 func _process(delta: float) -> void:
 	# Follow horizontal suave, empurrado à frente do player na direção do movimento.
@@ -41,7 +54,13 @@ func _process(delta: float) -> void:
 		var target_x := follow_target.global_position.x + _look
 		var t := 1.0 - exp(-FOLLOW_LERP * delta)
 		global_position.x = lerpf(global_position.x, target_x, t)
-		global_position.y = _base_y
+		if _follow_y:
+			# Sobe/desce com o player (suavizado); os limit_* clampam a vista, então no chão
+			# nada muda — a rolagem vertical só existe onde o teto foi aberto (setup_climb).
+			global_position.y = lerpf(global_position.y,
+				follow_target.global_position.y - CLIMB_Y_BIAS, t)
+		else:
+			global_position.y = _base_y
 
 	if _trauma <= 0.0:
 		offset = Vector2.ZERO

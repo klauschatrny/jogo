@@ -88,3 +88,17 @@ func test_pool_menor_que_slots_faz_wrap() -> void:
 	var plan := RunGenerator.generate(cfg, 5)
 	assert_eq(plan.nodes[0].get_value("encounter"), "so_uma")
 	assert_eq(plan.nodes[2].get_value("encounter"), "so_uma", "pool de 1 repete nos dois combates")
+
+func test_climb_sorteia_do_pool() -> void:
+	var cfg := _config()
+	cfg["pattern"] = ["BOSS", "REWARD", "CLIMB", "BOSS"]
+	cfg["climbs"] = ["esc_a", "esc_b"]
+	var plan := RunGenerator.generate(cfg, 5)
+	assert_eq(plan.nodes[2].type, RunNode.CLIMB)
+	var c = plan.nodes[2].get_value("climb")
+	assert_true(c in ["esc_a", "esc_b"], "escadaria deve vir do pool")
+
+func test_climb_nao_e_combate_nem_boss() -> void:
+	var n := RunNode.make(RunNode.CLIMB)
+	assert_false(n.is_combat())
+	assert_false(n.is_boss())

@@ -11,7 +11,10 @@ func setup(cards: Array) -> void:
 	_cards = cards
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	# anchors E offsets: só as âncoras deixam o retângulo com tamanho ZERO quando o pai é um
+	# CanvasLayer (não um Control) — e aí o overlay escuro não aparece (mesma pegadinha do
+	# AttributePanel).
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	var overlay := ColorRect.new()
 	overlay.color = Color(0, 0, 0, 0.65)
@@ -41,10 +44,17 @@ func _make_card(aug: Augment, index: int, x: int, w: int, h: int) -> Control:
 	panel.position = Vector2(x, 100)
 	panel.size = Vector2(w, h)
 	panel.clip_contents = true        # nada vaza para fora do card
+	# CLICAR no card também escolhe — o resto da UI (menu, atributos) já é de mouse, então a
+	# recompensa não pode ser a única tela teclado-só.
+	panel.gui_input.connect(func(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and ev.pressed \
+				and (ev as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			chosen.emit(aug))
 
 	var bg := ColorRect.new()
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	bg.color = _tier_color(aug.tier)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE   # o clique é do PAINEL: os filhos não o comem
 	panel.add_child(bg)
 
 	# Layout por container: adapta-se às métricas da fonte (nome no topo, descrição
@@ -53,10 +63,12 @@ func _make_card(aug: Augment, index: int, x: int, w: int, h: int) -> Control:
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	for side in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, PAD)
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(margin)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 6)
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.add_child(vbox)
 
 	vbox.add_child(_label("%d. %s" % [index + 1, aug.name], 13, false))
@@ -95,11 +107,11 @@ func _input(event: InputEvent) -> void:
 		return
 	var idx := -1
 	match event.physical_keycode:
-		KEY_1:
+		KEY_1, KEY_KP_1:
 			idx = 0
-		KEY_2:
+		KEY_2, KEY_KP_2:
 			idx = 1
-		KEY_3:
+		KEY_3, KEY_KP_3:
 			idx = 2
 	if idx >= 0 and idx < _cards.size():
 		accept_event()

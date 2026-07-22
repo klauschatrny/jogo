@@ -32,12 +32,35 @@ not, reconsider. Deprioritize big maps, exploration, long dialogue, quests, coll
 ## The run loop (LIVE — this is the game now)
 
 A run is a **linear SEQUENCE of typed nodes**, not a walk through a place-graph. **The current shape
-(`data/run.json`) is a 10-floor BOSS TOWER:** `Boss → Reward → Boss → Reward → … → Boss` (10 boss
-floors, an augment reward between each), preceded by the tutorial **village**. Each floor is a **1v1
-unique boss**. There are 8 authored bosses for 10 floors, so 2 repeat until more are authored — and
-**only the Ogre (`bss_ogre`) has unique art + behaviour (`OgreView`);** the other 7 fall back to a
-generic `BossView` (functional melee placeholder). The `COMBAT` node machinery (flat rooms) still
-exists and is wired, just not used by the current all-boss pattern.
+(`data/run.json`) is a 10-floor BOSS TOWER:** `Boss → Reward → CLIMB → Boss → …` (10 boss floors; an
+augment reward **and a stair section** between each), preceded by the tutorial **village**. Each
+floor is a **1v1 unique boss**. There are 8 authored bosses for 10 floors, so 2 repeat until more
+are authored — and **only the Ogre (`bss_ogre`) has unique art + behaviour (`OgreView`);** the other
+7 fall back to a generic `BossView` (functional melee placeholder). The `COMBAT` node machinery
+(flat rooms) still exists and is wired, just not used by the current pattern.
+
+**CLIMB — the stair sections (`type: "climb"` in `levels.json`, pool `climbs` in `run.json`).**
+A vertical section between boss rooms: **one-way platform storeys linked by zig-zag ladders**
+(`LadderView` revived from the parked tower), with the normal skeletons posted on them, dormant.
+Authoring: `andares` bottom-up, each `{ y (height above ground), x, w, escada_x, inimigos:[{id,em}] }`
+plus ground `chao` enemies and the exit `saida_x` on the LAST storey. **110px per storey > the 76px
+jump, so the ladder is mandatory.** It is **traversal, not a room to clear**: phase starts
+`"cleared"`, the top door answers from the start — you can run past everything; kills are optional
+souls. Load-bearing details:
+- **`GameCamera.setup_climb(length, top_limit)`**: opens `limit_top` and makes the camera follow Y
+  (lerped, `CLIMB_Y_BIAS` looks slightly up). `setup_corridor` resets to fixed-Y, so flat levels are
+  untouched.
+- **The top exit door checks HEIGHT too** (`_exit_door_vertical`/`_exit_door_y` +
+  `CLIMB_DOOR_TOL`): without it, walking on the ground under the door crossed the level for free.
+  **A `< 0` sentinel cannot encode "no y" here** — above the base screen, legitimate world y IS
+  negative (the first version used `-1.0` and skipped the check for every top door); hence the
+  separate bool.
+- **Enemy wake is now EUCLIDEAN distance** (`_update_room_wake` uses `distance_to`, not x-distance):
+  a skeleton two storeys up is genuinely far; x-only would wake it as the player walked underneath
+  and it would pace at its platform rim forever. Flat rooms are unaffected (same y).
+- Enemies settle onto one-way platforms by gravity (spawned slightly above the surface;
+  `EnemyView.position` is the body CENTRE, not the feet — expect y ≈ surface − half-box).
+  `_ledge_ahead` keeps them from walking off the edge.
 
 **Core run model (pure, unit-tested, `src/core/run/`):**
 - **`RunNode`** — a typed node (`COMBAT`/`ELITE`/`MINIBOSS`/`BOSS`/`REWARD`/`REST`/`EVENT`/`MERCHANT`/
@@ -105,10 +128,20 @@ exists and is wired, just not used by the current all-boss pattern.
 - **Death and victory both end in Downtown** — see the HUB section above. No bloodstain, no bonfire
   checkpoint, no EndScreen in roguelite mode.
 
-**Rooms are FLAT right now (2026-07-21):** the Necromancer's raised **tower + ladder** were removed
-from the encounters (the `room.tower` key was dropped from `cemiterio`). Without a tower the
-Necromancer simply spawns on the ground (`_spawn_necromancer` already handles the empty-tower case).
-The tower/ladder/line-of-sight **code stays, parked** — a future encounter can re-declare `room.tower`.
+**Boss rooms are FLAT (2026-07-21):** the Necromancer's raised **tower** was removed from the
+encounters (the `room.tower` key was dropped from `cemiterio`); without it he spawns on the ground.
+The tower code stays parked — but **`LadderView` itself is LIVE again** (the CLIMB sections use it),
+including its whole contract: E mounts (feet on a floor only), W/S climb, exit only by the two ends,
+no attack/dodge while mounted, body moved directly (never `move_and_slide`, or one-way platforms
+would block the descent).
+
+**Fixed (2026-07-21) — the reward screen was born empty and softlocked the run.** Two `CanvasLayer`
+gotchas hit `CardSelect` at once: `setup(cards)` was called **after** `add_child` (whose `_ready`
+builds the card panels — from a still-empty `_cards`, so no cards existed on screen), and `_ready`
+used `set_anchors_preset` — which under a **CanvasLayer** parent yields a ZERO-SIZE rect (same trap
+documented in `AttributePanel`), so the dim overlay was invisible too. Order is now setup → connect →
+add_child, anchors are `set_anchors_and_offsets_preset`, and selection accepts **numpad 1/2/3 and
+mouse click** on a card (inner children get `MOUSE_FILTER_IGNORE` so the panel receives the click).
 
 **Sir Big T. lives in the DOWNTOWN now** (beside the respawn fire, knight left / fire right; he left
 the village, which keeps only tips + scarecrow). The player **starts with no flask** (empty HUD
@@ -312,9 +345,9 @@ godot --headless --script res://tests/test_runner.gd
 
 ## Project status
 
-**Roguelite loop + HUB implemented and green (197 tests, 0 failures).** The playable loop is
+**Roguelite loop + HUB implemented and green (199 tests, 0 failures).** The playable loop is
 `Village (training) → Downtown (knight → flask; market; gate) → 10-floor boss tower (Boss → Reward
-× 10) → Victory or Death → wake in Downtown, souls in pocket → spend → climb again`. Combat, bosses,
+→ Stairs × 10) → Victory or Death → wake in Downtown, souls in pocket → spend → climb again`. Combat, bosses,
 the flask, dodge/stamina, augments + `CardSelect`, the market (trainer/blacksmith/merchant) and the
 `AttributePanel` are all live; the exploration layer is parked (see above). Rooms are flat (the
 Necromancer tower platform was removed from `cemiterio`). `EndScreen` is parked again (Downtown

@@ -124,6 +124,35 @@
       "name": "A Torre",
       "type": "boss",
       "exits": {}
+    },
+    "_comment_climb": "Tipo 'climb' (VIVO, roguelite): a escadaria entre salas de boss. 'andares' de baixo para cima: cada um e uma plataforma de sentido unico a 'y' px do chao, cobrindo [x, x+w], com 'escada_x' = a escada que SOBE ate ele a partir da superficie anterior (chao ou andar de baixo — a base tem de cair no vao da plataforma de baixo e o topo dentro deste andar). 110px por andar > pulo (76px): a escada e obrigatoria. 'inimigos'/'chao' = [{id, em}] em posicoes FIXAS, dormentes (aggro euclidiano). 'saida_x' = a porta no ULTIMO andar. Travessia: da para passar correndo; matar e opcional e paga almas.",
+    "escadaria_a": {
+      "name": "Escadaria",
+      "type": "climb",
+      "width": 640,
+      "chao": [
+        { "id": "enm_skeleton_minion", "em": 420 }
+      ],
+      "andares": [
+        { "y": 110, "x": 26, "w": 400, "escada_x": 60, "inimigos": [ { "id": "enm_skeleton_minion", "em": 300 } ] },
+        { "y": 220, "x": 214, "w": 400, "escada_x": 390, "inimigos": [ { "id": "enm_skeleton_armored", "em": 520 } ] },
+        { "y": 330, "x": 26, "w": 400, "escada_x": 240, "inimigos": [ { "id": "enm_skeleton_minion", "em": 120 } ] }
+      ],
+      "saida_x": 60
+    },
+    "escadaria_b": {
+      "name": "Escadaria",
+      "type": "climb",
+      "width": 640,
+      "chao": [
+        { "id": "enm_skeleton_armored", "em": 320 }
+      ],
+      "andares": [
+        { "y": 110, "x": 214, "w": 400, "escada_x": 580, "inimigos": [ { "id": "enm_skeleton_minion", "em": 380 } ] },
+        { "y": 220, "x": 26, "w": 400, "escada_x": 250, "inimigos": [ { "id": "enm_skeleton_heavy", "em": 90 } ] },
+        { "y": 330, "x": 214, "w": 400, "escada_x": 390, "inimigos": [ { "id": "enm_skeleton_armored", "em": 520 } ] }
+      ],
+      "saida_x": 580
     }
   }
 }

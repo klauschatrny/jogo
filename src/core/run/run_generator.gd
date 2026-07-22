@@ -19,8 +19,10 @@ static func generate(config: Dictionary, run_seed: int) -> RunPlan:
 	var reward_cards := int(config.get("reward_cards", 3))
 	var encounters := _shuffled(config.get("encounters", []))
 	var bosses := _shuffled(config.get("bosses", []))
+	var climbs := _shuffled(config.get("climbs", []))
 	var enc_i := 0
 	var boss_i := 0
+	var climb_i := 0
 	var nodes: Array = []
 	for raw in pattern:
 		var t := String(raw)
@@ -29,6 +31,9 @@ static func generate(config: Dictionary, run_seed: int) -> RunPlan:
 		elif t == RunNode.BOSS:
 			nodes.append(RunNode.make(t, _payload_de(bosses, boss_i, "boss")))
 			boss_i += 1
+		elif t == RunNode.CLIMB:
+			nodes.append(RunNode.make(t, _payload_de(climbs, climb_i, "climb")))
+			climb_i += 1
 		elif t == RunNode.COMBAT or t == RunNode.ELITE or t == RunNode.MINIBOSS:
 			nodes.append(RunNode.make(t, _payload_de(encounters, enc_i, "encounter")))
 			enc_i += 1

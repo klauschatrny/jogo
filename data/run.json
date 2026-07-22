@@ -1,6 +1,17 @@
 {
-  "_comment": "A run como SEQUENCIA de nos tipados (ver src/core/run/). 'pattern' fixa a ordem dos tipos; o CONTEUDO de cada no (qual boss) e sorteado sem reposicao pela seed. POR ENQUANTO: torre de 10 andares, cada andar um BOSS 1v1, com uma RECOMPENSA (carta de augment) entre eles. Ha 8 bosses autorados para 10 andares, entao 2 se repetem ate autorar mais. So o Ogro tem arte/comportamento proprios; os demais caem num BossView generico (placeholder). A arena e generica: o id do boss vem do no, nao de um nivel do levels.json.",
-  "pattern": ["BOSS", "REWARD", "BOSS", "REWARD", "BOSS", "REWARD", "BOSS", "REWARD", "BOSS", "REWARD", "BOSS", "REWARD", "BOSS", "REWARD", "BOSS", "REWARD", "BOSS", "REWARD", "BOSS"],
+  "_comment": "A run como SEQUENCIA de nos tipados (ver src/core/run/). 'pattern' fixa a ordem dos tipos; o CONTEUDO de cada no (qual boss, qual escadaria) e sorteado sem reposicao pela seed. TORRE DE 10 ANDARES: cada andar e um BOSS 1v1; entre um boss e o proximo ha uma RECOMPENSA (carta de augment) e uma ESCADARIA (CLIMB: secao vertical de plataformas + escadas com inimigos normais, tipo 'climb' no levels.json — da para atravessar correndo; matar e opcional e paga almas). Ha 8 bosses autorados para 10 andares, entao 2 se repetem. So o Ogro tem arte/comportamento proprios. A arena e generica: o id do boss vem do no.",
+  "pattern": [
+    "BOSS", "REWARD", "CLIMB",
+    "BOSS", "REWARD", "CLIMB",
+    "BOSS", "REWARD", "CLIMB",
+    "BOSS", "REWARD", "CLIMB",
+    "BOSS", "REWARD", "CLIMB",
+    "BOSS", "REWARD", "CLIMB",
+    "BOSS", "REWARD", "CLIMB",
+    "BOSS", "REWARD", "CLIMB",
+    "BOSS", "REWARD", "CLIMB",
+    "BOSS"
+  ],
   "reward_cards": 3,
   "bosses": [
     "bss_ogre",
@@ -11,5 +22,6 @@
     "gbs_shadow_executioner",
     "bss_guardian",
     "king_tyrant"
-  ]
+  ],
+  "climbs": ["escadaria_a", "escadaria_b"]
 }

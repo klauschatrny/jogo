@@ -98,6 +98,9 @@ var _boss_fogs: Array = []           # FogGateViews sobre as portas (só durante
 var _boss_door_left_x := 0.0
 var _boss_door_right_x := 0.0
 var _exit_door_x := 0.0              # saída LIVRE no fim do nível (a névoa já se dissipou com o chefe)
+var _exit_door_y := 0.0              # y da saída quando ela NÃO está no chão (a escadaria; pode ser NEGATIVO)
+var _exit_door_vertical := false     # a saída exige altura? (só a escadaria liga; um valor-sentinela
+                                     # não serve: acima da tela base o y legítimo é negativo)
 # O ATALHO. Uma segunda aresta do mapa, ligando dois lugares que já se alcançavam — por um caminho
 # muito mais curto. Nasce FECHADO e só se destranca do lado de LÁ (o refúgio), o que é o que dá
 # sentido à primeira travessia longa: você abre a porta pelas costas dela. Aberto, fica aberto para
@@ -313,6 +316,7 @@ func _build_environment(width: float, is_boss_room: bool, hazards := []) -> void
 	_lever = null
 	_fog = null
 	_exit_door_x = 0.0        # refeita por _spawn_exit_passage, quando o nível adiante já caiu
+	_exit_door_vertical = false   # volta ao chão; a escadaria a põe na superfície do último andar
 	_npc = null               # view era filha do _env (demolida); só solta a referência
 	_knight_seq = false       # a sequência de falas não sobrevive à remontagem do nível
 	_knight_timer = 0.0
@@ -459,9 +463,11 @@ func _add_fade_overlay() -> void:
 
 ## Porta no chão (parte do _env atual, some quando o cenário é reconstruído). Devolve o nó —
 ## quem chama decide o que ela é (a da vila vira `_door`; as da arena do chefe são livres).
-func _spawn_door(x: float, accent: Color) -> Node2D:
+## `y` = a linha em que ela se apoia: o padrão é o chão, mas a saída de uma escadaria fica na
+## superfície do último andar.
+func _spawn_door(x: float, accent: Color, y := GROUND_Y) -> Node2D:
 	var d := Node2D.new()
-	d.position = Vector2(x, GROUND_Y)
+	d.position = Vector2(x, y)
 	d.z_index = -4                           # à frente do chão, atrás das entidades
 	var frame := ColorRect.new()
 	frame.color = accent
@@ -1314,6 +1320,11 @@ func _start_floor() -> void:
 		_rl_start_room(floor, hazards)
 		return
 
+	# A escadaria entre bosses: seção vertical de plataformas + escadas, travessia livre.
+	if ltype == "climb":
+		_start_climb()
+		return
+
 	if ltype == "boss":
 		# Roguelite (torre): o boss do andar vem do nó (_rl_boss_id), não do levels.json.
 		_current_boss_id = _rl_boss_id if (_roguelite and _rl_boss_id != "") else String(_floor_config.get("boss_id", ""))
@@ -1686,13 +1697,16 @@ func _mark_heavy_dead(view: EnemyView) -> void:
 func _update_room_wake() -> void:
 	if not is_instance_valid(_player_view):
 		return
-	var px := _player_view.global_position.x
+	var ppos := _player_view.global_position
 	for v in _enemies:
 		if not is_instance_valid(v) or not v.dormant:
 			continue
 		if _guard.has(v):
 			continue          # a guarda do refúgio tem o passe dela (_update_guard_wake)
-		if absf(px - v.global_position.x) <= v.aggro_range:
+		# Distância EUCLIDIANA, não só o x: numa escadaria um esqueleto dois andares acima está
+		# longe de verdade — medir só o x o acordaria quando o player passasse lá embaixo, e ele
+		# ficaria marchando na borda da plataforma dele. No chão plano (y igual) nada muda.
+		if ppos.distance_to(v.global_position) <= v.aggro_range:
 			v.dormant = false
 
 # --- A REMONTAGEM (esqueletos sob o Necromante) ---
@@ -2069,11 +2083,16 @@ func _update_boss_doors() -> void:
 func _update_exit_door() -> void:
 	if _exit_door_x <= 0.0 or _phase != "cleared" or not is_instance_valid(_player_view):
 		return
-	if absf(_player_view.global_position.x - _exit_door_x) <= DOOR_REACH:
-		if _roguelite:
-			_transition(_advance_plan)   # a porta de avanço resolve o nó de combate
-		else:
-			_transition(_next_floor)
+	if absf(_player_view.global_position.x - _exit_door_x) > DOOR_REACH:
+		return
+	# Saída fora do chão (o topo de uma escadaria): também exige estar NA ALTURA dela — sem isso,
+	# passar no chão sob a porta do último andar já cruzaria o nível inteiro de graça.
+	if _exit_door_vertical and absf(_player_view.global_position.y - _exit_door_y) > CLIMB_DOOR_TOL:
+		return
+	if _roguelite:
+		_transition(_advance_plan)   # a porta de avanço resolve o nó
+	else:
+		_transition(_next_floor)
 
 ## A ÁREA DE DESCANSO (nível "rest"): só a fogueira, perto da entrada, e a névoa no fim. Nada de
 ## alavanca, portão ou guarda — aqui não há o que vencer, e por isso nada tranca a fogueira.
@@ -2385,6 +2404,10 @@ func _enter_node(node: RunNode) -> void:
 		# O total de andares vem do PLANO (quantos nós BOSS há), nunca de um número fixo — mudar o
 		# pattern no run.json muda o letreiro sozinho.
 		_show_tip("Andar %d de %d" % [_rl_floor, _rl_total_floors()])
+	elif node.type == RunNode.CLIMB:
+		# A escadaria entre bosses: um nível "climb" do levels.json, sorteado do pool.
+		_run.go_to(String(node.get_value("climb", "")))
+		_start_floor()
 	elif node.type == RunNode.REWARD:
 		_open_reward(int(node.get_value("cards", 3)))
 	else:
@@ -2418,9 +2441,12 @@ func _open_reward(n: int) -> void:
 	_reward_layer.layer = 80
 	add_child(_reward_layer)
 	var cs := CardSelect.new()
-	_reward_layer.add_child(cs)
+	# setup ANTES de add_child: o _ready do CardSelect constrói os painéis a partir de _cards, e
+	# add_child o dispara na hora — na ordem invertida a tela nascia só com o título, sem carta
+	# nenhuma, e o jogador ficava preso na recompensa vazia.
 	cs.setup(cards)
 	cs.chosen.connect(_on_reward_chosen)
+	_reward_layer.add_child(cs)
 
 func _on_reward_chosen(aug: Augment) -> void:
 	_run.choose_augment(aug)
@@ -2445,6 +2471,97 @@ func _rl_start_room(floor: String, hazards: Array) -> void:
 	_spawn_hazards(hazards)
 	_phase = "room"
 	_start_room()
+
+# ---------------------------------------------------------------------------
+# A ESCADARIA (nível "climb") — a seção vertical entre salas de boss. Andares de plataformas de
+# sentido único ligados por escadas em zigue-zague (110px por andar > o pulo de 76px: a escada é
+# obrigatória), com os inimigos normais postados nelas, dormentes. É TRAVESSIA, não sala a limpar:
+# a fase já nasce "cleared" e a porta no último andar responde desde o início — dá para passar
+# correndo, e matar é opcional (paga almas, como tudo). A câmera abre o teto e sobe junto
+# (GameCamera.setup_climb).
+# ---------------------------------------------------------------------------
+
+const CLIMB_SLAB := 12.0        # espessura da laje de um andar
+const CLIMB_DOOR_TOL := 60.0    # tolerância vertical para cruzar a porta do topo
+
+func _start_climb() -> void:
+	Music.stop()
+	_current_boss_id = ""
+	_boss_view = null
+	var w := float(_floor_config.get("width", 640.0))
+	_build_environment(w, false, [])
+	_reset_player_to_start(PLAYER_START_X)
+
+	var andares: Array = _floor_config.get("andares", [])
+	var superficie_anterior := GROUND_Y     # de onde a escada deste andar parte (chão, depois cada laje)
+	for a in andares:
+		var alt := float(a.get("y", 0.0))
+		var surf := GROUND_Y - alt          # a superfície DESTE andar (y do mundo)
+		var px := float(a.get("x", 0.0))
+		var pw := float(a.get("w", 300.0))
+
+		# A laje: sentido único (sobe-se ATRAVÉS dela pela escada; pousa-se por cima) + o desenho.
+		_solido(_env, Vector2(px + pw * 0.5, surf + CLIMB_SLAB * 0.5), Vector2(pw, CLIMB_SLAB), true)
+		var laje := ColorRect.new()
+		laje.color = Color(0.30, 0.29, 0.34)
+		laje.position = Vector2(px, surf)
+		laje.size = Vector2(pw, CLIMB_SLAB)
+		laje.z_index = DECO_Z + 1
+		_env.add_child(laje)
+		var borda := ColorRect.new()
+		borda.color = Color(0.40, 0.39, 0.45)
+		borda.position = Vector2(px, surf)
+		borda.size = Vector2(pw, 2.0)
+		borda.z_index = DECO_Z + 1
+		_env.add_child(borda)
+
+		# A escada que SOBE até este andar, partindo da superfície anterior.
+		var ex := float(a.get("escada_x", px + 40.0))
+		var esc := LadderView.new()
+		_env.add_child(esc)
+		esc.setup(ex, superficie_anterior, superficie_anterior - surf, _player_view)
+		_ladders.append(esc)
+
+		# Os inimigos do andar, nas posições fixas, dormentes (o padrão de _add_view/dormant).
+		for spec in a.get("inimigos", []):
+			_spawn_climb_enemy(String(spec.get("id", "")), Vector2(float(spec.get("em", px + pw * 0.5)), surf - 40.0))
+		superficie_anterior = surf
+
+	# Os inimigos do chão (antes da primeira escada).
+	for spec in _floor_config.get("chao", []):
+		_spawn_climb_enemy(String(spec.get("id", "")), Vector2(float(spec.get("em", 300.0)), GROUND_Y - 40.0))
+
+	if is_instance_valid(_player_view):
+		_player_view.ladders = _ladders
+
+	# A porta de avanço, no ÚLTIMO andar. _update_exit_door também confere o Y (senão passar no
+	# chão sob ela cruzaria o nível). Sem andares (config vazio), a porta cai no chão, no extremo.
+	var saida_x := float(_floor_config.get("saida_x", w - 60.0))
+	var saida_y := superficie_anterior
+	_spawn_door(saida_x, Palette.ACCENT.darkened(0.35), saida_y)
+	_exit_door_x = saida_x
+	_exit_door_y = saida_y
+	_exit_door_vertical = true
+
+	# A câmera abre o teto: do topo da escadaria ainda se vê a porta e um respiro acima dela.
+	_camera.setup_climb(w, superficie_anterior - 150.0)
+
+	_phase = "cleared"        # travessia: a porta já responde; os inimigos são o pedágio opcional
+	_show_tip("A escadaria sobe. O próximo guardião espera no alto")
+
+## Um inimigo da escadaria: normal, dormente, fora da contagem de sala (a escadaria não se
+## "limpa" — matar é opcional). Vive em _enemies como todos, então _clear_entities o varre.
+func _spawn_climb_enemy(id: String, pos: Vector2) -> void:
+	if id == "":
+		return
+	var base := _enemy_repo.get_by_id(id)
+	if base.is_empty():
+		return
+	var enemy := EnemyFactory.build(base)
+	var view := EnemyView.new()
+	view.set_meta("tier", "climb")
+	view.dormant = true
+	_add_view(view, enemy, pos)
 
 ## Porta de avanço no fim da sala limpa: cruzá-la (andando) resolve o nó e chama _advance_plan.
 func _rl_spawn_advance_door() -> void:

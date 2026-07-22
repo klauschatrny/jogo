@@ -12,6 +12,7 @@ const ELITE := "ELITE"
 const MINIBOSS := "MINIBOSS"
 const BOSS := "BOSS"
 const REWARD := "REWARD"
+const CLIMB := "CLIMB"     # escadaria entre salas de boss: plataformas + escadas + inimigos normais
 const REST := "REST"
 const EVENT := "EVENT"
 const MERCHANT := "MERCHANT"
