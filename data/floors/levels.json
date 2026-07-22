@@ -134,9 +134,11 @@
         { "id": "enm_skeleton_minion", "em": 420 }
       ],
       "andares": [
-        { "y": 110, "x": 26, "w": 400, "escada_x": 60, "inimigos": [ { "id": "enm_skeleton_minion", "em": 300 } ] },
-        { "y": 220, "x": 214, "w": 400, "escada_x": 390, "inimigos": [ { "id": "enm_skeleton_armored", "em": 520 } ] },
-        { "y": 330, "x": 26, "w": 400, "escada_x": 240, "inimigos": [ { "id": "enm_skeleton_minion", "em": 120 } ] }
+        { "y": 120, "x": 26, "w": 520, "escada_x": 60, "inimigos": [ { "id": "enm_skeleton_minion", "em": 300 } ] },
+        { "y": 240, "x": 94, "w": 520, "escada_x": 500, "inimigos": [ { "id": "enm_skeleton_armored", "em": 200 } ] },
+        { "y": 360, "x": 26, "w": 520, "escada_x": 140, "inimigos": [ { "id": "enm_skeleton_minion", "em": 420 } ] },
+        { "y": 480, "x": 94, "w": 520, "escada_x": 500, "inimigos": [ { "id": "enm_skeleton_heavy", "em": 250 } ] },
+        { "y": 600, "x": 26, "w": 520, "escada_x": 140, "inimigos": [ { "id": "enm_skeleton_armored", "em": 400 } ] }
       ],
       "saida_x": 60
     },
@@ -148,9 +150,11 @@
         { "id": "enm_skeleton_armored", "em": 320 }
       ],
       "andares": [
-        { "y": 110, "x": 214, "w": 400, "escada_x": 580, "inimigos": [ { "id": "enm_skeleton_minion", "em": 380 } ] },
-        { "y": 220, "x": 26, "w": 400, "escada_x": 250, "inimigos": [ { "id": "enm_skeleton_heavy", "em": 90 } ] },
-        { "y": 330, "x": 214, "w": 400, "escada_x": 390, "inimigos": [ { "id": "enm_skeleton_armored", "em": 520 } ] }
+        { "y": 120, "x": 94, "w": 520, "escada_x": 580, "inimigos": [ { "id": "enm_skeleton_minion", "em": 300 } ] },
+        { "y": 240, "x": 26, "w": 520, "escada_x": 160, "inimigos": [ { "id": "enm_skeleton_heavy", "em": 450 } ] },
+        { "y": 360, "x": 94, "w": 520, "escada_x": 500, "inimigos": [ { "id": "enm_skeleton_armored", "em": 200 } ] },
+        { "y": 480, "x": 26, "w": 520, "escada_x": 160, "inimigos": [ { "id": "enm_skeleton_minion", "em": 460 } ] },
+        { "y": 600, "x": 94, "w": 520, "escada_x": 500, "inimigos": [ { "id": "enm_skeleton_armored", "em": 250 } ] }
       ],
       "saida_x": 580
     }

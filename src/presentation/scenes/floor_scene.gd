@@ -360,7 +360,9 @@ func _build_environment(width: float, is_boss_room: bool, hazards := []) -> void
 	for wall_x in [0.0, width]:             # paredes contêm player e inimigos no nível
 		var wcol := CollisionShape2D.new()
 		var wrect := RectangleShape2D.new()
-		wrect.size = Vector2(40, 800)
+		# Altas o bastante para uma ESCADARIA de 5 andares (600px acima do chão) — 800 cobria só
+		# até -400 e o topo da subida ficava a um pulo de vazar pela lateral.
+		wrect.size = Vector2(40, 2000)
 		wcol.shape = wrect
 		wcol.position = Vector2(wall_x + (-20.0 if wall_x == 0.0 else 20.0), 0.0)
 		body.add_child(wcol)
@@ -1694,6 +1696,11 @@ func _mark_heavy_dead(view: EnemyView) -> void:
 ## Desperta os esqueletos comuns (minion/normal) DORMENTES da sala por proximidade — o mesmo
 ## comportamento da guarda do refúgio. Os heavies têm a cadeia própria (_update_heavy_chain) e o
 ## Necromante é estático, então ambos ficam de fora daqui.
+## Tolerância VERTICAL do despertar: só acorda quem está (quase) na mesma altura que o player.
+## Menor que o vão entre andares de uma escadaria (120px) e maior que o pico do pulo relativo a
+## quem divide a plataforma — um andar de diferença nunca acorda, pular ao lado sempre.
+const WAKE_DY := 70.0
+
 func _update_room_wake() -> void:
 	if not is_instance_valid(_player_view):
 		return
@@ -1703,10 +1710,13 @@ func _update_room_wake() -> void:
 			continue
 		if _guard.has(v):
 			continue          # a guarda do refúgio tem o passe dela (_update_guard_wake)
-		# Distância EUCLIDIANA, não só o x: numa escadaria um esqueleto dois andares acima está
-		# longe de verdade — medir só o x o acordaria quando o player passasse lá embaixo, e ele
-		# ficaria marchando na borda da plataforma dele. No chão plano (y igual) nada muda.
-		if ppos.distance_to(v.global_position) <= v.aggro_range:
+		# DUAS condições: alcance horizontal E estar na altura do inimigo. A distância euclidiana
+		# sozinha não bastava — o aggro (200+) é maior que o vão entre andares (120), então um
+		# esqueleto um andar acima ainda "via" o player passando embaixo e puxava aggro de uma
+		# plataforma que ele nem alcança. No chão plano (y igual) nada muda.
+		if absf(ppos.y - v.global_position.y) > WAKE_DY:
+			continue
+		if absf(ppos.x - v.global_position.x) <= v.aggro_range:
 			v.dormant = false
 
 # --- A REMONTAGEM (esqueletos sob o Necromante) ---

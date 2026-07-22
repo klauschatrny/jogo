@@ -71,14 +71,16 @@ func _make_card(aug: Augment, index: int, x: int, w: int, h: int) -> Control:
 	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.add_child(vbox)
 
-	vbox.add_child(_label("%d. %s" % [index + 1, aug.name], 13, false))
+	# Fonte 16 em tudo: é o tamanho NATIVO da Pixel Operator (só 16 e 32 saem nítidos na base
+	# 640×360 — qualquer outro borra; ver AttributePanel). Os antigos 13/11/9 saíam ilegíveis.
+	vbox.add_child(_label("%d. %s" % [index + 1, aug.name], 16, false))
 
-	var desc := _label(aug.description, 11, true)
+	var desc := _label(aug.description, 16, true)
 	desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	desc.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	vbox.add_child(desc)
 
-	vbox.add_child(_label(aug.tier, 9, false))
+	vbox.add_child(_label(aug.tier, 16, false))
 	return panel
 
 ## Label centralizado com wrap, para uso dentro do VBox do card.
