@@ -1,6 +1,10 @@
 {
-  "_comment": "A run como SEQUENCIA de nos tipados (ver src/core/run/). 'pattern' fixa a ordem dos tipos; o CONTEUDO de cada no (qual boss, qual escadaria) e sorteado sem reposicao pela seed. TORRE DE 10 ANDARES: cada andar e um BOSS 1v1; entre um boss e o proximo ha uma RECOMPENSA (carta de augment) e uma ESCADARIA (CLIMB: secao vertical de plataformas + escadas com inimigos normais, tipo 'climb' no levels.json — da para atravessar correndo; matar e opcional e paga almas). Ha 8 bosses autorados para 10 andares, entao 2 se repetem. So o Ogro tem arte/comportamento proprios. A arena e generica: o id do boss vem do no.",
-  "pattern": [
+  "_comment": "A run como SEQUENCIA de nos tipados (ver src/core/run/). 'pattern' fixa a ordem dos tipos; o CONTEUDO de cada no (qual boss/escadaria) e sorteado sem reposicao pela seed. TEMPORARIO (2026-07): a torre tem UM andar so, o Ogro. Vence-lo termina a run (volta ao Downtown) — NAO da para progredir alem dele ate os proximos bosses terem stats/arte. Os outros 7 bosses (com JSON pronto em data/bosses/) e o padrao completo de 10 andares (BOSS/REWARD/CLIMB x10) estao guardados em '_bosses_futuros'/'_pattern_completo' abaixo — e so mover de volta para 'bosses'/'pattern'. So o Ogro tem arte/comportamento proprios (OgreView); os demais caem num BossView generico.",
+  "pattern": ["BOSS"],
+  "reward_cards": 3,
+  "bosses": ["bss_ogre"],
+  "climbs": ["escadaria_a", "escadaria_b"],
+  "_pattern_completo": [
     "BOSS", "REWARD", "CLIMB",
     "BOSS", "REWARD", "CLIMB",
     "BOSS", "REWARD", "CLIMB",
@@ -12,8 +16,7 @@
     "BOSS", "REWARD", "CLIMB",
     "BOSS"
   ],
-  "reward_cards": 3,
-  "bosses": [
+  "_bosses_futuros": [
     "bss_ogre",
     "gbs_flame_tyrant",
     "gbs_frost_revenant",
@@ -22,6 +25,5 @@
     "gbs_shadow_executioner",
     "bss_guardian",
     "king_tyrant"
-  ],
-  "climbs": ["escadaria_a", "escadaria_b"]
+  ]
 }
