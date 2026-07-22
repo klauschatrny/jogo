@@ -130,15 +130,18 @@
       "name": "Escadaria",
       "type": "climb",
       "width": 640,
+      "reassemble_time": 2.0,
+      "necromante": { "id": "enm_necromancer", "em": 400 },
       "chao": [
-        { "id": "enm_skeleton_minion", "em": 420 }
+        { "id": "enm_skeleton_minion", "em": 420 },
+        { "id": "enm_skeleton_minion", "em": 540 }
       ],
       "andares": [
-        { "y": 120, "x": 26, "w": 520, "escada_x": 60, "inimigos": [ { "id": "enm_skeleton_minion", "em": 300 } ] },
-        { "y": 240, "x": 94, "w": 520, "escada_x": 500, "inimigos": [ { "id": "enm_skeleton_armored", "em": 200 } ] },
-        { "y": 360, "x": 26, "w": 520, "escada_x": 140, "inimigos": [ { "id": "enm_skeleton_minion", "em": 420 } ] },
-        { "y": 480, "x": 94, "w": 520, "escada_x": 500, "inimigos": [ { "id": "enm_skeleton_heavy", "em": 250 } ] },
-        { "y": 600, "x": 26, "w": 520, "escada_x": 140, "inimigos": [ { "id": "enm_skeleton_armored", "em": 400 } ] }
+        { "y": 120, "x": 26, "w": 520, "escada_x": 60, "inimigos": [ { "id": "enm_skeleton_minion", "em": 260 }, { "id": "enm_skeleton_minion", "em": 380 } ] },
+        { "y": 240, "x": 94, "w": 520, "escada_x": 500, "inimigos": [ { "id": "enm_skeleton_armored", "em": 200 }, { "id": "enm_skeleton_minion", "em": 340 } ] },
+        { "y": 360, "x": 26, "w": 520, "escada_x": 140, "inimigos": [ { "id": "enm_skeleton_minion", "em": 300 }, { "id": "enm_skeleton_armored", "em": 450 } ] },
+        { "y": 480, "x": 94, "w": 520, "escada_x": 500, "inimigos": [ { "id": "enm_skeleton_heavy", "em": 250 }, { "id": "enm_skeleton_minion", "em": 400 } ] },
+        { "y": 600, "x": 26, "w": 520, "escada_x": 140, "inimigos": [ { "id": "enm_skeleton_armored", "em": 340 }, { "id": "enm_skeleton_minion", "em": 480 } ] }
       ],
       "saida_x": 60
     },
@@ -146,15 +149,18 @@
       "name": "Escadaria",
       "type": "climb",
       "width": 640,
+      "reassemble_time": 2.0,
+      "necromante": { "id": "enm_necromancer", "em": 200 },
       "chao": [
-        { "id": "enm_skeleton_armored", "em": 320 }
+        { "id": "enm_skeleton_armored", "em": 320 },
+        { "id": "enm_skeleton_minion", "em": 480 }
       ],
       "andares": [
-        { "y": 120, "x": 94, "w": 520, "escada_x": 580, "inimigos": [ { "id": "enm_skeleton_minion", "em": 300 } ] },
-        { "y": 240, "x": 26, "w": 520, "escada_x": 160, "inimigos": [ { "id": "enm_skeleton_heavy", "em": 450 } ] },
-        { "y": 360, "x": 94, "w": 520, "escada_x": 500, "inimigos": [ { "id": "enm_skeleton_armored", "em": 200 } ] },
-        { "y": 480, "x": 26, "w": 520, "escada_x": 160, "inimigos": [ { "id": "enm_skeleton_minion", "em": 460 } ] },
-        { "y": 600, "x": 94, "w": 520, "escada_x": 500, "inimigos": [ { "id": "enm_skeleton_armored", "em": 250 } ] }
+        { "y": 120, "x": 94, "w": 520, "escada_x": 580, "inimigos": [ { "id": "enm_skeleton_minion", "em": 300 }, { "id": "enm_skeleton_minion", "em": 440 } ] },
+        { "y": 240, "x": 26, "w": 520, "escada_x": 160, "inimigos": [ { "id": "enm_skeleton_heavy", "em": 450 }, { "id": "enm_skeleton_minion", "em": 250 } ] },
+        { "y": 360, "x": 94, "w": 520, "escada_x": 500, "inimigos": [ { "id": "enm_skeleton_armored", "em": 200 }, { "id": "enm_skeleton_minion", "em": 380 } ] },
+        { "y": 480, "x": 26, "w": 520, "escada_x": 160, "inimigos": [ { "id": "enm_skeleton_minion", "em": 460 }, { "id": "enm_skeleton_armored", "em": 300 } ] },
+        { "y": 600, "x": 94, "w": 520, "escada_x": 500, "inimigos": [ { "id": "enm_skeleton_armored", "em": 320 }, { "id": "enm_skeleton_minion", "em": 430 } ] }
       ],
       "saida_x": 580
     }

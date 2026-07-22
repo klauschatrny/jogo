@@ -1996,6 +1996,12 @@ func _on_enemy_died(view: EnemyView, enemy: Enemy) -> void:
 		"boss":
 			if view == _boss_view:
 				_on_floor_cleared()
+		"cleared":
+			# A escadaria: o Necromante do topo caiu → paga-se o caixa retido (as almas de cada
+			# esqueleto sob o efeito dele, via final_death → died → este mesmo fluxo).
+			if view == _necro:
+				_necro = null
+				_climb_necro_fell()
 
 func _on_floor_cleared() -> void:
 	# Roguelite: nada de mark_cleared (o mesmo id pode voltar como outro nó de combate), nada de
@@ -2503,6 +2509,23 @@ func _start_climb() -> void:
 	_reset_player_to_start(PLAYER_START_X)
 
 	var andares: Array = _floor_config.get("andares", [])
+
+	# O NECROMANTE no topo, spawnado ANTES dos esqueletos: são as ordens dele que os fazem se
+	# remontar (_spawn_climb_enemy só liga o reassemble se _has_necro()). Enquanto ele vive, osso
+	# nenhum morre — e as almas de cada esqueleto "morto" ficam RETIDAS com ele: matá-lo paga as
+	# dele mais as de todo esqueleto sob o efeito (ver _climb_necro_fell).
+	var necro_cfg: Dictionary = _floor_config.get("necromante", {})
+	if not necro_cfg.is_empty() and not andares.is_empty():
+		var topo_surf: float = GROUND_Y - float(andares.back().get("y", 0.0))
+		var base := _enemy_repo.get_by_id(String(necro_cfg.get("id", "enm_necromancer")))
+		if not base.is_empty():
+			var enemy := EnemyFactory.build(base)
+			var nv := NecromancerView.new()
+			nv.set_meta("tier", "climb_elite")
+			nv.dormant = true
+			_necro = nv
+			_add_view(nv, enemy, Vector2(float(necro_cfg.get("em", 300.0)), topo_surf - 40.0))
+
 	var superficie_anterior := GROUND_Y     # de onde a escada deste andar parte (chão, depois cada laje)
 	for a in andares:
 		var alt := float(a.get("y", 0.0))
@@ -2557,10 +2580,15 @@ func _start_climb() -> void:
 	_camera.setup_climb(w, superficie_anterior - 150.0)
 
 	_phase = "cleared"        # travessia: a porta já responde; os inimigos são o pedágio opcional
-	_show_tip("A escadaria sobe. O próximo guardião espera no alto")
+	if _has_necro():
+		_show_tip("O Necromante comanda a escadaria — os ossos não descansam")
+	else:
+		_show_tip("A escadaria sobe. O próximo guardião espera no alto")
 
 ## Um inimigo da escadaria: normal, dormente, fora da contagem de sala (a escadaria não se
 ## "limpa" — matar é opcional). Vive em _enemies como todos, então _clear_entities o varre.
+## Sob o Necromante do topo, ganha a REMONTAGEM: zerar a vida o desaba em ossos (halo roxo) e ele
+## se levanta — as almas dele só saem quando o Necromante cair.
 func _spawn_climb_enemy(id: String, pos: Vector2) -> void:
 	if id == "":
 		return
@@ -2571,7 +2599,22 @@ func _spawn_climb_enemy(id: String, pos: Vector2) -> void:
 	var view := EnemyView.new()
 	view.set_meta("tier", "climb")
 	view.dormant = true
+	if _has_necro():
+		view.reassemble_time = float(_floor_config.get("reassemble_time", 2.0))
 	_add_view(view, enemy, pos)
+
+## O Necromante da escadaria caiu: todo esqueleto sob o efeito dele — de pé ou em ossos — morre DE
+## VERDADE via final_death(), que EMITE `died`: cada um passa pelo fluxo normal de morte e paga as
+## próprias almas. É o pagamento retido: "matar" um esqueleto remontável nunca pagou nada (ele nem
+## morreu); o caixa inteiro sai na queda de quem os mantinha de pé. O antigo _kill_all_skeletons
+## dava queue_free silencioso — os ossos sumiam e as almas junto.
+func _climb_necro_fell() -> void:
+	for v in _enemies.duplicate():
+		if is_instance_valid(v) and v != _boss_view:
+			v.final_death()
+	for c in get_children():
+		if c is NecroProjectile:
+			c.queue_free()
 
 ## Porta de avanço no fim da sala limpa: cruzá-la (andando) resolve o nó e chama _advance_plan.
 func _rl_spawn_advance_door() -> void:

@@ -61,6 +61,19 @@ souls. Load-bearing details:
 - Enemies settle onto one-way platforms by gravity (spawned slightly above the surface;
   `EnemyView.position` is the body CENTRE, not the feet — expect y ≈ surface − half-box).
   `_ledge_ahead` keeps them from walking off the edge.
+- **Waking needs HEIGHT as well as reach** (`WAKE_DY` 70 in `_update_room_wake`): euclidean distance
+  alone was not enough — aggro (200+) exceeds the storey gap (120), so a skeleton one floor up still
+  pulled aggro on the player walking underneath. Two conditions now: horizontal within `aggro_range`
+  AND |Δy| ≤ `WAKE_DY` (below the storey gap, above the jump apex). Flat rooms unchanged (Δy≈0).
+- **The NECROMANCER commands the climb from the top storey** (`levels.json → necromante {id, em}` +
+  `reassemble_time`). He is spawned FIRST so `_spawn_climb_enemy` sees `_has_necro()` and gives every
+  skeleton the reassembly (collapse into bones + purple halo + rise, same cemiterio machinery).
+  **Souls are ESCROWED:** "killing" a reassembling skeleton pays nothing (it never dies); killing the
+  Necromancer calls `_climb_necro_fell()` → **`EnemyView.final_death()` on every remaining skeleton,
+  which EMITS `died`** — each one runs the normal death flow and pays its own souls, so the necro's
+  fall pays his loot plus the whole escrow at once. (The parked `_kill_all_skeletons` used a silent
+  `queue_free`, which would have swallowed the souls.) The hook lives in `_on_enemy_died`'s
+  `"cleared"` branch (`view == _necro`).
 
 **Core run model (pure, unit-tested, `src/core/run/`):**
 - **`RunNode`** — a typed node (`COMBAT`/`ELITE`/`MINIBOSS`/`BOSS`/`REWARD`/`REST`/`EVENT`/`MERCHANT`/
