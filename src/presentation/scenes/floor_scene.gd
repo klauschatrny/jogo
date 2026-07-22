@@ -10,6 +10,20 @@ const DEBUG_START_AT := ""     # "" = normal (tutorial); um id de levels.json pu
 const DEBUG_START_LEVEL := 0   # 0 = normal; nível inicial do jogador
 
 var _run: RunState
+# --- PIVÔ roguelite (data/run.json): a run é uma SEQUÊNCIA de nós tipados, não um passeio pelo
+# grafo de lugares. Enquanto _roguelite, o RunPlan dirige o que vem a seguir e a morte encerra a run.
+var _roguelite := true
+var _plan: RunPlan               # a sequência de nós (combate/recompensa/boss)
+var _run_cfg: Dictionary = {}    # data/run.json: padrão de nós + pools de conteúdo
+var _reward_layer: CanvasLayer   # overlay da carta de recompensa (CardSelect)
+var _rl_boss_id := ""            # boss do andar ATUAL da torre (vem do nó, não do levels.json)
+var _rl_floor := 0               # andar atual da torre (1..N), para a HUD/toast
+# --- Downtown (o HUB entre runs): o centro da cidade, com o mercado. Morrer OU vencer devolve o
+# jogador aqui — as almas ficam (são a moeda do mercado), a build de augments da run se perde.
+var _hub_fire: BonfireView       # a fogueira decorativa: marca o ponto de renascer, sem função
+var _trainer: NpcView            # o Mestre: abre o painel de atributos (níveis + pontos)
+var _smith: NpcView              # o Ferreiro: melhora a arma (dano geométrico, custo geométrico)
+var _merchant: NpcView           # o Mercador: cacos de frasco (+1 carga máxima)
 var _player_view: PlayerView
 var _enemies: Array = []
 var _hud: Hud
@@ -23,7 +37,7 @@ var _hazards: Dictionary = {}        # id -> definição de armadilha (data/haza
 var _bonfires: Array = []            # fogueiras (checkpoints) do nível atual — BonfireView
 var _guard: Array = []               # a GUARDA do refúgio: esqueletos do run-back (nível vencido) — EnemyView
 var _ladders: Array = []             # escadas do nível (o PlayerView as consulta para escalar)
-var _npc: NpcView                    # o Sir Big T., ao lado da primeira fogueira
+var _npc: NpcView                    # o Sir Big T., ao lado da fogueira de renascer do Downtown
 var _knight_seq := false             # a sequência de falas base está tocando sozinha?
 var _knight_timer := 0.0             # tempo até a próxima fala base
 var _knight_card: CanvasLayer        # o card central "Frasco adquirido"
@@ -98,7 +112,7 @@ var _entry_x := -1.0                 # x exato pedido pela entrada "x" (o atalho
 # é assim que se volta por uma porta de trás) ou "fogueira" (desemboca no refúgio; o que torna uma
 # passagem um atalho). Quem define é a saída que foi cruzada; consumido em _start_floor.
 var _entry_point := "inicio"
-var _attr_layer: CanvasLayer    # painel de atributos (aberto ao descansar na fogueira)
+var _attr_layer: CanvasLayer    # painel de atributos (aberto ao falar com o Mestre, no Downtown)
 
 ## Linha de topo do chão (eixo Y). Player e inimigos pousam aqui pela gravidade.
 const GROUND_Y := 300.0         # base 640×360
@@ -131,6 +145,7 @@ const BOSS_DOOR_IN := 26.0     # as portas da arena do chefe, este tanto para de
 # sala da fogueira deixou de ser uma tela à parte (com fade) e virou parte contínua do mapa, que o
 # jogador percorre indo e voltando.
 const SANCTUARY_LEN := 980.0   # comprimento PADRÃO do refúgio, somado à zona de combate (folga p/ a guarda)
+const RL_ROOM_TAIL := 300.0    # roguelite: folga após a zona de combate para a porta de avanço
 const LEVER_BACK := 96.0       # a alavanca fica este tanto à ESQUERDA do portão (depois do Necromante)
 const BONFIRE_IN := 160.0      # a fogueira, este tanto à DIREITA do portão (logo depois dele)
 const FOG_BACK := 34.0         # a névoa, este tanto antes da parede do fim
@@ -143,6 +158,19 @@ const GUARD_BEFORE_FOG := 120.0      # e termina este tanto ANTES da névoa
 
 # --- Vila de tutorial (fora da dungeon; roda uma vez antes do nível 1) ---
 const TUTORIAL_LENGTH := 1920.0
+
+# --- Downtown: o layout, da esquerda para a direita. O portão grande fica no FIM e fecha a torre
+# fisicamente (GateView é sólido): a alavanca ao lado o abre — destravada desde o começo, como o
+# antigo portão da cidade (é uma saída, não um prêmio) — e aberto fica aberto para sempre.
+const DOWNTOWN_LENGTH := 1280.0
+const DT_KNIGHT_X := 240.0        # Sir Big T., à esquerda da fogueira (como sempre)
+const DT_FIRE_X := 300.0          # a fogueira decorativa = o ponto de renascer
+const DT_TRAINER_X := 500.0
+const DT_SMITH_X := 680.0
+const DT_MERCHANT_X := 860.0
+const DT_GATE_X := 1060.0         # portão grande (56×150), estilo o da antiga zona "portao"
+const DT_GATE_KEY := "portao_torre"
+const DT_DOOR_X := 1210.0         # a porta da torre, depois do portão
 # Dicas do tutorial: [x-gatilho no corredor, texto]. Não são mais placas no mundo — aparecem como
 # um TOAST no HUD quando o player alcança aquele x (uma vez cada) e somem sozinhas em TIP_SECONDS,
 # ou na hora, se ele apertar INTERAGIR. A lista canônica vive em TutorialTips (compartilhada com a
@@ -238,6 +266,16 @@ func _ready() -> void:
 	_hud.set_run(_run)                                   # liga o contador de mortes (playtest)
 
 	EventBus.player_died.connect(_on_player_died)
+
+	if _roguelite:
+		# A run é montada por RunGenerator a partir do run.json e da seed da run (determinística).
+		var rc = JsonLoader.load_file("res://data/run.json")
+		_run_cfg = rc if typeof(rc) == TYPE_DICTIONARY else {}
+		_plan = RunGenerator.generate(_run_cfg, _run.seed)
+		# A VILA de tutorial é mantida DE PROPÓSITO: é onde o Sir Big T. entrega o Frasco de Cura (o
+		# jogador começa sem ele). A porta ao fim da vila entra na torre — ver _begin_dungeon.
+		_start_tutorial()
+		return
 
 	if DEBUG:
 		_apply_debug_start()
@@ -532,7 +570,6 @@ func _close_attributes() -> void:
 	if _attr_layer != null:
 		_attr_layer.queue_free()
 		_attr_layer = null
-	_msg.text = "Fogueira acesa: você retorna aqui ao cair.       →  seguir"
 
 ## As três interações do refúgio, cada uma disparada por INTERAGIR (E, padrão) quando o player está perto
 ## do objeto. Ficam longe umas das outras, então nunca há ambiguidade. Cada uma devolve true se agiu.
@@ -545,11 +582,14 @@ func _try_pull_lever() -> bool:
 	return false
 
 ## Falar com um NPC. Antes da fogueira e da névoa na ordem do INTERAGIR porque ele fica ao lado
-## do fogo — e quem chega ali pela primeira vez veio falar com ele, não descansar.
+## do fogo — e quem chega ali pela primeira vez veio falar com ele, não descansar. No Downtown a
+## mesma tecla serve o mercado inteiro: os NPCs ficam longe uns dos outros, então só um está em
+## alcance por vez (a regra de desambiguação por proximidade de sempre).
 func _try_npc() -> bool:
-	if is_instance_valid(_npc) and _npc.in_reach(_player_view):
-		_npc.falar()
-		return true
+	for npc in [_npc, _trainer, _smith, _merchant]:
+		if is_instance_valid(npc) and npc.in_reach(_player_view):
+			npc.falar()
+			return true
 	return false
 
 ## O Sir Big T. entrega o Estus — e é ele quem ensina a fogueira e o frasco. A lição saiu de um
@@ -563,8 +603,8 @@ const KNIGHT_LINES := [
 	"O quê? Ainda assim quer ir em frente?",
 	"Pois bem, tenho um presente que vai ajudá-lo.",
 	"Agora, vê essa fogueira?",
-	"Descanse nela e recuperará suas forças.",
-	"Porém, os monstros se levantam novamente.",
+	"É ao pé dela que você despertará ao cair na torre.",
+	"Gaste suas almas no mercado antes de subir.",
 	"Agora vá em frente e encontre o seu fim.",
 ]
 const KNIGHT_LOOP := [
@@ -678,6 +718,7 @@ func _fechar_card_frasco() -> void:
 		_knight_card.queue_free()
 	_knight_card = null
 	_knight_card_open = false
+	_refresh_market_prompts()           # com o frasco na mão, a vitrine do Mercador passa a dar preço
 	_run.knight_line += 1               # passa da fala do presente para a próxima
 	if _run.knight_line >= KNIGHT_LINES.size():
 		_knight_seq = false
@@ -755,9 +796,9 @@ func _reset_player_to_start(x := PLAYER_START_X) -> void:
 	_camera.global_position.x = _player_view.global_position.x
 
 # ---------------------------------------------------------------------------
-# Vila de tutorial (fora da dungeon). Área tranquila de 1920 onde o player aprende os controles
-# básicos por DICAS que surgem no HUD conforme ele anda (ver _update_tutorial_tips) + um boneco de
-# treino, com a porta da dungeon ao fim. Roda uma vez no começo (antes do nível 1). Sem inimigos.
+# Vila de tutorial. Área tranquila de 1920 onde o player aprende os controles básicos por DICAS
+# que surgem no HUD conforme ele anda (ver _update_tutorial_tips) + um boneco de treino, com a
+# porta ao fim levando ao DOWNTOWN (o HUB). Roda uma vez no começo do jogo. Sem inimigos.
 # ---------------------------------------------------------------------------
 
 func _start_tutorial() -> void:
@@ -771,12 +812,14 @@ func _start_tutorial() -> void:
 	_reset_player_to_start()
 	_spawn_hazards(_TUTORIAL_HAZARDS)
 	_spawn_training_dummy(980.0)
+	# O Sir Big T. NÃO mora mais aqui: ele está no Downtown, ao lado da fogueira de renascer —
+	# a vila é só o treino (dicas + espantalho); a porta ao fim leva ao Downtown.
 	_door = _spawn_door(_arena_width - 40.0, Palette.ACCENT)
 	_door_x = _arena_width - 40.0
 
 	_tips_done.clear()          # as dicas recomeçam a cada visita à vila
 	_hide_tip()
-	_msg.text = "Cidade: siga até o Portão →"
+	_msg.text = "Cidade: a porta ao fim leva ao Centro →"
 	_schedule_first_tip()       # a 1ª dica (mover) só entra 3s depois de começar
 
 ## Boneco de treino: esqueleto blindado passivo (dormant) pra praticar o ataque. Some se
@@ -1061,15 +1104,143 @@ func _deco_ruin(rng: RandomNumberGenerator) -> Node2D:
 	n.add_child(win)
 	return n
 
-## Entra na dungeon: limpa o boneco de treino e começa o nível 1.
+## Sai da vila: limpa o boneco de treino e segue — ao Downtown (roguelite) ou ao nível 1 (grafo).
 func _begin_dungeon() -> void:
 	_hide_tip()                  # sai da vila: qualquer dica na tela some
 	for v in _enemies.duplicate():
 		if is_instance_valid(v):
 			v.queue_free()
 	_enemies.clear()
+	if _roguelite:
+		# A porta da vila leva ao DOWNTOWN (o HUB), não direto à torre.
+		_start_downtown()
+		return
 	_run.go_to(_start_level)
 	_start_floor()
+
+# ---------------------------------------------------------------------------
+# DOWNTOWN — o centro da cidade, o HUB entre runs. É aqui que o jogador renasce ao cair (e volta
+# ao vencer), gasta as almas no mercado e entra na torre pelo portão grande. A fogueira ao lado do
+# Sir Big T. é DECORATIVA: marca o ponto de renascer, sem menu, sem cura, sem recarga — preparar-se
+# é papel do mercado, não dela.
+# ---------------------------------------------------------------------------
+
+## Monta o Downtown. `na_fogueira` = o jogador desperta ao pé do fogo (renascer); senão entra
+## pela esquerda (chegando da vila).
+func _start_downtown(na_fogueira := false) -> void:
+	_phase = "downtown"
+	_current_boss_id = ""
+	_boss_view = null
+	_exit_door_x = 0.0
+	_bonfires.clear()            # nenhuma fogueira-checkpoint aqui: _try_rest não pode agir
+	Music.stop()
+	_clear_entities()
+	_build_environment(DOWNTOWN_LENGTH, false, [])
+	_decorate_village()
+	_reset_player_to_start(DT_FIRE_X if na_fogueira else PLAYER_START_X)
+
+	# O Sir Big T. e a fogueira de renascer (cavaleiro à esquerda, fogo à direita — como sempre).
+	_npc = NpcView.new()
+	_env.add_child(_npc)
+	_npc.setup(DT_KNIGHT_X, GROUND_Y, _player_view, "Sir Big T.")
+	_npc.falado.connect(_on_npc_falado)
+	_hub_fire = BonfireView.new()
+	_hub_fire.decorativa = true
+	_hub_fire.position = Vector2(DT_FIRE_X, GROUND_Y)
+	_env.add_child(_hub_fire)
+	_hub_fire.setup(DT_FIRE_X, true, _player_view)   # sempre acesa: é um marco, não um serviço
+
+	# O mercado: Mestre (atributos), Ferreiro (arma), Mercador (frasco).
+	_trainer = _spawn_market_npc(DT_TRAINER_X, "Mestre Owyn", "mestre", _on_trainer_falado)
+	_smith = _spawn_market_npc(DT_SMITH_X, "Baldo, o Ferreiro", "ferreiro", _on_smith_falado)
+	_merchant = _spawn_market_npc(DT_MERCHANT_X, "Mira, a Mercadora", "mercador", _on_merchant_falado)
+	_refresh_market_prompts()
+
+	# O portão grande da torre (o estilo do antigo portão da cidade): sólido até a alavanca — que
+	# nasce DESTRAVADA (abrir é partida, não prêmio) — ser puxada. Aberto, fica aberto para sempre.
+	_gate_key = DT_GATE_KEY
+	var aberto := _run.is_gate_open(_gate_key)
+	_gate = GateView.new()
+	_gate.position = Vector2(DT_GATE_X, GROUND_Y)
+	_env.add_child(_gate)
+	_gate.setup(DT_GATE_X, aberto, 56.0, 150.0)
+	_lever = LeverView.new()
+	_lever.position = Vector2(DT_GATE_X - 50.0, GROUND_Y)
+	_env.add_child(_lever)
+	_lever.setup(DT_GATE_X - 50.0, _player_view, aberto, true)
+	_lever.pulled.connect(_on_lever_pulled)
+
+	# A porta da torre, depois do portão. Só se alcança com ele aberto (ele é sólido).
+	_door = _spawn_door(DT_DOOR_X, Palette.ACCENT)
+	_door_x = DT_DOOR_X
+
+	_hide_tip()
+	if na_fogueira:
+		_show_tip("Você desperta no Centro. Gaste suas almas antes de subir")
+	else:
+		_show_tip("O Centro da cidade: o mercado, e a torre adiante")
+
+## Um NPC do mercado: variante visual própria e o handler da compra ligado ao `falado`.
+func _spawn_market_npc(x: float, nome: String, tipo: String, handler: Callable) -> NpcView:
+	var npc := NpcView.new()
+	_env.add_child(npc)
+	npc.setup(x, GROUND_Y, _player_view, nome, tipo)
+	npc.falado.connect(handler)
+	return npc
+
+## Os prompts do mercado são a VITRINE: mostram o serviço e o preço atual, e mudam quando o
+## preço muda (toda compra chama isto de novo).
+func _refresh_market_prompts() -> void:
+	if is_instance_valid(_trainer):
+		_trainer.prompt_texto = "treinar (níveis e atributos)"
+	if is_instance_valid(_smith):
+		_smith.prompt_texto = "melhorar arma (%d almas)" % _run.player.weapon.upgrade_cost()
+	if is_instance_valid(_merchant):
+		if not _run.player.has_flask:
+			_merchant.prompt_texto = "caco de frasco (fale com Sir Big T.)"
+		elif not _run.player.can_buy_flask_shard():
+			_merchant.prompt_texto = "cacos esgotados"
+		else:
+			_merchant.prompt_texto = "caco de frasco (%d almas)" % _run.player.flask_shard_cost()
+
+## O Mestre: o painel de atributos de sempre (comprar níveis com almas, gastar pontos). A
+## maquinaria já existia — morava na fogueira-checkpoint; agora mora nele.
+func _on_trainer_falado(_n: NpcView) -> void:
+	_open_attributes()
+
+## O Ferreiro: uma melhoria por conversa, se as almas derem. Dano e custo sobem geometricamente.
+func _on_smith_falado(_n: NpcView) -> void:
+	var w := _run.player.weapon
+	var custo := w.upgrade_cost()
+	if _run.player.souls < custo:
+		_show_tip("Baldo: \"Volte com %d almas.\"" % custo)
+		return
+	_run.player.souls -= custo
+	w.upgrade()
+	_run.player.recalculate_stats()
+	_show_tip("Arma no nível %d — dano %d" % [w.level, int(round(w.current_damage()))])
+	_refresh_market_prompts()
+
+## O Mercador: um caco de frasco (+1 carga máxima; a carga nova vem cheia), até o limite.
+func _on_merchant_falado(_n: NpcView) -> void:
+	var p := _run.player
+	if not p.has_flask:
+		_show_tip("Mira: \"Um caco sem frasco? Fale com o cavaleiro.\"")
+		return
+	if not p.can_buy_flask_shard():
+		_show_tip("Mira: \"Meus cacos acabaram, guerreiro.\"")
+		return
+	var custo := p.flask_shard_cost()
+	if not p.buy_flask_shard():
+		_show_tip("Mira: \"Volte com %d almas.\"" % custo)
+		return
+	_show_tip("Frasco ampliado: %d cargas" % p.flask_capacity())
+	_refresh_market_prompts()
+
+## Cruza a porta depois do portão: entra na torre, no primeiro nó do plano.
+func _begin_tower() -> void:
+	_hide_tip()
+	_enter_node(_plan.current())
 
 ## Início de um nível da dungeon. Cada nível é desenhado à mão em levels.json e é de UM tipo:
 ##   "boss" → arena fechada, direto no chefe.
@@ -1136,8 +1307,16 @@ func _start_floor() -> void:
 
 	var hazards: Array = _floor_config.get("hazards", [])
 
+	# Roguelite: uma sala de combate é SÓ combate. Nada de refúgio, entrada, portão, atalho ou
+	# fogueira — o nó de combate resolve-se limpando a sala, e uma porta de avanço nasce ao fim.
+	# (O boss segue pelo ramo abaixo, que já monta a arena; só as PORTAS dele mudam — ver _spawn_boss_doors.)
+	if _roguelite and ltype == "room":
+		_rl_start_room(floor, hazards)
+		return
+
 	if ltype == "boss":
-		_current_boss_id = String(_floor_config.get("boss_id", ""))
+		# Roguelite (torre): o boss do andar vem do nó (_rl_boss_id), não do levels.json.
+		_current_boss_id = _rl_boss_id if (_roguelite and _rl_boss_id != "") else String(_floor_config.get("boss_id", ""))
 		_build_environment(BOSS_ROOM_W, true, hazards)
 		var boss_x := (BOSS_ROOM_W - BOSS_DOOR_IN - 34.0) if from_right else PLAYER_START_X
 		_reset_player_to_start(boss_x)           # o player primeiro; os poços depois (ver _start_tutorial)
@@ -1602,6 +1781,14 @@ func _process(delta: float) -> void:
 			_transition(_begin_dungeon)
 		return
 
+	# Downtown: a porta depois do portão grande entra na torre. O portão fechado é sólido, então
+	# alcançá-la já significa que a alavanca foi puxada.
+	if _phase == "downtown":
+		if is_instance_valid(_player_view) and is_instance_valid(_door) \
+				and absf(_player_view.global_position.x - _door_x) <= DOOR_REACH:
+			_transition(_begin_tower)
+		return
+
 	# A passagem ao chefe não é mais uma porta que se cruza andando: é a NÉVOA, atravessada com
 	# INTERAGIR (ver _try_cross_fog). A fogueira e a alavanca também são por INTERAGIR — nada aqui
 	# dispara sozinho ao encostar.
@@ -1787,6 +1974,17 @@ func _on_enemy_died(view: EnemyView, enemy: Enemy) -> void:
 				_on_floor_cleared()
 
 func _on_floor_cleared() -> void:
+	# Roguelite: nada de mark_cleared (o mesmo id pode voltar como outro nó de combate), nada de
+	# alavanca/guarda. Boss morto → dissipa as névoas e libera a porta de avanço; sala limpa → porta.
+	if _roguelite:
+		_phase = "cleared"
+		if String(_floor_config.get("type", "")) == "boss":
+			Music.stop()
+			_dismiss_boss_fogs()
+			_show_tip("O guardião caiu. Avance →")
+		else:
+			_rl_spawn_advance_door()
+		return
 	_run.mark_cleared(_run.current_level)   # morrer adiante e voltar por aqui não o repovoa
 	if _phase == "boss":
 		# Chefe vencido: a trilha se despede (fade do audio.json) e as DUAS névoas da arena se
@@ -1816,10 +2014,11 @@ func _spawn_boss_doors(cleared: bool) -> void:
 	_boss_door_left_x = 0.0
 	_boss_door_right_x = 0.0
 	var portas: Array = []
-	if _has_exit("tras"):
+	# Roguelite não tem porta de trás: a run só avança. A da frente sempre existe (leva ao avanço).
+	if _has_exit("tras") and not _roguelite:
 		_boss_door_left_x = BOSS_DOOR_IN
 		portas.append(_boss_door_left_x)
-	if _has_exit("frente"):
+	if _roguelite or _has_exit("frente"):
 		_boss_door_right_x = _arena_width - BOSS_DOOR_IN
 		portas.append(_boss_door_right_x)
 	for x in portas:
@@ -1853,6 +2052,11 @@ func _update_boss_doors() -> void:
 	if not is_instance_valid(_player_view):
 		return
 	var px := _player_view.global_position.x
+	# Roguelite: só a porta da frente, e ela AVANÇA O PLANO (o boss é o último nó → vitória).
+	if _roguelite:
+		if _boss_door_right_x > 0.0 and absf(px - _boss_door_right_x) <= DOOR_REACH:
+			_transition(_advance_plan)
+		return
 	if _boss_door_left_x > 0.0 and absf(px - _boss_door_left_x) <= DOOR_REACH:
 		_transition(_prev_floor)
 	elif _boss_door_right_x > 0.0 and absf(px - _boss_door_right_x) <= DOOR_REACH:
@@ -1866,7 +2070,10 @@ func _update_exit_door() -> void:
 	if _exit_door_x <= 0.0 or _phase != "cleared" or not is_instance_valid(_player_view):
 		return
 	if absf(_player_view.global_position.x - _exit_door_x) <= DOOR_REACH:
-		_transition(_next_floor)
+		if _roguelite:
+			_transition(_advance_plan)   # a porta de avanço resolve o nó de combate
+		else:
+			_transition(_next_floor)
 
 ## A ÁREA DE DESCANSO (nível "rest"): só a fogueira, perto da entrada, e a névoa no fim. Nada de
 ## alavanca, portão ou guarda — aqui não há o que vencer, e por isso nada tranca a fogueira.
@@ -2040,7 +2247,8 @@ func _on_lever_pulled(_l: LeverView) -> void:
 	_run.open_gate(_gate_key)
 	if is_instance_valid(_gate):
 		_gate.open()
-	_msg.text = "O portão se abriu. A fogueira aguarda adiante →"
+	if _phase == "downtown":
+		_show_tip("O portão se abre. A torre o aguarda →")
 
 # ---------------------------------------------------------------------------
 # A GUARDA do refúgio (o run-back do soulslike). Depois que o nível é vencido, uma pequena leva de
@@ -2153,6 +2361,135 @@ func _next_floor() -> void:
 func _prev_floor() -> void:
 	_go_through("tras")
 
+# ---------------------------------------------------------------------------
+# PIVÔ roguelite: a run como sequência de nós. O RunPlan diz o que vem; _enter_node monta a tela
+# certa para cada tipo, e _advance_plan é chamado quando o nó atual se resolve (sala limpa e porta
+# de avanço cruzada, carta escolhida, boss morto). Fim do plano = vitória.
+# ---------------------------------------------------------------------------
+
+## Monta a tela do nó dado. null = a run chegou ao fim viva → vitória.
+func _enter_node(node: RunNode) -> void:
+	if node == null:
+		_win_run()
+		return
+	if node.is_combat():
+		_run.go_to(String(node.get_value("encounter", "")))
+		_start_floor()
+	elif node.is_boss():
+		# Torre: cada boss numa ARENA GENÉRICA (levels.json → "arena"); o id do boss vem do nó, não
+		# do nível. _start_floor lê _rl_boss_id no modo roguelite.
+		_rl_boss_id = String(node.get_value("boss", ""))
+		_rl_floor += 1
+		_run.go_to("arena")
+		_start_floor()
+		# O total de andares vem do PLANO (quantos nós BOSS há), nunca de um número fixo — mudar o
+		# pattern no run.json muda o letreiro sozinho.
+		_show_tip("Andar %d de %d" % [_rl_floor, _rl_total_floors()])
+	elif node.type == RunNode.REWARD:
+		_open_reward(int(node.get_value("cards", 3)))
+	else:
+		# Tipos ainda não implementados (loja, ferreiro, descanso, evento): por ora, pula.
+		_advance_plan()
+
+## Avança o cursor e entra no próximo nó (ou vence, se acabou). Chamado sob a tela preta de
+## uma _transition, ou direto ao escolher a carta.
+func _advance_plan() -> void:
+	_enter_node(_plan.advance())
+
+## Quantos andares (nós BOSS) a torre tem, contado do próprio plano.
+func _rl_total_floors() -> int:
+	var n := 0
+	for node in _plan.nodes:
+		if node.is_boss():
+			n += 1
+	return n
+
+## Nó de recompensa: mostra as cartas de augment (o mesmo pool ponderado de sempre) e espera a
+## escolha. Sem cartas disponíveis (pool esgotado), pula para o próximo nó.
+func _open_reward(n: int) -> void:
+	var cards := _run.offer_augments(n)
+	if cards.is_empty():
+		_advance_plan()
+		return
+	_phase = "reward"
+	if is_instance_valid(_player_view):
+		_player_view.frozen = true
+	_reward_layer = CanvasLayer.new()
+	_reward_layer.layer = 80
+	add_child(_reward_layer)
+	var cs := CardSelect.new()
+	_reward_layer.add_child(cs)
+	cs.setup(cards)
+	cs.chosen.connect(_on_reward_chosen)
+
+func _on_reward_chosen(aug: Augment) -> void:
+	_run.choose_augment(aug)
+	if is_instance_valid(_reward_layer):
+		_reward_layer.queue_free()
+		_reward_layer = null
+	if is_instance_valid(_player_view):
+		_player_view.frozen = false
+	_transition(_advance_plan)
+
+## Sala de combate enxuta do roguelite: só a zona de combate + uma folga curta para a porta de
+## avanço (nasce ao limpar, em _on_floor_cleared). Sem refúgio/entrada/atalho/fogueira.
+func _rl_start_room(floor: String, hazards: Array) -> void:
+	Music.stop()
+	_current_boss_id = ""
+	_boss_view = null
+	_exit_door_x = 0.0
+	_corridor_length = float(_floor_config.get("corridor_length", _corridor_length))
+	_build_environment(_corridor_length + RL_ROOM_TAIL, false, hazards)
+	_fight_width = _corridor_length
+	_reset_player_to_start(PLAYER_START_X)
+	_spawn_hazards(hazards)
+	_phase = "room"
+	_start_room()
+
+## Porta de avanço no fim da sala limpa: cruzá-la (andando) resolve o nó e chama _advance_plan.
+func _rl_spawn_advance_door() -> void:
+	var x := _corridor_length + RL_ROOM_TAIL * 0.5
+	_spawn_door(x, Palette.ACCENT.darkened(0.35))
+	_exit_door_x = x
+	_show_tip("Sala limpa. Avance →")
+
+## Fim da run — por morte ou vitória. Nada de tela de fim com Enter: o letreiro sobe com o fade,
+## e o jogador DESPERTA NO DOWNTOWN, ao pé da fogueira, com as almas no bolso (são a meta-moeda) e
+## sem os augments (a build era da run). O mundo se refaz sob o preto, como a morte soulslike fazia.
+func _finish_run(victory: bool) -> void:
+	if _phase == "dead":
+		return
+	_phase = "dead"
+	_intro_token += 1              # mata qualquer cutscene de boss ainda no ar
+	Music.stop(1.5)
+	if is_instance_valid(_player_view):
+		_player_view.frozen = true
+	if victory:
+		_show_run_banner("VITÓRIA", Palette.ACCENT)
+	else:
+		_show_run_banner("VOCÊ MORREU", Palette.ENEMY)
+	var tw := create_tween()
+	tw.tween_property(_fade, "modulate:a", 1.0, DEATH_FADE_OUT)
+	tw.tween_interval(DEATH_HOLD)
+	tw.tween_callback(_respawn_downtown.bind(not victory))
+	tw.tween_property(_fade, "modulate:a", 0.0, DEATH_FADE_IN)
+
+## Sob o preto: a run anterior é encerrada (augments fora, vida/frasco cheios — RunState.new_attempt),
+## um PLANO NOVO é sorteado (seed nova: outra ordem de bosses) e o Downtown se remonta com o
+## jogador ao pé da fogueira. Quando a tela clareia, já está tudo em ordem.
+func _respawn_downtown(died: bool) -> void:
+	if is_instance_valid(_death_banner):
+		_death_banner.queue_free()
+		_death_banner = null
+	_run.new_attempt(died)
+	_plan = RunGenerator.generate(_run_cfg, randi())
+	_rl_floor = 0
+	_rl_boss_id = ""
+	_start_downtown(true)
+
+func _win_run() -> void:
+	_finish_run(true)
+
 ## Morte (soulslike): a run NÃO acaba mais. A tela escurece com "VOCÊ MORREU", o mundo se refaz
 ## e o jogador levanta na última fogueira em que descansou, com vida e stamina cheias. Ele mantém
 ## o que conquistou (nível, augments, arma); perde o caminho andado. Sem nenhuma fogueira acesa,
@@ -2160,6 +2497,11 @@ func _prev_floor() -> void:
 func _on_player_died(_p: Player) -> void:
 	if _phase == "dead":
 		return                          # o dano pode chegar duas vezes no mesmo frame
+	# Roguelite: a morte ENCERRA a run (sem mancha, sem fogueira-checkpoint): letreiro, fade, e o
+	# jogador desperta no Downtown com as almas — a build de augments se perdeu com a run.
+	if _roguelite:
+		_finish_run(false)
+		return
 	_phase = "dead"
 	_intro_token += 1                   # mata qualquer cutscene de boss ainda no ar
 	Music.stop(1.5)
@@ -2231,13 +2573,18 @@ func _recover_bloodstain() -> void:
 ## O letreiro entra na camada do FADE (não no HUD): ali ele fica por cima do preto, e não debaixo
 ## dele. Aparece junto com o escurecimento, no mesmo compasso.
 func _show_death_banner(souls_perdidas: int) -> void:
-	_death_banner = Label.new()
-	_death_banner.text = "VOCÊ MORREU"
+	var texto := "VOCÊ MORREU"
 	if souls_perdidas > 0:
 		# Curto de propósito: na fonte 32 cada caractere tem ~16px e a linha precisa caber nos 640.
-		_death_banner.text += "\n%d almas ficaram na sua marca" % souls_perdidas
+		texto += "\n%d almas ficaram na sua marca" % souls_perdidas
+	_show_run_banner(texto, Palette.ENEMY)
+
+## O letreiro do fim de run, sobre o fade: vermelho na morte, dourado na vitória.
+func _show_run_banner(texto: String, cor: Color) -> void:
+	_death_banner = Label.new()
+	_death_banner.text = texto
 	_death_banner.add_theme_font_size_override("font_size", 32)   # 2× o nativo da fonte = nítido
-	_death_banner.add_theme_color_override("font_color", Palette.ENEMY)
+	_death_banner.add_theme_color_override("font_color", cor)
 	_death_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_death_banner.size = Vector2(640, 64)
 	_death_banner.position = Vector2(0, 140)
@@ -2446,6 +2793,17 @@ func _debug_next_room() -> void:
 	Music.stop()
 	_debug_clear_all()
 
+	# Roguelite: M segue O PLANO, não o grafo antigo (a arena da torre nem tem saída "frente").
+	# Vila → Downtown → torre → próximo nó, na ordem em que o jogo mesmo andaria.
+	if _roguelite:
+		if _phase == "tutorial":
+			_begin_dungeon()
+		elif _phase == "downtown":
+			_begin_tower()
+		else:
+			_advance_plan()
+		return
+
 	if _phase == "tutorial" or _run.current_level == "":
 		_begin_dungeon()
 		_msg.text = "[DEBUG] → %s" % _level_name()
@@ -2456,7 +2814,7 @@ func _debug_next_room() -> void:
 	_go_through("frente")
 	_msg.text = "[DEBUG] → %s" % _level_name()
 
-## Dá almas de sobra para testar a fogueira sem precisar farmar.
+## Dá almas de sobra para testar o mercado do Downtown sem precisar farmar.
 func _debug_level_up() -> void:
 	_run.player.gain_souls(Leveling.level_cost(_run.player.level) * 3)
 	_msg.text = "[DEBUG] +almas → %d (nível %d custa %d)" % [

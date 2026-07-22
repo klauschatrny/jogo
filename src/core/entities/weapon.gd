@@ -48,3 +48,10 @@ func current_damage() -> float:
 func upgrade() -> void:
 	level += 1
 	EventBus.weapon_upgraded.emit(self)
+
+## Almas para a PRÓXIMA melhoria (o ferreiro do Downtown): base * growth^(nível-1). Cresce
+## geometricamente como o dano — cada nível custa mais e rende mais, e o equilíbrio dos dois
+## fatores vive no balance.json, não aqui.
+func upgrade_cost() -> int:
+	return int(round(float(BalanceConfig.get_value("market", "WEAPON_COST_BASE", 100)) \
+		* pow(float(BalanceConfig.get_value("market", "WEAPON_COST_GROWTH", 1.5)), level - 1)))

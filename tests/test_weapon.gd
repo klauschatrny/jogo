@@ -27,3 +27,11 @@ func test_round_trip() -> void:
 	var w := Weapon.from_dict(_sword().to_dict())
 	assert_eq(w.id, "wpn_test")
 	assert_almost(w.weapon_growth, 1.12)
+
+func test_upgrade_cost_cresce_geometricamente() -> void:
+	var w := _sword()
+	var base := w.upgrade_cost()          # nível 1: WEAPON_COST_BASE
+	assert_true(base > 0, "custo do nível 1 deve ser positivo")
+	w.upgrade()                           # nível 2
+	var growth := float(BalanceConfig.get_value("market", "WEAPON_COST_GROWTH", 1.5))
+	assert_eq(w.upgrade_cost(), int(round(base * growth)))

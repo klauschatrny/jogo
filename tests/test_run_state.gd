@@ -282,3 +282,22 @@ func test_offer_exclui_nao_stackable_possuido() -> void:
 		RNGService.set_seed(_i)
 		for card in rs.offer_augments():
 			assert_true(card.id != "a2", "não-stackable possuído não pode ser oferecido")
+
+func test_new_attempt_perde_augments_e_mantem_almas() -> void:
+	var rs := _run()
+	rs.player.receive_flask()
+	rs.player.gain_souls(500)
+	rs.choose_augment(_augs()[0])
+	rs.player.take_damage(10)
+	rs.player.flask_charges = 0
+	rs.new_attempt(true)
+	assert_eq(rs.player.augments.size(), 0, "a build da run se perde")
+	assert_eq(rs.player.souls, 500, "as almas são meta-moeda: ficam")
+	assert_eq(rs.player.stats.current_hp, rs.player.stats.max_hp, "desperta com vida cheia")
+	assert_eq(rs.player.flask_charges, rs.player.flask_capacity(), "frasco cheio")
+	assert_eq(rs.deaths, 1)
+
+func test_new_attempt_vitoria_nao_conta_morte() -> void:
+	var rs := _run()
+	rs.new_attempt(false)
+	assert_eq(rs.deaths, 0)

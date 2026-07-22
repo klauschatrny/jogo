@@ -120,3 +120,42 @@ func test_renascer_recarrega_o_frasco() -> void:
 	rs.player.take_damage(rs.player.stats.max_hp)   # morre
 	rs.respawn()
 	assert_eq(rs.player.flask_charges, rs.player.flask_max, "renasce com o frasco cheio")
+
+func test_caco_do_mercador_aumenta_capacidade() -> void:
+	var p := _player()
+	p.receive_flask()
+	var base_cap := p.flask_capacity()
+	p.gain_souls(p.flask_shard_cost())
+	assert_true(p.buy_flask_shard(), "com almas exatas, compra")
+	assert_eq(p.souls, 0, "as almas foram gastas")
+	assert_eq(p.flask_capacity(), base_cap + 1)
+	assert_eq(p.flask_charges, base_cap + 1, "a carga nova vem cheia (estava cheio)")
+
+func test_caco_sem_almas_falha() -> void:
+	var p := _player()
+	p.receive_flask()
+	assert_false(p.buy_flask_shard())
+	assert_eq(p.flask_bonus, 0)
+
+func test_caco_respeita_o_limite() -> void:
+	var p := _player()
+	p.receive_flask()
+	var maximo := int(BalanceConfig.get_value("market", "FLASK_MAX_BONUS", 2))
+	p.gain_souls(999999)
+	for i in maximo + 3:
+		p.buy_flask_shard()
+	assert_eq(p.flask_bonus, maximo, "nunca passa do limite")
+
+func test_caco_sem_frasco_falha() -> void:
+	# Player CRU (o helper _player já recebe o frasco; aqui é preciso um sem).
+	var p := Player.create_new("X", Weapon.from_dict({"base_damage": 15}))
+	p.gain_souls(999999)
+	assert_false(p.buy_flask_shard(), "sem o frasco do cavaleiro não há o que melhorar")
+
+func test_custo_do_caco_cresce() -> void:
+	var p := _player()
+	p.receive_flask()
+	var c0 := p.flask_shard_cost()
+	p.gain_souls(999999)
+	p.buy_flask_shard()
+	assert_true(p.flask_shard_cost() > c0, "o segundo caco custa mais")

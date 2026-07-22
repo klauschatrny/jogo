@@ -1,14 +1,15 @@
-## Painel da fogueira — abre ao descansar. É o único lugar onde as ALMAS viram poder.
+## Painel de TREINAMENTO — abre ao falar com o Mestre, no Downtown. É o único lugar onde as
+## ALMAS viram poder permanente.
 ##
 ## Um clique, um efeito: o botão "+" de um atributo o sobe em um. Se você ainda tiver um ponto
 ## guardado, ele é gasto; se não tiver, o nível é COMPRADO com almas na hora (e o ponto que ele
 ## gera vai direto para o atributo). O jogador não precisa entender os dois passos — só vê
 ## "almas entram, atributo sobe".
 ##
-## Gasto é definitivo. E é aqui que a aposta se fecha: alma no bolso é risco (morrer a entrega ao
-## Eco); alma gasta é sua para sempre. A decisão de quando voltar à fogueira É o jogo.
+## Gasto é definitivo — e no roguelite é o que separa a run da meta: augments se perdem com a
+## run, atributos comprados aqui são seus para sempre.
 ##
-## Só MOUSE sobe atributo (o "+" de cada linha); o teclado só fecha (B levanta). Roda com a
+## Só MOUSE sobe atributo (o "+" de cada linha); o teclado só fecha (B). Roda com a
 ## árvore PAUSADA — quem o abre pausa e ouve `closed` para despausar.
 class_name AttributePanel
 extends Control
@@ -41,8 +42,8 @@ func _ready() -> void:
 	frame.size = Vector2(520, 256)
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(frame)
-	var edge := ColorRect.new()          # a moldura pega a cor do fogo
-	edge.color = Color(1.0, 0.62, 0.2)
+	var edge := ColorRect.new()          # a moldura pega o azul do Mestre (a gema do cajado dele)
+	edge.color = Color(0.45, 0.70, 0.95)
 	edge.position = frame.position + Vector2(0, -2)
 	edge.size = Vector2(frame.size.x, 2)
 	edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -57,10 +58,10 @@ func _ready() -> void:
 	# Fonte: 32 no título e 16 no resto — o nativo da Pixel Operator (e o dobro dele).
 	# Qualquer outro tamanho sai borrado/ilegível na base 640×360.
 	var title := Label.new()
-	title.text = "FOGUEIRA"
+	title.text = "TREINAMENTO"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 32)
-	title.add_theme_color_override("font_color", Color(1.0, 0.72, 0.28))
+	title.add_theme_color_override("font_color", Color(0.55, 0.76, 0.98))
 	box.add_child(title)
 
 	_points_lbl = Label.new()
@@ -128,7 +129,7 @@ func _refresh() -> void:
 	if pts > 0:
 		_points_lbl.text += "    PONTOS %d" % pts
 	_points_lbl.add_theme_color_override("font_color",
-		Color(1.0, 0.72, 0.28) if _can_raise() else Palette.TEXT.darkened(0.4))
+		Color(0.55, 0.76, 0.98) if _can_raise() else Palette.TEXT.darkened(0.4))
 
 	var pode := _can_raise()
 	for r in _rows:
@@ -138,7 +139,8 @@ func _refresh() -> void:
 		plus.disabled = not pode                 # sem almas/ponto, o "+" fica inerte e apagado
 
 	# Sem almas/ponto o "+" já aparece desabilitado — não precisa de aviso em texto.
-	_hint_lbl.text = "clique no  +  para subir     %s  levantar" % KeyBinds.key_name("ui_cancel")
+	# "fechar", não "levantar": levantar era o gesto da fogueira, e este painel agora é do Mestre.
+	_hint_lbl.text = "clique no  +  para subir     %s  fechar" % KeyBinds.key_name("ui_cancel")
 
 ## Teclado só FECHA o painel (B) — subir atributo é exclusivo do mouse (o "+" de cada linha).
 func _input(event: InputEvent) -> void:

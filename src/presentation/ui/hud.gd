@@ -74,8 +74,8 @@ func _ready() -> void:
 	_stam_bar.size = Vector2(BAR_W0, STAM_H)
 	add_child(_stam_bar)
 
-	# Almas: a moeda. Precisa estar SEMPRE visível — é o que você perde ao morrer, e não dá para
-	# decidir se vale a pena avançar ou voltar à fogueira sem ver quanto está em jogo.
+	# Almas: a moeda de meta-progressão. Precisa estar SEMPRE visível — é o que o mercado do
+	# Downtown gasta, e ver a pilha crescer é metade da motivação de cada andar.
 	_build_souls()
 
 	# Frasco de cura: a única cura sob demanda. Precisa estar à vista para virar decisão ("bebo a

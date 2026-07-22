@@ -138,6 +138,21 @@ func respawn() -> void:
 func respawn_x(default_x: float) -> float:
 	return checkpoint_x if (has_checkpoint() and checkpoint_level == current_level) else default_x
 
+## NOVA TENTATIVA (roguelite): a run acabou — por morte OU vitória — e o jogador desperta no
+## Downtown para recomeçar. O que se PERDE é a build da run: todos os augments (as cartas
+## escolhidas entre os andares). O que FICA é a meta-progressão: as ALMAS (a moeda que o mercado
+## gasta), a arma e suas melhorias, o frasco e seus cacos, nível/atributos. Vida, stamina e frasco
+## voltam cheios — despertar já morto não é despertar.
+func new_attempt(died: bool) -> void:
+	if died:
+		deaths += 1
+	player.augments.clear()
+	player.recalculate_stats()
+	player.heal(player.stats.max_hp)
+	if player.stamina != null:
+		player.stamina.refill()
+	player.refill_flask()
+
 # ---------------------------------------------------------------------------
 # Níveis concluídos / bosses já vistos
 # ---------------------------------------------------------------------------

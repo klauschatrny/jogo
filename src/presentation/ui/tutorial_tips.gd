@@ -14,12 +14,12 @@ static func entries() -> Array:
 		[840.0,  "Ataque com  %s  e teste no boneco à frente" % KeyBinds.key_name("attack"), true],
 		[1200.0, "Esquive com  %s   (gasta stamina)" % KeyBinds.key_names("dodge"), true],
 		[1520.0, "Parado, a stamina se recupera.  Sem ela, você não ataca nem esquiva.", true],
-		[1760.0, "A porta à frente leva à Dungeon", false],
+		[1760.0, "A porta à frente leva ao Centro da cidade", false],
 	]
 
-## A dica do frasco (área da fogueira). Curta de propósito: uma linha só do toast.
+## A dica do frasco (aba de revisão das Opções). Curta de propósito: uma linha só do toast.
 static func flask_tip() -> String:
-	return "Frasco de Cura: beba com %s. Recarrega ao descansar na fogueira" \
+	return "Frasco de Cura: beba com %s. Recarrega ao despertar no Centro" \
 		% KeyBinds.key_name("flask")
 
 ## Os textos da aba de revisão: as LIÇÕES da vila + a do frasco (sem as orientações de momento).

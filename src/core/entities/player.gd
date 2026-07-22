@@ -42,6 +42,9 @@ var flask_max: int = 0
 ## fogueira — até falar com ele, o slot na HUD fica vazio e beber não faz nada. Ganhar o Estus de
 ## alguém, em vez de já nascer com ele, é o que dá ao objeto o peso de um marco do começo do jogo.
 var has_flask: bool = false
+## Cacos de frasco comprados no Mercador do Downtown: cada um soma +1 à capacidade. Meta-progressão
+## — sobrevive à morte (a run perde os augments, nunca o frasco).
+var flask_bonus: int = 0
 
 static func create_new(player_name: String, chosen_weapon: Weapon) -> Player:
 	var p := Player.new()
@@ -58,9 +61,29 @@ static func create_new(player_name: String, chosen_weapon: Weapon) -> Player:
 
 # --- Frasco de cura (o Estus) ---
 
-## Cargas por descanso (do balance.json).
+## Cargas por descanso: a base (balance.json) + os cacos comprados no Mercador.
 func flask_capacity() -> int:
-	return int(BalanceConfig.get_value("flask", "CHARGES", 3))
+	return int(BalanceConfig.get_value("flask", "CHARGES", 3)) + flask_bonus
+
+## Quantos cacos ainda se pode comprar (FLASK_MAX_BONUS no balance.json limita).
+func can_buy_flask_shard() -> bool:
+	return has_flask and flask_bonus < int(BalanceConfig.get_value("market", "FLASK_MAX_BONUS", 2))
+
+## Almas do PRÓXIMO caco: base * growth^(cacos já comprados) — cada caco custa mais que o anterior.
+func flask_shard_cost() -> int:
+	return int(round(float(BalanceConfig.get_value("market", "FLASK_SHARD_COST", 200)) \
+		* pow(float(BalanceConfig.get_value("market", "FLASK_SHARD_GROWTH", 2.0)), flask_bonus)))
+
+## Compra um caco (o Mercador): +1 na capacidade e a carga nova já vem cheia — pagou, leva.
+## Devolve false sem frasco, sem almas ou com o limite atingido. As almas saem daqui.
+func buy_flask_shard() -> bool:
+	if not can_buy_flask_shard() or souls < flask_shard_cost():
+		return false
+	souls -= flask_shard_cost()
+	flask_bonus += 1
+	flask_max = flask_capacity()
+	flask_charges = mini(flask_charges + 1, flask_max)
+	return true
 
 ## Quanto UM gole cura: uma fração da vida MÁXIMA, então subir Vigor também engorda a cura.
 func flask_heal_amount() -> int:

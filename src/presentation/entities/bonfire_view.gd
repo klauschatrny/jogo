@@ -17,6 +17,9 @@ const FLAME_H := 16.0
 
 var pos_x := 0.0                 # x no nível (id da fogueira, junto com o andar)
 var lit := false
+## Fogueira DECORATIVA (a do Downtown): só marca o ponto de renascimento — sempre acesa, sem
+## prompt e sem função. Descanso/cura/menu são da fogueira-checkpoint, que está fora do loop.
+var decorativa := false
 
 var _player: Node2D
 var _flame: ColorRect
@@ -103,7 +106,12 @@ func _process(delta: float) -> void:
 	_refresh()
 
 	# O aviso só aparece quando dá para descansar de fato. Apagada, ele CONVIDA ("acender");
-	# acesa, oferece o que ela faz.
+	# acesa, oferece o que ela faz. A decorativa nunca oferece nada — prometer descanso que não
+	# existe é pior do que não prometer.
+	if decorativa:
+		if _prompt != null:
+			_prompt.visible = false
+		return
 	if _prompt != null and is_instance_valid(_player):
 		_prompt.visible = absf(_player.global_position.x - global_position.x) <= REACH
 		var k: String = KeyBinds.key_name("interact")

@@ -41,6 +41,14 @@
     "HEAL_FRACTION": 0.4,
     "DRINK_TIME": 0.8
   },
+  "market": {
+    "_comment": "O mercado do Downtown (meta-progressao entre runs). Ferreiro: melhorar a arma custa WEAPON_COST_BASE * WEAPON_COST_GROWTH^(nivel-1) almas. Mercador: um caco de frasco (+1 carga maxima) custa FLASK_SHARD_COST * FLASK_SHARD_GROWTH^(cacos ja comprados), ate FLASK_MAX_BONUS cacos.",
+    "WEAPON_COST_BASE": 100,
+    "WEAPON_COST_GROWTH": 1.5,
+    "FLASK_SHARD_COST": 200,
+    "FLASK_SHARD_GROWTH": 2.0,
+    "FLASK_MAX_BONUS": 2
+  },
   "attributes": {
     "_comment": "Progressao soulslike: subir de nivel NAO da stat nenhuma sozinho — da PONTOS, que o jogador gasta em atributos na fogueira. 'start' e o valor inicial de cada atributo; 'gain' e o que UM ponto acrescenta. Os valores de partida sao calibrados para bater com a base do player_scaling/stamina (vigor 10 = 90 de vida, forca 10 = 5 de ataque, resistencia 10 = 100 de stamina), entao mexer em 'start' desloca a base inteira.",
     "POINTS_PER_LEVEL": 1,
