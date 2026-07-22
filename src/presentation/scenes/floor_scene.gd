@@ -1700,6 +1700,9 @@ func _mark_heavy_dead(view: EnemyView) -> void:
 ## Menor que o vão entre andares de uma escadaria (120px) e maior que o pico do pulo relativo a
 ## quem divide a plataforma — um andar de diferença nunca acorda, pular ao lado sempre.
 const WAKE_DY := 70.0
+## O NECROMANTE vê mais longe também na vertical: até 2 ANDARES de distância (2×120 + folga).
+## Sentir os disparos dele chegando de cima é a pressão da subida — mas do chão ele ainda dorme.
+const WAKE_DY_NECRO := 250.0
 
 func _update_room_wake() -> void:
 	if not is_instance_valid(_player_view):
@@ -1714,7 +1717,8 @@ func _update_room_wake() -> void:
 		# sozinha não bastava — o aggro (200+) é maior que o vão entre andares (120), então um
 		# esqueleto um andar acima ainda "via" o player passando embaixo e puxava aggro de uma
 		# plataforma que ele nem alcança. No chão plano (y igual) nada muda.
-		if absf(ppos.y - v.global_position.y) > WAKE_DY:
+		var dy_tol := WAKE_DY_NECRO if v is NecromancerView else WAKE_DY
+		if absf(ppos.y - v.global_position.y) > dy_tol:
 			continue
 		if absf(ppos.x - v.global_position.x) <= v.aggro_range:
 			v.dormant = false
@@ -2580,10 +2584,8 @@ func _start_climb() -> void:
 	_camera.setup_climb(w, superficie_anterior - 150.0)
 
 	_phase = "cleared"        # travessia: a porta já responde; os inimigos são o pedágio opcional
-	if _has_necro():
-		_show_tip("O Necromante comanda a escadaria — os ossos não descansam")
-	else:
-		_show_tip("A escadaria sobe. O próximo guardião espera no alto")
+	# Sem toast de chegada, de propósito: a escadaria se apresenta sozinha (plataformas, escadas,
+	# ossos que não descansam) — a regra do Necromante se aprende vendo os ossos se levantarem.
 
 ## Um inimigo da escadaria: normal, dormente, fora da contagem de sala (a escadaria não se
 ## "limpa" — matar é opcional). Vive em _enemies como todos, então _clear_entities o varre.
