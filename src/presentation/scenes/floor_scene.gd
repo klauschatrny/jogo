@@ -101,6 +101,8 @@ var _exit_door_x := 0.0              # saída LIVRE no fim do nível (a névoa j
 var _exit_door_y := 0.0              # y da saída quando ela NÃO está no chão (a escadaria; pode ser NEGATIVO)
 var _exit_door_vertical := false     # a saída exige altura? (só a escadaria liga; um valor-sentinela
                                      # não serve: acima da tela base o y legítimo é negativo)
+var _climb_seal: Node2D              # o SELO roxo do Necromante sobre a porta da escadaria
+var _climb_sealed := false           # a porta está selada (só abre com a escadaria vazia)
 # O ATALHO. Uma segunda aresta do mapa, ligando dois lugares que já se alcançavam — por um caminho
 # muito mais curto. Nasce FECHADO e só se destranca do lado de LÁ (o refúgio), o que é o que dá
 # sentido à primeira travessia longa: você abre a porta pelas costas dela. Aberto, fica aberto para
@@ -317,6 +319,8 @@ func _build_environment(width: float, is_boss_room: bool, hazards := []) -> void
 	_fog = null
 	_exit_door_x = 0.0        # refeita por _spawn_exit_passage, quando o nível adiante já caiu
 	_exit_door_vertical = false   # volta ao chão; a escadaria a põe na superfície do último andar
+	_climb_seal = null        # filho do _env (demolido); só solta a referência
+	_climb_sealed = false
 	_npc = null               # view era filha do _env (demolida); só solta a referência
 	_knight_seq = false       # a sequência de falas não sobrevive à remontagem do nível
 	_knight_timer = 0.0
@@ -2000,12 +2004,25 @@ func _on_enemy_died(view: EnemyView, enemy: Enemy) -> void:
 		"boss":
 			if view == _boss_view:
 				_on_floor_cleared()
+		"boss_intro":
+			# O boss pode morrer DURANTE a cutscene de entrada (o K do debug pega exatamente aí):
+			# sem este ramo nada concluía o andar — fase presa em boss_intro, névoas de pé, porta
+			# trancada para sempre. Invalida a cutscene, solta o player e conclui como sempre.
+			if view == _boss_view:
+				_intro_token += 1
+				if is_instance_valid(_player_view):
+					_player_view.frozen = false
+				_on_floor_cleared()
 		"cleared":
 			# A escadaria: o Necromante do topo caiu → paga-se o caixa retido (as almas de cada
 			# esqueleto sob o efeito dele, via final_death → died → este mesmo fluxo).
 			if view == _necro:
 				_necro = null
 				_climb_necro_fell()
+			# A porta selada só se abre com a escadaria VAZIA (a queda do Necromante esvazia tudo
+			# de uma vez, então na prática o selo é a vida dele).
+			if _climb_sealed and _enemies.is_empty():
+				_unseal_climb_door()
 
 func _on_floor_cleared() -> void:
 	# Roguelite: nada de mark_cleared (o mesmo id pode voltar como outro nó de combate), nada de
@@ -2103,6 +2120,8 @@ func _update_boss_doors() -> void:
 func _update_exit_door() -> void:
 	if _exit_door_x <= 0.0 or _phase != "cleared" or not is_instance_valid(_player_view):
 		return
+	if _climb_sealed:
+		return                    # a magia do Necromante segura a porta até a escadaria esvaziar
 	if absf(_player_view.global_position.x - _exit_door_x) > DOOR_REACH:
 		return
 	# Saída fora do chão (o topo de uma escadaria): também exige estar NA ALTURA dela — sem isso,
@@ -2580,6 +2599,11 @@ func _start_climb() -> void:
 	_exit_door_y = saida_y
 	_exit_door_vertical = true
 
+	# Com inimigos na escadaria, a porta nasce SELADA pela magia do Necromante: só matar todos
+	# (na prática, matá-lo — a queda dele derruba todos de uma vez) a dissolve.
+	if not _enemies.is_empty():
+		_seal_climb_door(saida_x, saida_y)
+
 	# A câmera abre o teto: do topo da escadaria ainda se vê a porta e um respiro acima dela.
 	_camera.setup_climb(w, superficie_anterior - 150.0)
 
@@ -2604,6 +2628,53 @@ func _spawn_climb_enemy(id: String, pos: Vector2) -> void:
 	if _has_necro():
 		view.reassemble_time = float(_floor_config.get("reassemble_time", 2.0))
 	_add_view(view, enemy, pos)
+
+## A cor da magia do Necromante (a mesma família do bolt/halo roxo dele).
+const SEAL_COLOR := Color(0.62, 0.32, 0.95)
+
+## O SELO sobre a porta da escadaria: um véu roxo pulsante na linguagem visual do Necromante —
+## a porta trancada por magia, não por mecanismo. Sem ele o bloqueio seria invisível e a porta
+## que não cruza leria como bug.
+func _seal_climb_door(x: float, y: float) -> void:
+	_climb_sealed = true
+	_climb_seal = Node2D.new()
+	_climb_seal.position = Vector2(x, y)
+	_climb_seal.z_index = -3          # à frente da porta (-4), atrás das entidades
+	_env.add_child(_climb_seal)
+
+	var veu := ColorRect.new()        # o véu que cobre o vão inteiro da porta
+	veu.color = Color(SEAL_COLOR.r, SEAL_COLOR.g, SEAL_COLOR.b, 0.40)
+	veu.size = Vector2(44, 94)
+	veu.position = Vector2(-22, -94)
+	_climb_seal.add_child(veu)
+	var nucleo := ColorRect.new()     # o coração mais claro, como o núcleo do bolt
+	nucleo.color = Color(0.82, 0.62, 1.0, 0.35)
+	nucleo.size = Vector2(26, 74)
+	nucleo.position = Vector2(-13, -84)
+	_climb_seal.add_child(nucleo)
+	for i in 3:                       # faixas rúnicas horizontais
+		var faixa := ColorRect.new()
+		faixa.color = Color(0.9, 0.75, 1.0, 0.5)
+		faixa.size = Vector2(36, 3)
+		faixa.position = Vector2(-18, -78.0 + i * 26.0)
+		_climb_seal.add_child(faixa)
+
+	# Pulso contínuo (a mesma respiração do halo do bolt): vivo, não estático.
+	var tw := _climb_seal.create_tween().set_loops()
+	tw.tween_property(_climb_seal, "modulate:a", 0.6, 0.8)
+	tw.tween_property(_climb_seal, "modulate:a", 1.0, 0.8)
+
+## A escadaria esvaziou: o selo se desfaz num estouro roxo e a porta volta a responder.
+func _unseal_climb_door() -> void:
+	_climb_sealed = false
+	if not is_instance_valid(_climb_seal):
+		return
+	Juice.burst(self, _climb_seal.global_position + Vector2(0.0, -46.0), SEAL_COLOR, 18, 150.0)
+	var selo := _climb_seal
+	_climb_seal = null
+	var tw := create_tween()
+	tw.tween_property(selo, "modulate:a", 0.0, 0.6)
+	tw.tween_callback(selo.queue_free)
 
 ## O Necromante da escadaria caiu: todo esqueleto sob o efeito dele — de pé ou em ossos — morre DE
 ## VERDADE via final_death(), que EMITE `died`: cada um passa pelo fluxo normal de morte e paga as
@@ -2968,6 +3039,13 @@ func _debug_next_room() -> void:
 	# Roguelite: M segue O PLANO, não o grafo antigo (a arena da torre nem tem saída "frente").
 	# Vila → Downtown → torre → próximo nó, na ordem em que o jogo mesmo andaria.
 	if _roguelite:
+		# M no meio de uma recompensa: fecha o overlay antes de pular, senão a carta fica na tela
+		# (e o player congelado) por cima do próximo nó.
+		if is_instance_valid(_reward_layer):
+			_reward_layer.queue_free()
+			_reward_layer = null
+			if is_instance_valid(_player_view):
+				_player_view.frozen = false
 		if _phase == "tutorial":
 			_begin_dungeon()
 		elif _phase == "downtown":
