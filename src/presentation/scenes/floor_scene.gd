@@ -805,6 +805,7 @@ func _reset_player_to_start(x := PLAYER_START_X) -> void:
 	_player_view.global_position = Vector2(x, GROUND_Y - 40)
 	_player_view.velocity = Vector2.ZERO
 	_player_view.frozen = false
+	_player_ground_y = _player_view.global_position.y   # o "andar" do despertar recomeça no chão
 	_camera.global_position.x = _player_view.global_position.x
 
 # ---------------------------------------------------------------------------
@@ -1701,28 +1702,33 @@ func _mark_heavy_dead(view: EnemyView) -> void:
 ## comportamento da guarda do refúgio. Os heavies têm a cadeia própria (_update_heavy_chain) e o
 ## Necromante é estático, então ambos ficam de fora daqui.
 ## Tolerância VERTICAL do despertar: só acorda quem está (quase) na mesma altura que o player.
-## Menor que o vão entre andares de uma escadaria (120px) e maior que o pico do pulo relativo a
-## quem divide a plataforma — um andar de diferença nunca acorda, pular ao lado sempre.
+## Menor que o vão entre andares de uma escadaria (120px) — um andar de diferença nunca acorda.
 const WAKE_DY := 70.0
 ## O NECROMANTE vê mais longe também na vertical: até 2 ANDARES de distância (2×120 + folga).
 ## Sentir os disparos dele chegando de cima é a pressão da subida — mas do chão ele ainda dorme.
 const WAKE_DY_NECRO := 250.0
+## O y do último lugar onde o player esteve DE PÉ. É esta a altura que o despertar usa: o que
+## conta é o ANDAR em que você está, não o arco do pulo — no ápice (76px) a cabeça entrava na
+## faixa de altura do inimigo do andar de cima e o acordava sem você nunca ter pisado lá.
+var _player_ground_y := GROUND_Y
 
 func _update_room_wake() -> void:
 	if not is_instance_valid(_player_view):
 		return
 	var ppos := _player_view.global_position
+	if _player_view.is_on_floor():
+		_player_ground_y = ppos.y
 	for v in _enemies:
 		if not is_instance_valid(v) or not v.dormant:
 			continue
 		if _guard.has(v):
 			continue          # a guarda do refúgio tem o passe dela (_update_guard_wake)
-		# DUAS condições: alcance horizontal E estar na altura do inimigo. A distância euclidiana
-		# sozinha não bastava — o aggro (200+) é maior que o vão entre andares (120), então um
-		# esqueleto um andar acima ainda "via" o player passando embaixo e puxava aggro de uma
-		# plataforma que ele nem alcança. No chão plano (y igual) nada muda.
+		# DUAS condições: alcance horizontal E estar NO ANDAR do inimigo (pelo último y com pé no
+		# chão, nunca pelo y do pulo). A distância euclidiana sozinha não bastava — o aggro (200+)
+		# é maior que o vão entre andares (120), então um esqueleto um andar acima ainda "via" o
+		# player passando embaixo. No chão plano (y igual) nada muda.
 		var dy_tol := WAKE_DY_NECRO if v is NecromancerView else WAKE_DY
-		if absf(ppos.y - v.global_position.y) > dy_tol:
+		if absf(_player_ground_y - v.global_position.y) > dy_tol:
 			continue
 		if absf(ppos.x - v.global_position.x) <= v.aggro_range:
 			v.dormant = false
