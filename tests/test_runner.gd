@@ -23,6 +23,7 @@ const SUITES := {
 	"AugmentPool": "res://tests/test_augment_pool.gd",
 	"Boss": "res://tests/test_boss.gd",
 	"RunState": "res://tests/test_run_state.gd",
+	"RunPlan": "res://tests/test_run_plan.gd",
 	"FloorManager": "res://tests/test_floor_manager.gd",
 	"TowerManager": "res://tests/test_tower.gd",
 	"NemesisRules": "res://tests/test_nemesis_rules.gd",
