@@ -10,10 +10,11 @@ const BASE_COLOR := Palette.PLAYER
 const SPRITE_ID := "player"      # arte: assets/sprites/player/player.png + data/sprites/player.json
 
 # Feel de movimento (constantes de apresentação no espaço base 640×360).
+# UNIDADE BASE VERTICAL: o pulo sobe 1 altura do MODELO (box_h) — ver _jump_velocity em _build.
 const GRAVITY := 1400.0
 const CLIMB_SPEED := 70.0          # velocidade de subida/descida na escada (base 640×360)
-const JUMP_VELOCITY := -460.0
-const DODGE_SPEED := 430.0
+const JUMP_VELOCITY := -460.0      # fallback: sobrescrito por _jump_velocity, atado à altura do modelo
+const DODGE_SPEED := 400.0        # 400 × DODGE_TIME (0.20s) = 80px = 5 larguras do modelo (box_w 16)
 const DODGE_TIME := 0.20          # dash + i-frames: invencibilidade de 200 ms a partir do frame 0
 const DODGE_COOLDOWN := 0.4       # tempo mínimo entre uma esquiva e a próxima
 const POGO_BOUNCE := -380.0      # impulso pra cima ao acertar um golpe pra baixo no ar
@@ -55,6 +56,7 @@ var _drink_total := 0.0           # duração total do gole atual (para o progre
 var _drink_ember_cd := 0.0        # cadência das fagulhas laranja durante o gole
 var box_w := SIZE                  # hitbox efetiva (px); resolvida em _build do manifesto player.json
 var box_h := SIZE                  # (ou SIZE × SIZE se o manifesto não definir "hitbox")
+var _jump_velocity := JUMP_VELOCITY  # apex do pulo = ALTURA DO MODELO (box_h); atado em _build
 var _body: ColorRect
 var _sprite: AnimatedSprite2D      # arte (null = usa o placeholder _body)
 var _faces_left := false           # true se a arte foi desenhada virada p/ esquerda (manifesto)
@@ -98,6 +100,10 @@ func _build() -> void:
 		box_w = SIZE * s
 		box_h = SIZE * s
 	var box := Vector2(box_w, box_h)
+
+	# O apex do pulo é EXATAMENTE a altura do modelo: apex = v²/(2g) → v = √(2·g·box_h).
+	# (Antes era fixo -460 ≈ 76px, mais alto que o próprio corpo de 52px.)
+	_jump_velocity = -sqrt(2.0 * GRAVITY * box_h)
 
 	_body = ColorRect.new()
 	_body.color = BASE_COLOR
@@ -227,7 +233,7 @@ func _physics_process(delta: float) -> void:
 	velocity.x = move_x + _knockback.x
 
 	if Input.is_action_just_pressed("jump") and is_on_floor():
-		velocity.y = JUMP_VELOCITY
+		velocity.y = _jump_velocity
 
 	# Dispara a esquiva: por clique imediato (fora do cooldown) OU pelo comando guardado no
 	# buffer, assim que o cooldown liberar e houver stamina. Consome o buffer aqui — pra

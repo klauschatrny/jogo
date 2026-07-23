@@ -16,6 +16,14 @@
       "loop": true,
       "fade_in": 0.6,
       "fade_out": 2.0
+    },
+    "ambience": {
+      "_comment": "Ambiência das áreas ABERTAS (vila, Centro, escadaria): faixa de música + efeitos de fundo. Tocada por floor_scene._start_ambience(); a trilha de boss a substitui na arena. Sobe/desce em fade.",
+      "stream": "res://assets/audio/music/ambience_music.mp3",
+      "volume_db": -4.0,
+      "loop": true,
+      "fade_in": 2.0,
+      "fade_out": 2.0
     }
   },
   "sfx": {
@@ -162,6 +170,34 @@
         0.72
       ],
       "volume_db": -10.0
+    },
+    "cavaleiro_grunt": {
+      "_comment": "Resmungos do Sir Big T. ao FALAR com ele (floor_scene._on_npc_falado). Tocados por Sfx.play_random — sorteio SEM reposição: uma variação só repete depois que todas as 6 tocaram.",
+      "streams": [
+        "res://assets/audio/sfx/cavaleiro_grunt1.mp3",
+        "res://assets/audio/sfx/cavaleiro_grunt2.mp3",
+        "res://assets/audio/sfx/cavaleiro_grunt3.mp3",
+        "res://assets/audio/sfx/cavaleiro_grunt4.mp3",
+        "res://assets/audio/sfx/cavaleiro_grunt5.mp3",
+        "res://assets/audio/sfx/cavaleiro_grunt6.mp3"
+      ],
+      "volume_db": -5.0
+    },
+    "ambience_wind": {
+      "_comment": "Vento nas árvores: cama de ambiência em LOOP das áreas abertas, ligada junto com a música de ambiência (Sfx.ambient). Corte em fade curto ao entrar na arena/menu.",
+      "streams": [
+        "res://assets/audio/sfx/wind_ambience.mp3"
+      ],
+      "volume_db": -10.0,
+      "loop": true
+    },
+    "campfire": {
+      "_comment": "Crepitar da fogueira. Som por PROXIMIDADE: o BonfireView gere a PRÓPRIA voz e interpola o volume pela distância do player (mudo de longe, cheio ao encostar). Loop. volume_db = o volume ao encostar.",
+      "streams": [
+        "res://assets/audio/sfx/campfire_fire_sfx.mp3"
+      ],
+      "volume_db": -4.0,
+      "loop": true
     }
   }
 }

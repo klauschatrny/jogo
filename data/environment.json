@@ -20,5 +20,16 @@
     "bg_bottom": "23271f",
     "far": "2b3a30",
     "mid": "3c4d3e"
+  },
+  "tower": {
+    "_comment": "INTERIOR da torre (arenas de boss, escadarias, salas de combate): chão de pedra (o outro tile, ground.png) + fundo procedural de gradiente escuro com COLUNAS em parallax (grossas, do chão até o topo da tela). Substitui o parallax externo de grama.",
+    "ground": {
+      "tex": "res://assets/bg/ground/ground.png",
+      "fill": "17131d",
+      "edge": "3a3446"
+    },
+    "bg_top": "070610",
+    "bg_bottom": "17121f",
+    "column": "2a2438"
   }
 }

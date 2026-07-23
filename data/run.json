@@ -4,6 +4,18 @@
   "reward_cards": 3,
   "bosses": ["bss_ogre"],
   "climbs": ["escadaria_a", "escadaria_b"],
+  "andar_nomes": [
+    "O Pórtico",
+    "Galeria dos Caídos",
+    "Jardim das Bromélias",
+    "Claustro dos Lamentos",
+    "Câmara Selada",
+    "Abóboda dos Ecos",
+    "Domínio Pútrido",
+    "O Campanário",
+    "Salão das Correntes",
+    "Aposentos Soturnos"
+  ],
   "_pattern_completo": [
     "BOSS", "REWARD", "CLIMB",
     "BOSS", "REWARD", "CLIMB",

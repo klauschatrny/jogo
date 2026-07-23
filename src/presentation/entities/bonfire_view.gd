@@ -15,6 +15,12 @@ const REACH := 42.0              # distância para poder descansar (base 640×36
 const W := 20.0                  # largura da pilha de lenha
 const FLAME_H := 16.0
 
+# Som do fogo por PROXIMIDADE: o crepitar (audio.json "campfire") sobe conforme o player se
+# aproxima. Voz própria (não passa pelo Sfx.play) porque o volume é ajustado a cada frame.
+const FIRE_SFX := "campfire"     # id em data/audio.json
+const FIRE_SFX_REACH := 240.0    # a partir daqui já se ouve; encostado = volume cheio (do JSON)
+const FIRE_SFX_SILENT_DB := -40.0  # praticamente mudo no limite do alcance
+
 var pos_x := 0.0                 # x no nível (id da fogueira, junto com o andar)
 var lit := false
 ## Fogueira DECORATIVA (a do Downtown): só marca o ponto de renascimento — sempre acesa, sem
@@ -27,6 +33,8 @@ var _core: ColorRect
 var _glow: ColorRect
 var _prompt: Label
 var _t := 0.0
+var _fire_audio: AudioStreamPlayer   # crepitar por proximidade (só acesa)
+var _fire_base_db := 0.0             # volume ao encostar (de audio.json)
 
 func setup(x: float, already_lit: bool, player: Node2D) -> void:
 	pos_x = x
@@ -101,9 +109,22 @@ func _build() -> void:
 	_prompt.visible = false
 	add_child(_prompt)
 
+	# Crepitar por proximidade: voz própria (o volume muda a cada frame — ver _update_fire_audio).
+	_fire_audio = AudioStreamPlayer.new()
+	_fire_audio.bus = AudioSettings.AMBIENT_BUS   # categoria "Ambiente" nas Opções (não o SFX geral)
+	_fire_audio.playback_type = AudioServer.PLAYBACK_TYPE_STREAM   # web/mp3: "Stream" toca, "Sample" sai mudo
+	var st := Sfx.stream_for(FIRE_SFX)
+	if st != null:
+		if "loop" in st:
+			st.set("loop", true)   # cama contínua: o loop é do recurso, não do player
+		_fire_audio.stream = st
+		_fire_base_db = Sfx.volume_for(FIRE_SFX)
+	add_child(_fire_audio)
+
 func _process(delta: float) -> void:
 	_t += delta
 	_refresh()
+	_update_fire_audio()
 
 	# O aviso só aparece quando dá para descansar de fato. Apagada, ele CONVIDA ("acender");
 	# acesa, oferece o que ela faz. A decorativa nunca oferece nada — prometer descanso que não
@@ -137,6 +158,24 @@ func _refresh() -> void:
 	_core.size = Vector2(3.0, h * 0.5)
 	_core.position = Vector2(-1.5, -h * 0.5 - 4.0)
 	_glow.modulate.a = 0.75 + 0.25 * sin(_t * 6.0)
+
+## Crepitar por proximidade: toca só ACESA; o volume interpola do silêncio (no limite do alcance)
+## ao volume cheio (encostado), pela distância horizontal até o player. Apagada = muda.
+func _update_fire_audio() -> void:
+	if _fire_audio == null or _fire_audio.stream == null:
+		return
+	if not lit:
+		if _fire_audio.playing:
+			_fire_audio.stop()
+		return
+	if not _fire_audio.playing:
+		_fire_audio.play()
+	if not is_instance_valid(_player):
+		_fire_audio.volume_db = FIRE_SFX_SILENT_DB
+		return
+	var d := absf(_player.global_position.x - global_position.x)
+	var t := clampf(1.0 - d / FIRE_SFX_REACH, 0.0, 1.0)   # 1 encostado, 0 no limite do alcance
+	_fire_audio.volume_db = lerpf(FIRE_SFX_SILENT_DB, _fire_base_db, t)
 
 ## Dá para descansar agora? (perto o bastante)
 func in_reach(player: Node2D) -> bool:

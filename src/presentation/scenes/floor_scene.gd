@@ -28,6 +28,7 @@ var _player_view: PlayerView
 var _enemies: Array = []
 var _hud: Hud
 var _msg: Label
+var _area_title: Label               # nome da área em destaque (meio-superior) ao entrar nela
 var _layer: CanvasLayer
 var _phase := "room"           # tutorial | room | cleared | transition | boss_intro | boss | dead
 var _floor_config: Dictionary = {}   # config do nível ATUAL (de levels.json)
@@ -38,8 +39,7 @@ var _bonfires: Array = []            # fogueiras (checkpoints) do nível atual �
 var _guard: Array = []               # a GUARDA do refúgio: esqueletos do run-back (nível vencido) — EnemyView
 var _ladders: Array = []             # escadas do nível (o PlayerView as consulta para escalar)
 var _npc: NpcView                    # o Sir Big T., ao lado da fogueira de renascer do Downtown
-var _knight_seq := false             # a sequência de falas base está tocando sozinha?
-var _knight_timer := 0.0             # tempo até a próxima fala base
+var _knight_seq := false             # a sequência de falas base está ativa (avança a cada INTERAGIR)?
 var _knight_card: CanvasLayer        # o card central "Frasco adquirido"
 var _knight_card_open := false       # o card está aberto (pausa a sequência até confirmar)
 var _bloodstain: BloodstainView      # a marca de sangue na cena, quando presente (passiva, recolhe ao tocar)
@@ -97,6 +97,7 @@ var _door_x := 0.0
 var _boss_fogs: Array = []           # FogGateViews sobre as portas (só durante a luta)
 var _boss_door_left_x := 0.0
 var _boss_door_right_x := 0.0
+var _boss_arena_walls: Array = []    # paredes que confinam o player na arena durante a luta (torre)
 var _exit_door_x := 0.0              # saída LIVRE no fim do nível (a névoa já se dissipou com o chefe)
 var _exit_door_y := 0.0              # y da saída quando ela NÃO está no chão (a escadaria; pode ser NEGATIVO)
 var _exit_door_vertical := false     # a saída exige altura? (só a escadaria liga; um valor-sentinela
@@ -125,7 +126,15 @@ const PLAYER_START_X := 80.0    # entrada do nível (à esquerda), quando não s
 const ENV_TILE_SCALE := 2.0     # arte de terreno em texel 2 (mesmo dos personagens)
 const SPAWN_EXCLUSION := 180.0  # zona inicial (à esquerda) sem inimigos ao começar o andar
 const L1_NECRO_ONLY := false    # TESTE: andar 1 só com o necromante (sem horda/heavies)
-const BOSS_ROOM_W := 640.0     # sala do boss = uma tela fechada (base 640×360)
+const BOSS_ROOM_W := 640.0     # arena de boss do GRAFO (parkado): uma tela fechada (base 640×360)
+# Andar de boss da TORRE (roguelite): corredor LONGO, silencioso, com a ARENA (uma tela) NO FIM.
+# O player entra à esquerda e caminha até a arena; ao cruzar BOSS_REVEAL_X o boss é revelado, a
+# câmera TRAVA na janela [BOSS_ARENA_LEFT, +640] e paredes o confinam. A porta de avanço fica ALÉM
+# da arena (não aparece na luta). REVEAL_X = centro da arena, para travar a câmera SEM salto.
+const BOSS_TOWER_W := 1680.0
+const BOSS_ARENA_LEFT := 900.0
+const BOSS_ARENA_W := 640.0
+const BOSS_REVEAL_X := 1220.0   # = BOSS_ARENA_LEFT + BOSS_ARENA_W/2
 const DOOR_REACH := 30.0       # distância para "entrar" na porta / abrir o baú (base 640×360)
 const FADE_TIME := 0.35
 const DEATH_FADE_OUT := 0.45   # a tela apaga assim que ele cai (o letreiro entra junto)
@@ -135,6 +144,13 @@ const DEATH_FADE_IN := 0.6     # só então clareia — com o jogador já de pé
 # --- Cutscene de entrada do boss (ver _begin_boss_intro) ---
 const BOSS_MUSIC := "boss"           # id da faixa em data/audio.json (só toca na sala do boss)
 const BOSS_MUSIC_DELAY := 1.5        # a trilha não entra junto com a sala: espera este tanto
+
+# Ambiência das áreas ABERTAS (vila, Centro, escadaria): música de fundo + vento em loop. A trilha
+# de boss a substitui na arena (ver _start_floor, que desliga o vento). Ver _start_ambience.
+const AMBIENCE_MUSIC := "ambience"   # faixa (music) em data/audio.json
+const AMBIENCE_WIND := "ambience_wind"   # cama de vento (sfx loop) em data/audio.json
+const AMBIENCE_INTRO_FADE := 2.0     # fade-in mais longo do vento na ENTRADA do jogo (após o Play),
+                                     # casando com o fade_in de 2s da música; nas trocas de sala fica o 0.8s padrão
 const BOSS_INTRO_PAUSE := 0.7        # respiro na sala vazia antes de ele aparecer
 const BOSS_INTRO_DROP := 300.0       # altura (px) de onde ele despenca — nasce fora da tela
 const BOSS_INTRO_FALL_MAX := 3.0     # segurança: tempo máximo esperando o impacto no chão
@@ -161,8 +177,13 @@ const GUARD_BEFORE_FOG := 120.0      # e termina este tanto ANTES da névoa
 # EnemyView.AGGRO_RANGE): um Necromante enxerga muito mais longe que um lacaio, e isso é
 # característica dele, não do lugar onde ele está.
 
-# --- Vila de tutorial (fora da dungeon; roda uma vez antes do nível 1) ---
+# --- Vila de Zaktur (tutorial, fora da dungeon; roda uma vez no começo do jogo) ---
 const TUTORIAL_LENGTH := 1920.0
+
+# --- Estrada Leste (o caminho da Vila até o Acampamento): a PRIMEIRA área de combate. Esqueletos
+# (minions + alguns armored) postados ao longo da estrada; limpá-los libera a porta ao fim. Longa,
+# de propósito, para dar a sensação de um caminho percorrido. ---
+const ESTRADA_LENGTH := 2200.0
 
 # --- Downtown: o layout, da esquerda para a direita. O portão grande fica no FIM e fecha a torre
 # fisicamente (GateView é sólido): a alavanca ao lado o abre — destravada desde o começo, como o
@@ -173,9 +194,9 @@ const DT_FIRE_X := 300.0          # a fogueira decorativa = o ponto de renascer
 const DT_TRAINER_X := 500.0
 const DT_SMITH_X := 680.0
 const DT_MERCHANT_X := 860.0
-const DT_GATE_X := 1060.0         # portão grande (56×150), estilo o da antiga zona "portao"
 const DT_GATE_KEY := "portao_torre"
-const DT_DOOR_X := 1210.0         # a porta da torre, depois do portão
+const DT_DOOR_X := 1210.0         # a porta da torre; o portão fica SOBRE ela (faz parte da fachada)
+const DT_LEVER_OFFSET := 120.0    # a alavanca fica este tanto ANTES da porta/portão
 # Dicas do tutorial: [x-gatilho no corredor, texto]. Não são mais placas no mundo — aparecem como
 # um TOAST no HUD quando o player alcança aquele x (uma vez cada) e somem sozinhas em TIP_SECONDS,
 # ou na hora, se ele apertar INTERAGIR. A lista canônica vive em TutorialTips (compartilhada com a
@@ -301,7 +322,7 @@ func _ready() -> void:
 ## `hazards` (a lista do nível) é lida AQUI porque os poços de espinho são TERRENO: o chão sai
 ## em lajes, com um vão em cada poço e uma laje mais funda fechando o fundo dele. Quem desenha
 ## o interior e cobra o dano é o HazardView (_spawn_hazards), depois.
-func _build_environment(width: float, is_boss_room: bool, hazards := []) -> void:
+func _build_environment(width: float, is_boss_room: bool, hazards := [], tower_interior := false) -> void:
 	if is_instance_valid(_env):
 		# ARRANCA da árvore agora, não só agenda. queue_free() só apaga no FIM do frame, e até lá o
 		# cenário velho continua rodando _process — inclusive os poços, cuja lista de sobreposição
@@ -323,7 +344,6 @@ func _build_environment(width: float, is_boss_room: bool, hazards := []) -> void
 	_climb_sealed = false
 	_npc = null               # view era filha do _env (demolida); só solta a referência
 	_knight_seq = false       # a sequência de falas não sobrevive à remontagem do nível
-	_knight_timer = 0.0
 	if is_instance_valid(_knight_card):
 		_knight_card.queue_free()
 	_knight_card = null
@@ -340,11 +360,21 @@ func _build_environment(width: float, is_boss_room: bool, hazards := []) -> void
 	_env = Node2D.new()
 	add_child(_env)
 
-	# Cenário (environment.json): fundo em parallax + terreno. Sala do boss = mais escura.
+	# Cenário (environment.json): fundo em parallax + terreno. Sala do boss = mais escura. DENTRO da
+	# torre (arena/escadaria/combate): chão de pedra (bloco "tower") + fundo de colunas, no lugar do
+	# parallax externo de grama.
 	var dim := 0.22 if is_boss_room else 0.0
-	var ground_cfg: Dictionary = _scenery.get("ground", {})
+	var tower_cfg: Dictionary = _scenery.get("tower", {})
+	var ground_cfg: Dictionary = (tower_cfg.get("ground", {}) if tower_interior else _scenery.get("ground", {}))
 	if _bg != null:
-		_bg.apply(_scenery.get("parallax", []), _scenery.get("fallback", {}), dim)
+		if tower_interior:
+			_bg.apply_columns(
+				Color(String(tower_cfg.get("bg_top", "070610"))),
+				Color(String(tower_cfg.get("bg_bottom", "17121f"))),
+				Color(String(tower_cfg.get("column", "2a2438"))),
+				dim)
+		else:
+			_bg.apply(_scenery.get("parallax", []), _scenery.get("fallback", {}), dim)
 	var fill_col := Color(String(ground_cfg.get("fill", "2e1f2c"))).darkened(dim)
 	var edge_col := Color(String(ground_cfg.get("edge", "6bb053"))).darkened(dim)
 
@@ -417,7 +447,7 @@ func _build_environment(width: float, is_boss_room: bool, hazards := []) -> void
 			edge.z_index = -5
 			_env.add_child(edge)
 
-	_decorate_scenery(width, dim)   # enfeites de fundo (cercas, pedras, ruínas, árvores) — cosmético
+	_decorate_scenery(width, dim, tower_interior)   # enfeites de fundo (cosmético; temáticos na torre)
 	_camera.setup_corridor(width)
 
 ## Uma laje de chão de `a` a `b`, com o TOPO em `top` (o corpo desce 200px a partir dali).
@@ -487,6 +517,78 @@ func _spawn_door(x: float, accent: Color, y := GROUND_Y) -> Node2D:
 	d.add_child(inner)
 	_env.add_child(d)
 	return d
+
+## Fachada de PEDRA da torre atrás da porta do Centro: faz a porta ler como a BOCA de uma torre de
+## verdade, não uma porta solta no ar. A torre NÃO tem topo à vista — sobe muito além do teto da
+## tela (a câmera trava em limit_top=0) para representar que é MAIOR do que cabe na tela, continuando
+## para cima fora de vista. Puro cenário (ColorRects placeholder), num z ATRÁS da porta (-4) e das
+## entidades. `cx` = o x da porta; o corpo se estende dela ATÉ a borda direita do nível (sem gap) e
+## o vão vira a entrada.
+func _spawn_tower_facade(cx: float) -> void:
+	var s := Node2D.new()
+	s.position = Vector2(cx, GROUND_Y)
+	s.z_index = -5
+	_env.add_child(s)
+
+	var pedra := Color(0.32, 0.31, 0.35)
+	var pedra_esc := Color(0.23, 0.22, 0.26)
+	var pedra_clara := Color(0.42, 0.41, 0.46)
+	var altura := 640.0   # muito além do teto visível (~300px): a torre segue subindo sem topo à vista
+	# Sem GAP à direita: o corpo vai da esquerda da porta ATÉ (e além) da borda direita do nível
+	# (_arena_width), então nenhuma faixa de chão sobra entre a torre e o limite da tela.
+	var body_l := -64.0
+	var body_r := (_arena_width + 40.0) - cx
+	var body_w := body_r - body_l
+
+	# Corpo da torre + uma faixa de sombra na quina esquerda (volume).
+	var corpo := ColorRect.new()
+	corpo.color = pedra
+	corpo.size = Vector2(body_w, altura)
+	corpo.position = Vector2(body_l, -altura)
+	s.add_child(corpo)
+	var sombra := ColorRect.new()
+	sombra.color = pedra_esc
+	sombra.size = Vector2(26.0, altura)
+	sombra.position = Vector2(body_l, -altura)
+	s.add_child(sombra)
+
+	# Fiadas de pedra a cada 36px por TODA a altura (espaçamento FIXO: a torre segue igual subindo,
+	# sem "esticar" as fiadas). Sem crenelagem — a torre não tem topo à vista.
+	var y := 36.0
+	while y < altura:
+		var linha := ColorRect.new()
+		linha.color = pedra_esc
+		linha.size = Vector2(body_w, 2.0)
+		linha.position = Vector2(body_l, -y)
+		s.add_child(linha)
+		y += 36.0
+
+	# Seteiras (fendas de flecha) subindo pela torre, flanqueando o portal.
+	for sy in [150.0, 320.0, 490.0]:
+		for dx in [-42.0, 42.0]:
+			var fenda := ColorRect.new()
+			fenda.color = Color(0.10, 0.10, 0.13)
+			fenda.size = Vector2(5.0, 22.0)
+			fenda.position = Vector2(dx - 2.5, -sy)
+			s.add_child(fenda)
+
+	# Portal de pedra ao redor do vão: duas ombreiras + um lintel + a pedra de fecho (keystone).
+	for jx in [-30.0, 18.0]:
+		var jamba := ColorRect.new()
+		jamba.color = pedra_clara
+		jamba.size = Vector2(12.0, 88.0)
+		jamba.position = Vector2(jx, -88.0)
+		s.add_child(jamba)
+	var lintel := ColorRect.new()
+	lintel.color = pedra_clara
+	lintel.size = Vector2(60.0, 12.0)
+	lintel.position = Vector2(-30.0, -100.0)
+	s.add_child(lintel)
+	var chave := ColorRect.new()
+	chave.color = pedra_clara.lightened(0.12)
+	chave.size = Vector2(12.0, 18.0)
+	chave.position = Vector2(-6.0, -106.0)
+	s.add_child(chave)
 
 ## Espalha as armadilhas do nível pelo chão. `list` = [{ "id": ..., "x": ..., "width": ... }],
 ## vinda do nível (levels.json) ou da vila. Filhas do _env: somem junto com o cenário.
@@ -610,40 +712,50 @@ func _try_npc() -> bool:
 ## As falas base do Sir Big T., em ordem. Uma frase por vez, a cada INTERAGIR. A entrega do
 ## Frasco acontece na fala de índice KNIGHT_GIFT. Esgotadas, ele passa a repetir as de KNIGHT_LOOP.
 const KNIGHT_LINES := [
-	"Olá plebeu, vejo que decidiu adotar a espada.",
-	"Além deste portão apenas a morte o aguarda.",
-	"O quê? Ainda assim quer ir em frente?",
-	"Pois bem, tenho um presente que vai ajudá-lo.",
-	"Agora, vê essa fogueira?",
-	"É ao pé dela que você despertará ao cair na torre.",
-	"Gaste suas almas no mercado antes de subir.",
-	"Agora vá em frente e encontre o seu fim.",
+	"Salve, plebeu, raro é ver quem ainda ouse empunhar a espada.",
+	"Diante de você ergue-se a Torre, antiga como o próprio medo.",
+	"No seu topo, dizem, repousa aquilo que todos cobiçam.",
+	"Muitos subiram por esses degraus, e nenhum jamais retornou.",
+	"Cada andar guarda um algoz, e a morte espera em todos eles.",
+	"O quê? Ainda assim deseja seguir em frente?",
+	"Então há coragem ou loucura em você, e não sei qual temer mais.",
+	"Pois bem, tome isto, um gole de esperança para as horas mais escuras.",
+	"Que a sorte o acompanhe, pois a Torre não conhece piedade.",
 ]
 const KNIGHT_LOOP := [
 	"O medo é apenas uma escolha...",
 	"A luz há de prevalecer...",
 ]
-const KNIGHT_GIFT := 3            # depois desta fala (o "presente") entra o card do Frasco
-const KNIGHT_LINE_SECONDS := 5.0 # quanto cada fala base fica na tela antes de a próxima entrar
+const KNIGHT_GIFT := 7            # depois desta fala (o "presente") entra o card do Frasco
 
-## Falar com o Sir Big T. As falas BASE tocam em SEQUÊNCIA sozinhas (uma vez iniciada, o resto
-## avança pelo tempo — não é preciso apertar INTERAGIR a cada frase). Esgotadas, cada INTERAGIR
-## mostra uma fala de loop.
+## Falar com o Sir Big T. As falas BASE avançam UMA A CADA INTERAGIR (o indicador "[E] Avançar"
+## anuncia); não correm mais sozinhas pelo tempo. Esgotadas, cada INTERAGIR mostra uma fala de loop.
 func _on_npc_falado(_n: NpcView) -> void:
 	if _knight_seq or _knight_card_open:
 		return                          # já está falando: não reinicia nem empilha
 	if _run.knight_line >= KNIGHT_LINES.size():
 		var j := (_run.knight_line - KNIGHT_LINES.size()) % KNIGHT_LOOP.size()
 		_run.knight_line += 1
-		_show_tip(KNIGHT_LOOP[j], true)
+		_knight_say(KNIGHT_LOOP[j])
 		return
 	# Inicia (ou retoma, se saiu no meio) a sequência base pela fala atual.
 	_knight_seq = true
-	_show_tip(KNIGHT_LINES[_run.knight_line], true)
-	_knight_timer = KNIGHT_LINE_SECONDS
+	_knight_say(KNIGHT_LINES[_run.knight_line])
 
-## Chamado pelo _process quando o tempo da fala atual esgota: avança para a próxima. Na virada da
-## fala do presente entra o CARD do Frasco (entrega + confirmação); a sequência só continua depois.
+## Uma fala do cavaleiro: um resmungo NOVO (grunt, sorteio sem reposição) + a linha na tela, juntos.
+## Chamado em TODA nova mensagem (início, avanço automático, skip, retomada do card do Frasco), para
+## que CADA linha grunhe — não só a primeira (o bug era o grunt tocar só ao iniciar a conversa).
+func _knight_say(text: String) -> void:
+	Sfx.play_random("cavaleiro_grunt")
+	_show_tip(text, true)
+
+## O "?" dourado sobre o cavaleiro: aceso enquanto restarem falas BASE por ler (some ao esgotá-las).
+func _refresh_knight_indicator() -> void:
+	if is_instance_valid(_npc):
+		_npc.set_indicador(_run.knight_line < KNIGHT_LINES.size())
+
+## INTERAGIR durante a sequência: avança para a próxima fala. Na virada da fala do presente entra o
+## CARD do Frasco (entrega + confirmação); a sequência só continua depois.
 func _knight_avancar() -> void:
 	# Acabou de exibir a fala do presente e o Frasco ainda não foi dado: o card entra AGORA e
 	# pausa a sequência. A confirmação (INTERAGIR) a retoma — ver _fechar_card_frasco.
@@ -657,8 +769,7 @@ func _knight_avancar() -> void:
 	if _run.knight_line >= KNIGHT_LINES.size():
 		_knight_seq = false             # fim das falas base; a última linger na tela e some sozinha
 		return
-	_show_tip(KNIGHT_LINES[_run.knight_line], true)
-	_knight_timer = KNIGHT_LINE_SECONDS
+	_knight_say(KNIGHT_LINES[_run.knight_line])
 
 ## O CARD central do Frasco: um painel no meio da tela que o jogador CONFIRMA (INTERAGIR) para
 ## fechar. Enquanto aberto, a sequência de falas fica pausada (o _process não a avança).
@@ -735,8 +846,7 @@ func _fechar_card_frasco() -> void:
 	if _run.knight_line >= KNIGHT_LINES.size():
 		_knight_seq = false
 		return
-	_show_tip(KNIGHT_LINES[_run.knight_line], true)
-	_knight_timer = KNIGHT_LINE_SECONDS
+	_knight_say(KNIGHT_LINES[_run.knight_line])
 
 func _try_rest() -> bool:
 	if not is_instance_valid(_player_view):
@@ -814,9 +924,18 @@ func _reset_player_to_start(x := PLAYER_START_X) -> void:
 # porta ao fim levando ao DOWNTOWN (o HUB). Roda uma vez no começo do jogo. Sem inimigos.
 # ---------------------------------------------------------------------------
 
+## Liga a ambiência das áreas abertas: a música de fundo (no-op se já toca — vila→Centro não
+## reinicia) e a cama de vento em loop. As arenas de boss a substituem (ver _start_floor).
+## `wind_fade` < 0 = fade padrão do vento; um valor sobrescreve (ex.: a entrada do jogo, mais lenta).
+func _start_ambience(wind_fade := -1.0) -> void:
+	Music.play(AMBIENCE_MUSIC)
+	Sfx.ambient(AMBIENCE_WIND, true, wind_fade)
+
 func _start_tutorial() -> void:
 	_phase = "tutorial"
 	_current_boss_id = ""
+	_start_ambience(AMBIENCE_INTRO_FADE)   # entrada do jogo (após o Play): vento entra em fade lento
+
 	_clear_entities()          # morrer na vila a remonta: o boneco de treino não pode duplicar
 	_build_environment(TUTORIAL_LENGTH, false, _TUTORIAL_HAZARDS)
 	_decorate_village()
@@ -825,14 +944,14 @@ func _start_tutorial() -> void:
 	_reset_player_to_start()
 	_spawn_hazards(_TUTORIAL_HAZARDS)
 	_spawn_training_dummy(980.0)
-	# O Sir Big T. NÃO mora mais aqui: ele está no Downtown, ao lado da fogueira de renascer —
-	# a vila é só o treino (dicas + espantalho); a porta ao fim leva ao Downtown.
+	# O Sir Big T. NÃO mora mais aqui: ele está no Acampamento, ao lado da fogueira de renascer —
+	# a vila é só o treino (dicas + espantalho); a porta ao fim leva à Estrada Leste.
 	_door = _spawn_door(_arena_width - 40.0, Palette.ACCENT)
 	_door_x = _arena_width - 40.0
 
 	_tips_done.clear()          # as dicas recomeçam a cada visita à vila
 	_hide_tip()
-	_msg.text = "Cidade: a porta ao fim leva ao Centro →"
+	_show_area_title("Vila de Zaktur")
 	_schedule_first_tip()       # a 1ª dica (mover) só entra 3s depois de começar
 
 ## Boneco de treino: esqueleto blindado passivo (dormant) pra praticar o ataque. Some se
@@ -1019,9 +1138,12 @@ func _decorate_village() -> void:
 
 const DECO_Z := -4              # atrás das entidades (0) e das placas (-3), à frente do chão (-5)
 
-func _decorate_scenery(width: float, dim: float) -> void:
+func _decorate_scenery(width: float, dim: float, tower_interior := false) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(width) * 31 + int(dim * 1000.0)   # estável por nível; muda entre sala e arena do boss
+	if tower_interior:
+		_decorate_tower(width, dim, rng)
+		return
 	var x := 70.0
 	while x < width - 60.0:
 		var node: Node2D
@@ -1030,11 +1152,27 @@ func _decorate_scenery(width: float, dim: float) -> void:
 			1: node = _deco_rock(rng)
 			2: node = _deco_fence(rng)
 			_: node = _deco_ruin(rng)
-		node.position = Vector2(x, GROUND_Y)
-		node.z_index = DECO_Z
-		node.modulate = Color(1, 1, 1).darkened(dim)   # acompanha o escurecimento da sala do boss
-		_env.add_child(node)
+		_place_deco(node, x, dim)
 		x += rng.randf_range(150.0, 300.0)
+
+## Enfeites do INTERIOR da torre: TOCHAS igualmente espaçadas na parede + OSSADAS variadas espalhadas
+## entre elas. As tochas seguem uma grade uniforme (distribuídas por igual na largura); as ossadas
+## caem em posições aleatórias (variedade também na posição, além do formato de cada uma).
+func _decorate_tower(width: float, dim: float, rng: RandomNumberGenerator) -> void:
+	var count := maxi(2, int(round(width / 220.0)))
+	for i in count:
+		var tx := width * (float(i) + 0.5) / float(count)   # igualmente espaçadas (margens iguais)
+		_place_deco(_deco_torch(rng), tx, dim)
+	var bx := rng.randf_range(80.0, 150.0)
+	while bx < width - 40.0:
+		_place_deco(_deco_bones(rng), bx, dim)
+		bx += rng.randf_range(110.0, 220.0)
+
+func _place_deco(node: Node2D, x: float, dim: float) -> void:
+	node.position = Vector2(x, GROUND_Y)
+	node.z_index = DECO_Z
+	node.modulate = Color(1, 1, 1).darkened(dim)   # acompanha o escurecimento da sala do boss
+	_env.add_child(node)
 
 ## Árvore morta: tronco fino + alguns galhos tortos (retângulos rotacionados).
 func _deco_dead_tree(rng: RandomNumberGenerator) -> Node2D:
@@ -1117,7 +1255,313 @@ func _deco_ruin(rng: RandomNumberGenerator) -> Node2D:
 	n.add_child(win)
 	return n
 
-## Sai da vila: limpa o boneco de treino e segue — ao Downtown (roguelite) ou ao nível 1 (grafo).
+# --- Enfeites do INTERIOR da torre (temáticos): tochas e os que caíram antes de você. ---
+
+## Tocha de chão: haste de ferro com um cesto e uma chama (laranja + núcleo claro) num halo fraco.
+func _deco_torch(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var h := rng.randf_range(44.0, 60.0)
+	var pole := ColorRect.new()
+	pole.color = Color(0.15, 0.15, 0.18)
+	pole.size = Vector2(4, h)
+	pole.position = Vector2(-2, -h)
+	n.add_child(pole)
+	var basket := ColorRect.new()
+	basket.color = Color(0.22, 0.20, 0.18)
+	basket.size = Vector2(12, 8)
+	basket.position = Vector2(-6, -h - 6)
+	n.add_child(basket)
+	var glow := ColorRect.new()
+	glow.color = Color(1.0, 0.55, 0.15, 0.10)
+	glow.size = Vector2(34, 34)
+	glow.position = Vector2(-17, -h - 30)
+	n.add_child(glow)
+	var flame := ColorRect.new()
+	flame.color = Color(0.95, 0.45, 0.12)
+	flame.size = Vector2(10, 16)
+	flame.position = Vector2(-5, -h - 20)
+	n.add_child(flame)
+	var core := ColorRect.new()
+	core.color = Color(1.0, 0.82, 0.42)
+	core.size = Vector2(4, 9)
+	core.position = Vector2(-2, -h - 16)
+	n.add_child(core)
+	return n
+
+## Um osso longo deitado num ângulo qualquer, com nós nas pontas (epífises) p/ ler como OSSO.
+func _bone_long(parent: Node2D, rng: RandomNumberGenerator, cx: float, osso: Color) -> void:
+	var b := Node2D.new()
+	b.position = Vector2(cx, -3.0 - rng.randf_range(0.0, 7.0))
+	b.rotation = rng.randf_range(-1.1, 1.1)
+	var bl := rng.randf_range(11.0, 22.0)
+	var haste := ColorRect.new()
+	haste.color = osso.darkened(rng.randf_range(0.0, 0.16))
+	haste.size = Vector2(bl, 3.0)
+	haste.position = Vector2(-bl * 0.5, -1.5)
+	b.add_child(haste)
+	for ex in [-1.0, 1.0]:
+		var no := ColorRect.new()
+		no.color = haste.color
+		no.size = Vector2(4.0, 5.0)
+		no.position = Vector2(ex * bl * 0.5 - 2.0, -2.5)
+		b.add_child(no)
+	parent.add_child(b)
+
+## Um crânio: caixa + duas órbitas escuras + uma mandíbula. Tamanho sorteado (variedade).
+func _bone_skull(parent: Node2D, rng: RandomNumberGenerator, cx: float, osso: Color) -> void:
+	var s := rng.randf_range(9.0, 13.0)
+	var cranio := ColorRect.new()
+	cranio.color = osso
+	cranio.size = Vector2(s, s * 0.85)
+	cranio.position = Vector2(cx - s * 0.5, -s * 0.85)
+	parent.add_child(cranio)
+	for ex in [-1.0, 1.0]:
+		var orbita := ColorRect.new()
+		orbita.color = Color(0.06, 0.06, 0.08)
+		orbita.size = Vector2(s * 0.24, s * 0.24)
+		orbita.position = Vector2(cx + ex * s * 0.22 - s * 0.12, -s * 0.62)
+		parent.add_child(orbita)
+	var mandibula := ColorRect.new()
+	mandibula.color = osso.darkened(0.12)
+	mandibula.size = Vector2(s * 0.7, s * 0.22)
+	mandibula.position = Vector2(cx - s * 0.35, -s * 0.14)
+	parent.add_child(mandibula)
+
+## Caixa torácica: um arco de costelas de larguras decrescentes.
+func _bone_ribs(parent: Node2D, rng: RandomNumberGenerator, cx: float, osso: Color) -> void:
+	var n := rng.randi_range(3, 4)
+	for i in n:
+		var w := 15.0 - i * 1.8
+		var costela := ColorRect.new()
+		costela.color = osso.darkened(0.08)
+		costela.size = Vector2(w, 2.0)
+		costela.position = Vector2(cx - w * 0.5, -15.0 + i * 3.0)
+		parent.add_child(costela)
+
+## Ossada espalhada, com VARIEDADE de formato e agrupamento: sorteia entre um crânio solitário, uma
+## pilha de ossos longos, um crânio cercado de ossos, ou uma ossada maior (dois crânios + costelas +
+## ossos). Nenhuma repetição parece igual.
+func _deco_bones(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var osso := Color(0.78, 0.76, 0.68)
+	match rng.randi() % 4:
+		0:
+			_bone_skull(n, rng, 0.0, osso)                        # crânio solitário
+		1:
+			for i in rng.randi_range(4, 7):                       # pilha de ossos longos cruzados
+				_bone_long(n, rng, rng.randf_range(-20.0, 8.0), osso)
+		2:
+			_bone_skull(n, rng, rng.randf_range(2.0, 8.0), osso)  # crânio cercado de ossos
+			for i in rng.randi_range(2, 4):
+				_bone_long(n, rng, rng.randf_range(-22.0, 2.0), osso)
+		_:
+			_bone_skull(n, rng, -9.0, osso)                       # ossada maior: 2 crânios + costelas
+			_bone_skull(n, rng, 11.0, osso)
+			_bone_ribs(n, rng, 0.0, osso)
+			for i in rng.randi_range(3, 5):
+				_bone_long(n, rng, rng.randf_range(-26.0, 16.0), osso)
+	return n
+
+# --- Enfeites da ESTRADA LESTE (marcos de caminho). O scatter geral (cercas/pedras/árvores) vem do
+# _decorate_scenery externo; aqui só os marcos únicos: placas de direção e uma carroça destruída. ---
+
+## Só os marcos da estrada — o resto do cenário (cercas etc.) já vem de _decorate_scenery.
+func _decorate_estrada(width: float) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(width) * 17 + 7
+	_place_deco(_deco_signpost(rng), 240.0, 0.0)
+	_place_deco(_deco_broken_wagon(rng), width * 0.42, 0.0)
+	_place_deco(_deco_signpost(rng), width - 300.0, 0.0)
+
+## Placa de direções: um poste com uma ou duas tábuas em seta, para lados alternados.
+func _deco_signpost(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var wood := Color(0.34, 0.25, 0.16)
+	var wood_dk := Color(0.24, 0.17, 0.10)
+	var h := rng.randf_range(52.0, 64.0)
+	var post := ColorRect.new()
+	post.color = wood_dk
+	post.size = Vector2(5, h)
+	post.position = Vector2(-2.5, -h)
+	n.add_child(post)
+	var boards := rng.randi_range(1, 2)
+	for i in boards:
+		var dir := 1.0 if i % 2 == 0 else -1.0
+		var by := -h + 6.0 + i * 14.0
+		var bw := rng.randf_range(20.0, 28.0)
+		var board := ColorRect.new()
+		board.color = wood
+		board.size = Vector2(bw, 8.0)
+		board.position = Vector2(0.0 if dir > 0.0 else -bw, by)
+		n.add_child(board)
+		var tx := bw if dir > 0.0 else -bw
+		var tip := Polygon2D.new()
+		tip.color = wood
+		tip.polygon = PackedVector2Array([Vector2(tx, by), Vector2(tx + dir * 6.0, by + 4.0), Vector2(tx, by + 8.0)])
+		n.add_child(tip)
+	return n
+
+## Carroça destruída: a caixa inclinada, uma roda de pé, uma roda quebrada caída e tábuas soltas.
+func _deco_broken_wagon(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var wood := Color(0.32, 0.23, 0.14)
+	var wood_dk := Color(0.22, 0.16, 0.10)
+	var body := ColorRect.new()
+	body.color = wood
+	body.size = Vector2(46, 22)
+	body.position = Vector2(-23, -26)
+	body.pivot_offset = Vector2(23, 22)
+	body.rotation = deg_to_rad(-8.0)
+	n.add_child(body)
+	for i in 3:
+		var plank := ColorRect.new()
+		plank.color = wood_dk
+		plank.size = Vector2(46, 2)
+		plank.position = Vector2(-23, -24 + i * 6)
+		plank.pivot_offset = Vector2(23, 1)
+		plank.rotation = deg_to_rad(-8.0)
+		n.add_child(plank)
+	_wagon_wheel(n, Vector2(-16, -9), 9.0, wood_dk)      # roda de pé
+	var quebrada := ColorRect.new()                       # roda quebrada, caída
+	quebrada.color = wood_dk
+	quebrada.size = Vector2(20, 4)
+	quebrada.position = Vector2(14, -4)
+	quebrada.pivot_offset = Vector2(10, 2)
+	quebrada.rotation = deg_to_rad(12.0)
+	n.add_child(quebrada)
+	var solta := ColorRect.new()                          # tábua solta
+	solta.color = wood
+	solta.size = Vector2(24, 3)
+	solta.position = Vector2(18, -3)
+	solta.pivot_offset = Vector2(12, 1.5)
+	solta.rotation = deg_to_rad(-18.0)
+	n.add_child(solta)
+	return n
+
+## Uma roda de carroça (blocky): aro + cubo escuro no centro.
+func _wagon_wheel(parent: Node2D, center: Vector2, r: float, color: Color) -> void:
+	var aro := ColorRect.new()
+	aro.color = color
+	aro.size = Vector2(r * 2.0, r * 2.0)
+	aro.position = center - Vector2(r, r)
+	parent.add_child(aro)
+	var cubo := ColorRect.new()
+	cubo.color = Color(0.12, 0.10, 0.08)
+	cubo.size = Vector2(r, r)
+	cubo.position = center - Vector2(r * 0.5, r * 0.5)
+	parent.add_child(cubo)
+
+# --- Enfeites do ACAMPAMENTO DOS AVENTUREIROS: tendas, fogueiras de acampamento e suprimentos —
+# cara de bivaque no sopé da torre, não de cidade. ---
+
+func _decorate_camp() -> void:
+	for tx in [180.0, 560.0, 900.0]:            # tendas ao fundo (z de fundo, como eram as casas)
+		var tent := _deco_tent()
+		tent.position = Vector2(tx, GROUND_Y)
+		tent.z_index = -6
+		_env.add_child(tent)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4242
+	_place_deco(_deco_camp_fire(), 460.0, 0.0)   # fogueiras de acampamento + suprimentos (z DECO)
+	_place_deco(_deco_supplies(rng), 720.0, 0.0)
+	_place_deco(_deco_supplies(rng), 1000.0, 0.0)
+	_place_deco(_deco_camp_fire(), 1080.0, 0.0)
+
+## Tenda: um triângulo de lona sobre um mastro, com a aba de entrada escura.
+func _deco_tent() -> Node2D:
+	var n := Node2D.new()
+	var lona := Color(0.42, 0.36, 0.28)
+	var lona_dk := Color(0.30, 0.25, 0.19)
+	var w := 64.0
+	var h := 44.0
+	var corpo := Polygon2D.new()
+	corpo.color = lona
+	corpo.polygon = PackedVector2Array([Vector2(-w * 0.5, 0), Vector2(w * 0.5, 0), Vector2(0, -h)])
+	n.add_child(corpo)
+	var sombra := Polygon2D.new()
+	sombra.color = lona_dk
+	sombra.polygon = PackedVector2Array([Vector2(0, -h), Vector2(w * 0.5, 0), Vector2(w * 0.18, 0)])
+	n.add_child(sombra)
+	var aba := Polygon2D.new()
+	aba.color = Color(0.10, 0.09, 0.11)
+	aba.polygon = PackedVector2Array([Vector2(-8, 0), Vector2(8, 0), Vector2(0, -h * 0.55)])
+	n.add_child(aba)
+	var mastro := ColorRect.new()
+	mastro.color = lona_dk
+	mastro.size = Vector2(3, h + 6)
+	mastro.position = Vector2(-1.5, -h - 6)
+	n.add_child(mastro)
+	return n
+
+## Fogueira de acampamento: anel de pedras, lenha cruzada e uma chama num halo fraco.
+func _deco_camp_fire() -> Node2D:
+	var n := Node2D.new()
+	for dx in [-12.0, -4.0, 4.0, 12.0]:
+		var pedra := ColorRect.new()
+		pedra.color = Color(0.34, 0.33, 0.36)
+		pedra.size = Vector2(6, 4)
+		pedra.position = Vector2(dx - 3, -4)
+		n.add_child(pedra)
+	for i in 2:
+		var log_r := ColorRect.new()
+		log_r.color = Color(0.34, 0.24, 0.15)
+		log_r.size = Vector2(16, 3)
+		log_r.pivot_offset = Vector2(8, 1.5)
+		log_r.position = Vector2(-8, -6)
+		log_r.rotation = deg_to_rad(18.0 if i == 0 else -18.0)
+		n.add_child(log_r)
+	var glow := ColorRect.new()
+	glow.color = Color(1.0, 0.55, 0.15, 0.10)
+	glow.size = Vector2(28, 28)
+	glow.position = Vector2(-14, -24)
+	n.add_child(glow)
+	var flame := ColorRect.new()
+	flame.color = Color(0.95, 0.45, 0.12)
+	flame.size = Vector2(9, 13)
+	flame.position = Vector2(-4.5, -16)
+	n.add_child(flame)
+	var core := ColorRect.new()
+	core.color = Color(1.0, 0.82, 0.42)
+	core.size = Vector2(3.5, 7)
+	core.position = Vector2(-1.75, -12)
+	n.add_child(core)
+	return n
+
+## Suprimentos: caixas empilhadas + um barril com aros de ferro.
+func _deco_supplies(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var madeira := Color(0.40, 0.30, 0.19)
+	var madeira_dk := Color(0.28, 0.21, 0.13)
+	var caixa := ColorRect.new()
+	caixa.color = madeira
+	caixa.size = Vector2(22, 20)
+	caixa.position = Vector2(-11, -20)
+	n.add_child(caixa)
+	var ripa := ColorRect.new()
+	ripa.color = madeira_dk
+	ripa.size = Vector2(22, 2)
+	ripa.position = Vector2(-11, -11)
+	n.add_child(ripa)
+	if rng.randf() < 0.7:
+		var caixa2 := ColorRect.new()
+		caixa2.color = madeira.lightened(0.05)
+		caixa2.size = Vector2(14, 12)
+		caixa2.position = Vector2(-6, -32)
+		n.add_child(caixa2)
+	var barril := ColorRect.new()
+	barril.color = madeira_dk
+	barril.size = Vector2(14, 18)
+	barril.position = Vector2(14, -18)
+	n.add_child(barril)
+	for by in [-16.0, -8.0]:
+		var arco := ColorRect.new()
+		arco.color = Color(0.20, 0.20, 0.22)
+		arco.size = Vector2(14, 2)
+		arco.position = Vector2(14, by)
+		n.add_child(arco)
+	return n
+
+## Sai da vila: limpa o boneco de treino e segue — à Estrada Leste (roguelite) ou ao nível 1 (grafo).
 func _begin_dungeon() -> void:
 	_hide_tip()                  # sai da vila: qualquer dica na tela some
 	for v in _enemies.duplicate():
@@ -1125,11 +1569,72 @@ func _begin_dungeon() -> void:
 			v.queue_free()
 	_enemies.clear()
 	if _roguelite:
-		# A porta da vila leva ao DOWNTOWN (o HUB), não direto à torre.
-		_start_downtown()
+		# A porta da Vila leva à ESTRADA LESTE (primeira área de combate); só depois dela vem o
+		# Acampamento (o HUB) e a torre.
+		_start_estrada()
 		return
 	_run.go_to(_start_level)
 	_start_floor()
+
+# ---------------------------------------------------------------------------
+# ESTRADA LESTE — o caminho da Vila de Zaktur até o Acampamento dos Aventureiros, e a PRIMEIRA área
+# de combate. Esqueletos (minions + alguns armored) postados dormentes ao longo da estrada; limpá-los
+# libera a porta ao fim, que leva ao Acampamento. É travessia com combate, feita uma vez só (renascer
+# depois é no Acampamento). Longa, para dar a sensação de um caminho percorrido.
+# ---------------------------------------------------------------------------
+
+## Posições dos esqueletos na estrada: [x, id]. Fixas (encontro aprendível), dormentes até o player
+## chegar perto. Espalhadas em pequenos grupos ao longo do caminho, do fácil (minions) ao armored.
+const ESTRADA_ESQUELETOS := [
+	[380.0, "enm_skeleton_minion"],
+	[560.0, "enm_skeleton_minion"],
+	[820.0, "enm_skeleton_minion"],
+	[900.0, "enm_skeleton_armored"],
+	[1180.0, "enm_skeleton_minion"],
+	[1260.0, "enm_skeleton_minion"],
+	[1520.0, "enm_skeleton_armored"],
+	[1620.0, "enm_skeleton_minion"],
+	[1820.0, "enm_skeleton_minion"],
+	[1900.0, "enm_skeleton_armored"],
+]
+
+func _start_estrada() -> void:
+	_phase = "estrada"
+	_current_boss_id = ""
+	_boss_view = null
+	_start_ambience()          # área aberta (estrada ao ar livre): música + vento
+	_clear_entities()
+	_build_environment(ESTRADA_LENGTH, false, [])   # exterior (grama + parallax externo)
+	_decorate_estrada(ESTRADA_LENGTH)
+	_reset_player_to_start(PLAYER_START_X)
+
+	# Os esqueletos: dormentes, acordam por proximidade (MINION_WAKE), como no resto do jogo.
+	for spec in ESTRADA_ESQUELETOS:
+		_spawn_estrada_enemy(String(spec[1]), float(spec[0]))
+
+	# A porta ao fim leva ao Acampamento; só cruza com a estrada LIMPA (ver _process/_on_enemy_died).
+	_door = _spawn_door(ESTRADA_LENGTH - 40.0, Palette.ACCENT)
+	_door_x = ESTRADA_LENGTH - 40.0
+
+	_hide_tip()
+	_show_area_title("Estrada Leste")
+
+## Um esqueleto da estrada, dormente (acorda por proximidade). Mesmo padrão do resto (EnemyView +
+## EnemyFactory); o tipo/comportamento vem do JSON do inimigo.
+func _spawn_estrada_enemy(id: String, x: float) -> void:
+	var base := _enemy_repo.get_by_id(id)
+	if base.is_empty():
+		return
+	var enemy := EnemyFactory.build(base)
+	var view := EnemyView.new()
+	view.set_meta("tier", "estrada")
+	view.dormant = true
+	_add_view(view, enemy, Vector2(x, GROUND_Y - 40.0))
+
+## Vai da Estrada ao Acampamento (a porta ao fim, com a estrada limpa).
+func _begin_camp() -> void:
+	_hide_tip()
+	_start_downtown()
 
 # ---------------------------------------------------------------------------
 # DOWNTOWN — o centro da cidade, o HUB entre runs. É aqui que o jogador renasce ao cair (e volta
@@ -1146,10 +1651,10 @@ func _start_downtown(na_fogueira := false) -> void:
 	_boss_view = null
 	_exit_door_x = 0.0
 	_bonfires.clear()            # nenhuma fogueira-checkpoint aqui: _try_rest não pode agir
-	Music.stop()
+	_start_ambience()            # o Acampamento é área aberta: mesma ambiência (música + vento)
 	_clear_entities()
 	_build_environment(DOWNTOWN_LENGTH, false, [])
-	_decorate_village()
+	_decorate_camp()             # tendas, fogueiras, suprimentos — bivaque no sopé da torre
 	_reset_player_to_start(DT_FIRE_X if na_fogueira else PLAYER_START_X)
 
 	# O Sir Big T. e a fogueira de renascer (cavaleiro à esquerda, fogo à direita — como sempre).
@@ -1163,35 +1668,34 @@ func _start_downtown(na_fogueira := false) -> void:
 	_env.add_child(_hub_fire)
 	_hub_fire.setup(DT_FIRE_X, true, _player_view)   # sempre acesa: é um marco, não um serviço
 
-	# O mercado: Mestre (atributos), Ferreiro (arma), Mercador (frasco).
-	_trainer = _spawn_market_npc(DT_TRAINER_X, "Mestre Owyn", "mestre", _on_trainer_falado)
-	_smith = _spawn_market_npc(DT_SMITH_X, "Baldo, o Ferreiro", "ferreiro", _on_smith_falado)
-	_merchant = _spawn_market_npc(DT_MERCHANT_X, "Mira, a Mercadora", "mercador", _on_merchant_falado)
-	_refresh_market_prompts()
+	# O mercado (Mestre/Ferreiro/Mercadora) foi RETIRADO do Centro — só o cavaleiro fica. A máquina
+	# do mercado (handlers, _spawn_market_npc, _refresh_market_prompts) segue no arquivo, dormante,
+	# para reativar depois é só voltar a spawná-los aqui. _try_npc/_refresh são null-safe.
+	_trainer = null
+	_smith = null
+	_merchant = null
 
-	# O portão grande da torre (o estilo do antigo portão da cidade): sólido até a alavanca — que
-	# nasce DESTRAVADA (abrir é partida, não prêmio) — ser puxada. Aberto, fica aberto para sempre.
+	# A entrada da torre (fachada de pedra atrás → porta → PORTÃO por cima). O portão FAZ PARTE da
+	# fachada: fica exatamente SOBRE a porta, as tábuas tapando o vão. Sólido até a alavanca — que
+	# nasce DESTRAVADA (abrir é partida, não prêmio) — ser puxada; aberto, fica aberto para sempre.
+	_spawn_tower_facade(DT_DOOR_X)
+	_door = _spawn_door(DT_DOOR_X, Palette.ACCENT)
+	_door_x = DT_DOOR_X
 	_gate_key = DT_GATE_KEY
 	var aberto := _run.is_gate_open(_gate_key)
 	_gate = GateView.new()
-	_gate.position = Vector2(DT_GATE_X, GROUND_Y)
+	_gate.position = Vector2(DT_DOOR_X, GROUND_Y)
 	_env.add_child(_gate)
-	_gate.setup(DT_GATE_X, aberto, 56.0, 150.0)
+	_gate.setup(DT_DOOR_X, aberto, 40.0, 90.0)   # cobre o vão da porta (36×84), dentro do portal
 	_lever = LeverView.new()
-	_lever.position = Vector2(DT_GATE_X - 50.0, GROUND_Y)
+	var lever_x := DT_DOOR_X - DT_LEVER_OFFSET
+	_lever.position = Vector2(lever_x, GROUND_Y)
 	_env.add_child(_lever)
-	_lever.setup(DT_GATE_X - 50.0, _player_view, aberto, true)
+	_lever.setup(lever_x, _player_view, aberto, true)
 	_lever.pulled.connect(_on_lever_pulled)
 
-	# A porta da torre, depois do portão. Só se alcança com ele aberto (ele é sólido).
-	_door = _spawn_door(DT_DOOR_X, Palette.ACCENT)
-	_door_x = DT_DOOR_X
-
 	_hide_tip()
-	if na_fogueira:
-		_show_tip("Você desperta no Centro. Gaste suas almas antes de subir")
-	else:
-		_show_tip("O Centro da cidade: o mercado, e a torre adiante")
+	_show_area_title("Acampamento dos Aventureiros")
 
 ## Um NPC do mercado: variante visual própria e o handler da compra ligado ao `falado`.
 func _spawn_market_npc(x: float, nome: String, tipo: String, handler: Callable) -> NpcView:
@@ -1296,6 +1800,8 @@ func _clear_entities() -> void:
 	_first_kill_done = false
 
 func _start_floor() -> void:
+	Sfx.ambient(AMBIENCE_WIND, false)   # arena/sala fechada: sem o vento das áreas abertas (a música
+	                                    # de boss entra no branch do chefe; o combate para a música)
 	var floor := _run.current_level
 	# Por onde entrar neste nível. Quem cruzou a passagem definiu; consumido aqui, e a próxima
 	# entrada volta ao padrão (o começo do corredor).
@@ -1306,6 +1812,7 @@ func _start_floor() -> void:
 	var from_right := entry == "fim"
 	_clear_entities()
 	_boss_fogs.clear()   # views eram filhas do _env (demolido abaixo); só solta as referências
+	_boss_arena_walls.clear()   # idem: paredes da arena eram filhas do _env
 	_floor_config = _levels.get(floor, {})
 	var ltype := String(_floor_config.get("type", ""))
 	if ltype == "":
@@ -1335,7 +1842,11 @@ func _start_floor() -> void:
 	if ltype == "boss":
 		# Roguelite (torre): o boss do andar vem do nó (_rl_boss_id), não do levels.json.
 		_current_boss_id = _rl_boss_id if (_roguelite and _rl_boss_id != "") else String(_floor_config.get("boss_id", ""))
-		_build_environment(BOSS_ROOM_W, true, hazards)
+		if _roguelite:
+			_start_boss_tower(hazards)           # corredor longo silencioso → arena revelada no fim
+			return
+		# --- GRAFO (parkado): arena de UMA tela, câmera travada pela própria largura ---
+		_build_environment(BOSS_ROOM_W, true, hazards, true)
 		var boss_x := (BOSS_ROOM_W - BOSS_DOOR_IN - 34.0) if from_right else PLAYER_START_X
 		_reset_player_to_start(boss_x)           # o player primeiro; os poços depois (ver _start_tutorial)
 		_spawn_hazards(hazards)
@@ -1783,15 +2294,17 @@ func _process(delta: float) -> void:
 		if _tip_time <= 0.0:
 			_hide_tip()
 
-	# Sequência de falas do Sir Big T.: avança sozinha pelo tempo (pausada enquanto o card está aberto).
-	if _knight_seq and not _knight_card_open:
-		_knight_timer -= delta
-		if _knight_timer <= 0.0:
-			_knight_avancar()
+	# O "?" dourado sobre o Sir Big T.: aceso enquanto restarem falas base por ler (a sequência já
+	# não avança sozinha — cada INTERAGIR mostra a próxima; ver _knight_avancar / _on_npc_falado).
+	_refresh_knight_indicator()
 
 	# Sala: os heavies seguem a cadeia de posição; os esqueletos comuns dormentes acordam por proximidade.
 	if _phase == "room":
 		_update_heavy_chain()
+		_update_room_wake()
+
+	# Estrada Leste: os esqueletos postados acordam por proximidade, como numa sala de combate.
+	if _phase == "estrada":
 		_update_room_wake()
 
 	# Nível vencido: a guarda do refúgio desperta por proximidade; numa ARENA vencida, as duas
@@ -1819,12 +2332,29 @@ func _process(delta: float) -> void:
 			_transition(_begin_dungeon)
 		return
 
-	# Downtown: a porta depois do portão grande entra na torre. O portão fechado é sólido, então
-	# alcançá-la já significa que a alavanca foi puxada.
+	# Estrada Leste: a porta ao fim leva ao Acampamento, mas só com a estrada LIMPA (todos os
+	# esqueletos derrotados). Enquanto houver inimigos vivos, a porta não responde.
+	if _phase == "estrada":
+		if _enemies.is_empty() and is_instance_valid(_player_view) and is_instance_valid(_door) \
+				and absf(_player_view.global_position.x - _door_x) <= DOOR_REACH:
+			_transition(_begin_camp)
+		return
+
+	# Downtown: a porta entra na torre, mas o PORTÃO fica sobre ela — e o portão fechado BARRA a
+	# entrada. Só cruza com o portão aberto (a alavanca puxada). Isso trava o "erro" de o player
+	# encostar no portão sólido e ainda cair dentro do alcance da porta (DOOR_REACH ≥ meio vão).
 	if _phase == "downtown":
-		if is_instance_valid(_player_view) and is_instance_valid(_door) \
+		var portao_aberto: bool = _gate == null or _gate.is_open()
+		if portao_aberto and is_instance_valid(_player_view) and is_instance_valid(_door) \
 				and absf(_player_view.global_position.x - _door_x) <= DOOR_REACH:
 			_transition(_begin_tower)
+		return
+
+	# Andar de boss (torre): corredor silencioso até a arena. Ao cruzar o gatilho, revela o boss e
+	# trava a câmera na arena (ver _reveal_boss). A partir daí o combate assume.
+	if _phase == "boss_approach":
+		if is_instance_valid(_player_view) and _player_view.global_position.x >= BOSS_REVEAL_X:
+			_reveal_boss()
 		return
 
 	# A passagem ao chefe não é mais uma porta que se cruza andando: é a NÉVOA, atravessada com
@@ -1838,6 +2368,61 @@ func _transition(on_black: Callable) -> void:
 	tw.tween_property(_fade, "modulate:a", 1.0, FADE_TIME)
 	tw.tween_callback(on_black)
 	tw.tween_property(_fade, "modulate:a", 0.0, FADE_TIME)
+
+# ---------------------------------------------------------------------------
+# ANDAR DE BOSS DA TORRE (roguelite): SUSPENSE. O player entra num corredor LONGO e SILENCIOSO e
+# caminha até a ARENA no fim. Ao cruzar BOSS_REVEAL_X, o boss é revelado (a mesma cutscene de queda,
+# ou já de pé numa retentativa): a câmera TRAVA na arena de uma tela, PAREDES confinam o player e a
+# música entra. A porta de avanço fica ALÉM da arena — a câmera travada nem a mostra. Vencer o boss
+# destrava a câmera e derruba as paredes; aí a porta ao fim fica alcançável (ver _on_floor_cleared).
+# ---------------------------------------------------------------------------
+
+func _start_boss_tower(hazards: Array) -> void:
+	_build_environment(BOSS_TOWER_W, true, hazards, true)   # dentro da torre: chão de pedra + colunas
+	_reset_player_to_start(PLAYER_START_X)                   # entra à esquerda, longe do boss
+	_spawn_hazards(hazards)
+	# Porta de avanço no FIM do corredor (além da arena). Sem névoa: o confinamento vem das paredes
+	# da arena, postas só na revelação. A câmera travada não a mostra durante a luta.
+	_boss_door_left_x = 0.0
+	_boss_door_right_x = _arena_width - BOSS_DOOR_IN
+	_spawn_door(_boss_door_right_x, Palette.ACCENT.darkened(0.35))
+	_spawn_bloodstain_if_here()
+	Music.stop()                     # SILÊNCIO até revelar o boss (a ambience da torre entra depois)
+	_phase = "boss_approach"
+
+## Cruzou BOSS_REVEAL_X: trava a câmera na arena, confina o player e revela o boss (cutscene na 1ª
+## vez, já de pé na retentativa). O REVEAL_X é o CENTRO da arena, então a trava não dá salto.
+func _reveal_boss() -> void:
+	_camera.lock_arena(BOSS_ARENA_LEFT)
+	_add_arena_walls()
+	if _run.boss_seen(_current_boss_id):
+		_begin_boss_retry()
+	else:
+		_run.mark_boss_seen(_current_boss_id)
+		_begin_boss_intro()
+
+## Paredes sólidas nas bordas da arena travada, para o player (e o boss) não saírem da tela travada
+## nem alcançarem a porta antes da hora. Removidas ao vencer (ver _remove_arena_walls).
+func _add_arena_walls() -> void:
+	_remove_arena_walls()
+	for wx in [BOSS_ARENA_LEFT, BOSS_ARENA_LEFT + BOSS_ARENA_W]:
+		var wall := StaticBody2D.new()
+		wall.collision_layer = 4     # mesma camada do chão/paredes: barra player e boss
+		wall.collision_mask = 0
+		var col := CollisionShape2D.new()
+		var rect := RectangleShape2D.new()
+		rect.size = Vector2(24.0, 2000.0)
+		col.shape = rect
+		col.position = Vector2(wx, 0.0)
+		wall.add_child(col)
+		_env.add_child(wall)
+		_boss_arena_walls.append(wall)
+
+func _remove_arena_walls() -> void:
+	for w in _boss_arena_walls:
+		if is_instance_valid(w):
+			w.queue_free()
+	_boss_arena_walls.clear()
 
 # ---------------------------------------------------------------------------
 # Entrada do boss (cutscene). Com o player congelado: a trilha do chefe entra ao pisar na sala →
@@ -1945,7 +2530,7 @@ func _begin_boss_retry() -> void:
 ## Fim da cutscene, sob a tela preta: todos em posição de luta e o boss liberado.
 func _begin_boss_fight() -> void:
 	_phase = "boss"
-	_reset_player_to_start()          # também descongela o player
+	_reset_player_to_start(_boss_fight_player_x())   # na arena (torre); descongela o player
 	if is_instance_valid(_boss_view):
 		_boss_view.global_position = _boss_spawn_pos()
 		_boss_view.velocity = Vector2.ZERO
@@ -2005,6 +2590,8 @@ func _on_enemy_died(view: EnemyView, enemy: Enemy) -> void:
 	_run.player.gain_souls(int(enemy.loot.get("souls", 0)))
 
 	match _phase:
+		# "estrada": sem aviso direcional ao limpar — o jogador explora e descobre a passagem
+		# (a porta ao fim passa a responder sozinha; ver _process). Só se derrota e segue.
 		"room":
 			_on_room_enemy_died(view)
 		"boss":
@@ -2038,7 +2625,9 @@ func _on_floor_cleared() -> void:
 		if String(_floor_config.get("type", "")) == "boss":
 			Music.stop()
 			_dismiss_boss_fogs()
-			_show_tip("O guardião caiu. Avance →")
+			_remove_arena_walls()                  # derruba as paredes da arena
+			_camera.setup_corridor(_arena_width)   # DESTRAVA a câmera: a porta ao fim fica alcançável
+			_show_tip("Guardião Derrotado")        # confirma a vitória; sem direção (o jogador explora)
 		else:
 			_rl_spawn_advance_door()
 		return
@@ -2310,9 +2899,7 @@ func _spawn_sanctuary(level_id: String) -> void:
 func _on_lever_pulled(_l: LeverView) -> void:
 	_run.open_gate(_gate_key)
 	if is_instance_valid(_gate):
-		_gate.open()
-	if _phase == "downtown":
-		_show_tip("O portão se abre. A torre o aguarda →")
+		_gate.open()   # o portão se abre à vista; sem aviso direcional (o jogador explora)
 
 # ---------------------------------------------------------------------------
 # A GUARDA do refúgio (o run-back do soulslike). Depois que o nível é vencido, uma pequena leva de
@@ -2446,9 +3033,7 @@ func _enter_node(node: RunNode) -> void:
 		_rl_floor += 1
 		_run.go_to("arena")
 		_start_floor()
-		# O total de andares vem do PLANO (quantos nós BOSS há), nunca de um número fixo — mudar o
-		# pattern no run.json muda o letreiro sozinho.
-		_show_tip("Andar %d de %d" % [_rl_floor, _rl_total_floors()])
+		_show_area_title(_andar_nome(_rl_floor))   # o nome PRÓPRIO do andar, no banner meio-superior
 	elif node.type == RunNode.CLIMB:
 		# A escadaria entre bosses: um nível "climb" do levels.json, sorteado do pool.
 		_run.go_to(String(node.get_value("climb", "")))
@@ -2463,14 +3048,6 @@ func _enter_node(node: RunNode) -> void:
 ## uma _transition, ou direto ao escolher a carta.
 func _advance_plan() -> void:
 	_enter_node(_plan.advance())
-
-## Quantos andares (nós BOSS) a torre tem, contado do próprio plano.
-func _rl_total_floors() -> int:
-	var n := 0
-	for node in _plan.nodes:
-		if node.is_boss():
-			n += 1
-	return n
 
 ## Nó de recompensa: mostra as cartas de augment (o mesmo pool ponderado de sempre) e espera a
 ## escolha. Sem cartas disponíveis (pool esgotado), pula para o próximo nó.
@@ -2510,7 +3087,7 @@ func _rl_start_room(floor: String, hazards: Array) -> void:
 	_boss_view = null
 	_exit_door_x = 0.0
 	_corridor_length = float(_floor_config.get("corridor_length", _corridor_length))
-	_build_environment(_corridor_length + RL_ROOM_TAIL, false, hazards)
+	_build_environment(_corridor_length + RL_ROOM_TAIL, false, hazards, true)   # sala dentro da torre
 	_fight_width = _corridor_length
 	_reset_player_to_start(PLAYER_START_X)
 	_spawn_hazards(hazards)
@@ -2530,11 +3107,11 @@ const CLIMB_SLAB := 12.0        # espessura da laje de um andar
 const CLIMB_DOOR_TOL := 60.0    # tolerância vertical para cruzar a porta do topo
 
 func _start_climb() -> void:
-	Music.stop()
+	_start_ambience()            # a escadaria é área aberta: ambiência (música + vento)
 	_current_boss_id = ""
 	_boss_view = null
 	var w := float(_floor_config.get("width", 640.0))
-	_build_environment(w, false, [])
+	_build_environment(w, false, [], true)   # escadaria: dentro da torre (chão de pedra + colunas)
 	_reset_player_to_start(PLAYER_START_X)
 
 	var andares: Array = _floor_config.get("andares", [])
@@ -2699,8 +3276,7 @@ func _climb_necro_fell() -> void:
 func _rl_spawn_advance_door() -> void:
 	var x := _corridor_length + RL_ROOM_TAIL * 0.5
 	_spawn_door(x, Palette.ACCENT.darkened(0.35))
-	_exit_door_x = x
-	_show_tip("Sala limpa. Avance →")
+	_exit_door_x = x   # a porta aparece no fim; sem aviso direcional (o jogador explora)
 
 ## Fim da run — por morte ou vitória. Nada de tela de fim com Enter: o letreiro sobe com o fade,
 ## e o jogador DESPERTA NO DOWNTOWN, ao pé da fogueira, com as almas no bolso (são a meta-moeda) e
@@ -2841,6 +3417,40 @@ func _show_run_banner(texto: String, cor: Color) -> void:
 	_fade_layer.add_child(_death_banner)
 	create_tween().tween_property(_death_banner, "modulate:a", 1.0, DEATH_FADE_OUT)
 
+const AREA_TITLE_HOLD := 2.4     # tempo do nome da área na tela antes de sumir
+const AREA_TITLE_FADE := 0.5
+
+## Nome da ÁREA em destaque, na parte MEIO-SUPERIOR da tela, ao entrar nela — só o nome, sem
+## instruções nem direções (o jogador explora). Fade in, segura, fade out; some sozinho.
+func _show_area_title(nome: String) -> void:
+	if is_instance_valid(_area_title):
+		_area_title.queue_free()
+	var l := Label.new()
+	l.text = nome
+	l.add_theme_font_size_override("font_size", 24)
+	l.add_theme_color_override("font_color", Color(0.95, 0.87, 0.56))   # dourado claro (destaque)
+	l.add_theme_constant_override("outline_size", 6)
+	l.add_theme_color_override("font_outline_color", Color(0.05, 0.04, 0.02))
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.size = Vector2(640, 40)
+	l.position = Vector2(0, 54)      # meio-superior (tela base 640×360)
+	l.modulate.a = 0.0
+	_layer.add_child(l)
+	_area_title = l
+	var tw := create_tween()
+	tw.tween_property(l, "modulate:a", 1.0, AREA_TITLE_FADE)
+	tw.tween_interval(AREA_TITLE_HOLD)
+	tw.tween_property(l, "modulate:a", 0.0, AREA_TITLE_FADE)
+	tw.tween_callback(l.queue_free)
+
+## Nome PRÓPRIO do andar N (1-based), de run.json ("andar_nomes"), no formato "Andar N: <Nome>".
+## Fallback "Andar N" se a lista não cobrir aquele andar.
+func _andar_nome(n: int) -> String:
+	var nomes: Array = _run_cfg.get("andar_nomes", [])
+	if n >= 1 and n <= nomes.size():
+		return "Andar %d: %s" % [n, String(nomes[n - 1])]
+	return "Andar %d" % n
+
 ## B no meio da run: PAUSA o jogo e abre o menu de pausa (PauseMenu — a mesma estética do menu
 ## principal; as Opções abrem de dentro dele). Roda com a árvore pausada e, ao fechar, despausa.
 ## A música segue tocando na pausa (o autoload Music é PROCESS_MODE_ALWAYS), mas ABAFADA
@@ -2939,7 +3549,15 @@ func _off_pit(x: float) -> float:
 
 ## Boss aparece no lado direito da sala do boss (arena fechada).
 func _boss_spawn_pos() -> Vector2:
+	# Torre: o boss fica na ARENA travada (à direita dela, mas dentro da janela da câmera). Grafo:
+	# o velho "perto da parede direita" da tela única.
+	if _roguelite:
+		return Vector2(BOSS_ARENA_LEFT + 480.0, GROUND_Y - 60.0)
 	return Vector2(_arena_width - 120.0, GROUND_Y - 60.0)
+
+## Onde o player fica ao começar a luta do boss: na arena (torre) ou no começo da tela (grafo).
+func _boss_fight_player_x() -> float:
+	return (BOSS_ARENA_LEFT + 120.0) if _roguelite else PLAYER_START_X
 
 ## Barra de boss (rodapé): visível só na fase do boss, com o HP atual. Some ao sair da luta.
 func _update_boss_bar() -> void:

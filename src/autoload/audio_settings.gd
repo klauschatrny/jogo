@@ -10,18 +10,22 @@ extends Node
 const PATH := "user://settings.json"
 const MUSIC_BUS := "Music"
 const SFX_BUS := "SFX"
+const AMBIENT_BUS := "Ambient"   # sons do AMBIENTE (vento, fogueira): categoria de volume PRÓPRIA
 const MUTE_DB := -80.0        # 0% = mudo de verdade (linear_to_db(0) é -inf)
 
 ## 0.0 (mudo) .. 1.0 (volume cheio — a mixagem do audio.json, sem corte).
 var music_volume := 1.0
 var sfx_volume := 1.0
+var ambient_volume := 1.0
 
 func _ready() -> void:
 	_ensure_bus(MUSIC_BUS)
 	_ensure_bus(SFX_BUS)
+	_ensure_bus(AMBIENT_BUS)
 	_load()
 	_apply(MUSIC_BUS, music_volume)
 	_apply(SFX_BUS, sfx_volume)
+	_apply(AMBIENT_BUS, ambient_volume)
 
 func set_music_volume(v: float) -> void:
 	music_volume = clampf(v, 0.0, 1.0)
@@ -33,13 +37,18 @@ func set_sfx_volume(v: float) -> void:
 	_apply(SFX_BUS, sfx_volume)
 	save()
 
+func set_ambient_volume(v: float) -> void:
+	ambient_volume = clampf(v, 0.0, 1.0)
+	_apply(AMBIENT_BUS, ambient_volume)
+	save()
+
 func save() -> void:
 	var f := FileAccess.open(PATH, FileAccess.WRITE)
 	if f == null:
 		push_warning("[AudioSettings] não foi possível gravar %s" % PATH)
 		return
 	f.store_string(JSON.stringify({
-		"audio": { "music": music_volume, "sfx": sfx_volume },
+		"audio": { "music": music_volume, "sfx": sfx_volume, "ambient": ambient_volume },
 	}, "  "))
 	f.close()
 
@@ -58,6 +67,7 @@ func _load() -> void:
 	var audio: Dictionary = (data as Dictionary).get("audio", {})
 	music_volume = clampf(float(audio.get("music", 1.0)), 0.0, 1.0)
 	sfx_volume = clampf(float(audio.get("sfx", 1.0)), 0.0, 1.0)
+	ambient_volume = clampf(float(audio.get("ambient", 1.0)), 0.0, 1.0)
 
 ## O ouvido é logarítmico: a escala linear do slider vira dB. 0 vira mudo (silêncio de fato).
 func _apply(bus: String, v: float) -> void:

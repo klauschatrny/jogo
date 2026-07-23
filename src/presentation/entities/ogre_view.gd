@@ -12,7 +12,11 @@
 ## do cooldown não conta. Detalhes:
 ##  - Arremesso de rochas — windup inicial 1s e 0.9s entre os arremessos; rocha voa reta até o player.
 ##    Além do cooldown global, tem cooldown PRÓPRIO de 8s (na faixa de rochas, se em cooldown, aproxima).
-##  - Baderna — 6 golpes alternando lados (3 direita / 3 esquerda); windup inicial 1s, 0.3s entre.
+##  - Baderna — golpes alternando lados; windup inicial 1s, 0.3s entre. O PRIMEIRO e o ÚLTIMO golpe
+##    caem SEMPRE na direção que o ogro encarava ao castar (o lado do player no início) — por isso a
+##    contagem é ÍMPAR. FASE 1: 5 golpes. FASE 2 (HP ≤ 50%): 5 + 3 numa 2ª leva que RECOMEÇA no lado
+##    do cast (ímpar também → 1º e último extra também no cast), cada extra após uma pausa/windup
+##    mais CURTA que a inicial (bait: o player acha que acabou e baixa a guarda; o "!" reaparece).
 ##    É longa: tem cooldown PRÓPRIO de 6s (após uma baderna, o sorteio só dá melee até ele zerar).
 ## Habilidade ESPECIAL: ao cruzar 50%/35%/15% de vida ele entra em fúria e faz uma INVESTIDA
 ## ÚNICA — no windup rastreia o lado do player e TRAVA a direção a 200 ms do fim; corre cegamente
@@ -43,9 +47,12 @@ const ROCK_BETWEEN_WINDUP := 0.9        # windup entre os arremessos
 const ROCK_SPEED := 250.0
 const ROCK_CD := 8.0                     # cooldown PRÓPRIO do arremesso de rochas (além do global)
 
-const BADERNA_HITS := 6                  # 3 direita + 3 esquerda, intercalados
+const BADERNA_HITS := 5                  # golpes da fase 1 (ÍMPAR: 1º e último caem no lado do cast)
+const BADERNA_PHASE2_EXTRA := 3          # fase 2: +3 golpes numa 2ª leva (ÍMPAR), cada um com bait windup
 const BADERNA_INITIAL_WINDUP := 1.0
-const BADERNA_BETWEEN := 0.3            # windup entre os golpes individuais
+const BADERNA_BETWEEN := 0.3            # windup entre os golpes individuais da sequência
+const BADERNA_PHASE2_WINDUP := 0.55     # pausa antes de CADA golpe extra (fase 2): mais curta que a
+                                        # inicial, mas longa o bastante p/ o player achar que acabou (bait)
 const BADERNA_CD := 6.0                 # cooldown PRÓPRIO: após uma baderna, só melee por este tempo
                                         # (ela é longa — sem isto, a 50/50, ocupa ~2/3 do tempo de luta)
 
@@ -84,6 +91,9 @@ var _ability_timer := 0.0               # rochas/baderna/melee: tempo até o pr�
 var _rock_left := 0
 var _bad_left := 0
 var _bad_side := 1.0
+var _bad_cast_dir := 1.0                 # direção que o ogro encarava ao castar (1º e último golpe caem nela)
+var _bad_extra := 0                      # golpes da 2ª leva a iniciar após a base (fase 2); 0 na fase 1
+var _bad_in_extra := false               # true durante a 2ª leva (usa o bait windup entre golpes)
 var _melee_left := 0                     # golpes restantes do combo melee (1 = golpe único)
 var _melee_stepping := false            # true durante o passo à frente (logo após conectar o golpe)
 var _lunge_dir := 1.0                    # direção do passo à frente do golpe
@@ -382,14 +392,19 @@ func _throw_rock() -> void:
 	rock.setup(dir, ROCK_SPEED, ROCK_DAMAGE, target)
 	_play_attack_anim()
 
-## --- Baderna: parado, 6 golpes alternando lados (3 dir / 3 esq); windup 1s, 0.1s entre golpes ---
+## --- Baderna: parado, golpes alternando lados; windup 1s, 0.3s entre. Fase 1: 5 golpes; fase 2:
+## 5 + 3 numa 2ª leva. O 1º golpe SEMPRE cai no lado do cast, e cada leva tem contagem ÍMPAR e
+## RECOMEÇA no lado do cast, então o último golpe de cada leva (e o remate) também cai lá. ---
 func _start_baderna() -> void:
 	_special = "baderna"
-	_bad_left = BADERNA_HITS
+	_bad_cast_dir = signf(target.global_position.x - global_position.x)   # lado que ele encara ao castar
+	if _bad_cast_dir == 0.0:
+		_bad_cast_dir = _facing()
+	_bad_extra = BADERNA_PHASE2_EXTRA if _phase2() else 0   # 2ª leva (ímpar) na fase 2
+	_bad_left = BADERNA_HITS                                # leva base (ímpar): 5 golpes
+	_bad_in_extra = false
+	_bad_side = _bad_cast_dir                               # 1º golpe SEMPRE na direção do cast
 	_ability_timer = BADERNA_INITIAL_WINDUP
-	_bad_side = signf(target.global_position.x - global_position.x)   # começa no lado do player
-	if _bad_side == 0.0:
-		_bad_side = 1.0
 	_show_warn()
 
 func _tick_baderna(delta: float) -> void:
@@ -402,13 +417,27 @@ func _tick_baderna(delta: float) -> void:
 		return
 	_hide_warn()
 	_baderna_hit(_bad_side)
-	_bad_side = -_bad_side          # intercala o lado
 	_bad_left -= 1
 	if _bad_left > 0:
-		_ability_timer = BADERNA_BETWEEN
-	else:
-		_baderna_cd = BADERNA_CD   # dispara o cooldown ao FIM: só melee pelos próximos BADERNA_CD s
-		_end_normal_ability()
+		_bad_side = -_bad_side          # alterna dentro da leva atual
+		# 2ª leva (fase 2): pausa mais curta que a inicial, mas longa o bastante p/ o player achar que
+		# a baderna acabou (bait). O "!" volta — o bait é o TIMING, não a falta de telegrafo.
+		_ability_timer = BADERNA_PHASE2_WINDUP if _bad_in_extra else BADERNA_BETWEEN
+		if _bad_in_extra:
+			_show_warn()
+		return
+	# Leva base terminou: se a fase 2 tem a 2ª leva, inicia-a RECOMEÇANDO no lado do cast (ímpar → o
+	# 1º e o último golpe extra também caem no cast), após a pausa/bait.
+	if _bad_extra > 0:
+		_bad_in_extra = true
+		_bad_left = _bad_extra
+		_bad_extra = 0
+		_bad_side = _bad_cast_dir
+		_ability_timer = BADERNA_PHASE2_WINDUP
+		_show_warn()
+		return
+	_baderna_cd = BADERNA_CD   # dispara o cooldown ao FIM: só melee pelos próximos BADERNA_CD s
+	_end_normal_ability()
 
 ## Um golpe da baderna num lado: acerta o player se ele estiver desse lado e ao alcance.
 func _baderna_hit(side: float) -> void:

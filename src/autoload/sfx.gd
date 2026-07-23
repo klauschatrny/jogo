@@ -15,13 +15,24 @@ const VOICES := 8            # sons curtos simultâneos antes de reciclar a voz 
 
 var _defs: Dictionary = {}   # id -> { "streams": [AudioStream], "volume_db": float }
 var _cycle: Dictionary = {}  # id -> índice da PRÓXIMA variação do rodízio
+var _bag: Dictionary = {}    # id -> "saco" restante do sorteio SEM reposição (play_random)
+var _bag_last: Dictionary = {}  # id -> última variação sorteada (evita repetir na virada do saco)
+var _rng := RandomNumberGenerator.new()  # RNG PRÓPRIO cosmético: NÃO usa o RNGService semeado do run
+                                         # (sortear grunt não pode perturbar a determinística do run)
 var _voices: Array = []      # AudioStreamPlayer reutilizáveis (sons curtos)
 var _next := 0
 var _sustained: Dictionary = {}  # id -> { player, stop_at, last_pos } — ciclos de passadas (sustain)
+var _ambients: Dictionary = {}   # id -> { player, tween } — camas de ambiência em loop (ambient)
+var _world_paused := false        # espelho da pausa da árvore, p/ congelar os loops do mundo (passos)
+
+const AMBIENT_FADE := 0.8        # fade só nas TRANSIÇÕES (entrar/sair da arena, menu). O LOOP da
+                                 # faixa recomeça sozinho, sem passar por aqui — logo, sem corte.
+const AMBIENT_SILENT_DB := -60.0 # ponta "muda" dos fades da ambiência
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS   # toca com o jogo pausado (cliques do menu de pausa),
 	                                           # igual ao autoload Music; as vozes herdam por INHERIT
+	_rng.randomize()                           # semente própria; independente do run
 	var cfg: Variant = JsonLoader.load_file(CONFIG)
 	var block: Dictionary = ((cfg as Dictionary).get("sfx", {}) if typeof(cfg) == TYPE_DICTIONARY else {})
 	for id in block:
@@ -87,6 +98,46 @@ func play(id: String, variant := -1) -> void:
 	voice.pitch_scale = float(pitches[v % pitches.size()])   # sempre reposto: a voz é reaproveitada
 	voice.volume_db = float(def["volume_db"])
 	voice.play()
+
+## Toca `id` numa ordem ALEATÓRIA sem repetição (shuffle bag): sorteia sem reposição de um "saco"
+## com TODAS as variações; só quando todas tocaram o saco é reabastecido (embaralhado de novo). Na
+## virada evita que a última do saco anterior seja a primeira do novo — nada toca duas vezes seguidas.
+## Diferente de play(id, -1), que é rodízio fixo (0,1,2,…). Usa o RNG próprio (não perturba o run).
+func play_random(id: String) -> void:
+	if id == "":
+		return
+	if not _defs.has(id):
+		push_warning("[Sfx] id desconhecido: '%s'" % id)
+		return
+	var def: Dictionary = _defs[id]
+	var n := maxi((def["streams"] as Array).size(), (def["pitches"] as Array).size())
+	if n <= 1:
+		play(id, 0)   # 0 ou 1 variação: nada a sortear
+		return
+	var bag: Array = _bag.get(id, [])
+	if bag.is_empty():
+		bag = _refill_bag(id, n)
+		_bag[id] = bag
+	var v: int = bag.pop_back()
+	_bag_last[id] = v
+	play(id, v)
+
+## Reabastece o saco: [0..n-1] embaralhado (Fisher-Yates com o RNG próprio). Se o TOPO (o próximo a
+## sair, via pop_back) for igual à última tocada, troca-o com o começo — sem repetição na virada.
+func _refill_bag(id: String, n: int) -> Array:
+	var bag: Array = []
+	for i in n:
+		bag.append(i)
+	for i in range(n - 1, 0, -1):
+		var j := _rng.randi_range(0, i)
+		var tmp: int = bag[i]
+		bag[i] = bag[j]
+		bag[j] = tmp
+	if _bag_last.has(id) and int(bag[n - 1]) == int(_bag_last[id]):
+		var tmp2: int = bag[n - 1]
+		bag[n - 1] = bag[0]
+		bag[0] = tmp2
+	return bag
 
 ## Toca UMA passada isolada do ciclo (a `index`-ésima, em rodízio), no TOM ORIGINAL — cortando-a
 ## antes da passada seguinte do arquivo. Serve para remontar a cadência livremente: a CORRIDA do
@@ -186,17 +237,90 @@ func sustain(id: String, active: bool) -> void:
 		st["last_pos"] = pos
 		st["stop_at"] = _quiet_point(def, pos)
 
-## Corta NA HORA todos os ciclos sustentados (passos, corrida). Para a troca de cena
-## (sair para o menu): nenhum loop do mundo deve seguir soando fora dele.
+## Cama de ambiência em LOOP (vento, etc.): liga/desliga um som contínuo. Diferente de `sustain`
+## (ciclo de passadas cortado num ponto de silêncio), aqui o clipe só faz LOOP. O fade é SÓ nas
+## transições desta chamada (entrar/sair da área) — o loop em si recomeça sem corte, pois nenhuma
+## chamada acontece na virada. Idempotente: ligar o que já toca (ou desligar o que já parou) é no-op.
+## `fade` < 0 usa o AMBIENT_FADE padrão (transições de sala); um valor explícito o sobrescreve
+## (ex.: um fade-in mais longo na ENTRADA do jogo, após o Play — ver floor_scene).
+func ambient(id: String, on: bool, fade := -1.0) -> void:
+	if id == "" or not _defs.has(id):
+		return
+	var f := fade if fade >= 0.0 else AMBIENT_FADE
+	var st: Dictionary = _ambients.get(id, {})
+	var def: Dictionary = _defs[id]
+	if on:
+		var player: AudioStreamPlayer
+		if st.is_empty():
+			player = AudioStreamPlayer.new()
+			player.name = "Ambient_%s" % id
+			player.bus = AudioSettings.AMBIENT_BUS   # categoria "Ambiente" nas Opções (não o SFX geral)
+			player.playback_type = AudioServer.PLAYBACK_TYPE_STREAM   # ver nota em _ready (web/mp3 x Sample)
+			add_child(player)
+			st = { "player": player, "tween": null }
+			_ambients[id] = st
+		player = st["player"]
+		_kill_ambient_tween(st)
+		if not player.playing:
+			player.stream = def["streams"][0]
+			player.volume_db = AMBIENT_SILENT_DB
+			player.play()
+		var tw_in := create_tween()
+		tw_in.tween_property(player, "volume_db", float(def["volume_db"]), f)
+		st["tween"] = tw_in
+	else:
+		if st.is_empty():
+			return
+		var player: AudioStreamPlayer = st["player"]
+		if not player.playing:
+			return
+		_kill_ambient_tween(st)
+		var tw_out := create_tween()
+		tw_out.tween_property(player, "volume_db", AMBIENT_SILENT_DB, f)
+		tw_out.tween_callback(player.stop)
+		st["tween"] = tw_out
+
+func _kill_ambient_tween(st: Dictionary) -> void:
+	var tw = st.get("tween", null)
+	if tw != null and (tw as Tween).is_valid():
+		(tw as Tween).kill()
+	st["tween"] = null
+
+## Stream (1ª variação) e volume base de um id — para quem gere a PRÓPRIA voz (ex.: o som posicional
+## por proximidade da fogueira, com o volume ajustado quadro a quadro). null / 0 se o id não existe.
+func stream_for(id: String) -> AudioStream:
+	var def: Dictionary = _defs.get(id, {})
+	return (def["streams"][0] as AudioStream) if not def.is_empty() else null
+
+func volume_for(id: String) -> float:
+	var def: Dictionary = _defs.get(id, {})
+	return float(def["volume_db"]) if not def.is_empty() else 0.0
+
+## Corta NA HORA todos os ciclos sustentados (passos, corrida) e as camas de ambiência. Para a
+## troca de cena (sair para o menu): nenhum loop do mundo deve seguir soando fora dele.
 func stop_sustains() -> void:
 	for id in _sustained:
 		var st: Dictionary = _sustained[id]
 		(st["player"] as AudioStreamPlayer).stop()
 		st["stop_at"] = -1.0
+	for id in _ambients:
+		var amb: Dictionary = _ambients[id]
+		_kill_ambient_tween(amb)
+		(amb["player"] as AudioStreamPlayer).stop()
 
 ## Vigia as paradas agendadas: (a) as passadas isoladas de play_step, cortadas antes que a
 ## passada SEGUINTE do arquivo comece a soar; (b) os ciclos de sustain, no ponto de silêncio.
 func _process(_delta: float) -> void:
+	# Loops do MUNDO (passos do boss/player) não devem soar com o jogo PAUSADO: este autoload roda
+	# sempre (PROCESS_MODE_ALWAYS), então um player sustentado seguiria tocando — o _process do dono
+	# (ex.: o Ogro) está pausado e nunca chega a chamar sustain(false). Espelha o stream_paused no
+	# estado da árvore; despausar retoma do mesmo ponto. (Ambiência/música seguem — são atmosfera.)
+	var pausado := get_tree().paused
+	if pausado != _world_paused:
+		_world_paused = pausado
+		for sid in _sustained:
+			(_sustained[sid]["player"] as AudioStreamPlayer).stream_paused = pausado
+
 	for voice in _voices:
 		var v: AudioStreamPlayer = voice
 		if not v.has_meta("stop_pos"):

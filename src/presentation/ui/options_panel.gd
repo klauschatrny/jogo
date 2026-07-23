@@ -1,5 +1,5 @@
 ## Painel de Opções, em TRÊS ABAS (clique para trocar):
-##   ÁUDIO     — volume da música e dos efeitos (sliders de mouse).
+##   ÁUDIO     — volume da música, dos efeitos e do ambiente (vento/fogueira) — sliders de mouse.
 ##   CONTROLES — remapear as teclas (KeyBinds): MUDAR e aperte a tecla nova; ESC cancela a captura.
 ##               A lista vive num ScrollContainer: mais ações do que cabem = roda de rolagem.
 ##   TUTORIAL  — relê as mensagens de tutorial (TutorialTips), para quem as deixou passar.
@@ -22,6 +22,7 @@ var initial_tab := 0
 
 var _music: HSlider
 var _sfx: HSlider
+var _ambient: HSlider
 var _tab := 0                      # 0 = ÁUDIO, 1 = CONTROLES, 2 = TUTORIAL
 var _tab_btns: Array = []          # [Button, Button]
 var _content: VBoxContainer        # o corpo da aba atual (destruído e refeito ao trocar)
@@ -116,6 +117,7 @@ func _show_tab(i: int) -> void:
 	_bind_rows.clear()
 	_music = null
 	_sfx = null
+	_ambient = null
 	for c in _content.get_children():
 		c.free()                    # free imediato: o rebuild abaixo já adiciona os novos
 	for j in _tab_btns.size():
@@ -132,6 +134,7 @@ func _build_audio_tab() -> void:
 	_content.add_child(_spacer(8))
 	_music = _add_slider_row("MÚSICA", AudioSettings.music_volume, _on_music)
 	_sfx = _add_slider_row("EFEITOS", AudioSettings.sfx_volume, _on_sfx)
+	_ambient = _add_slider_row("AMBIENTE", AudioSettings.ambient_volume, _on_ambient)
 	_content.add_child(_spacer(10))
 
 func _on_music(v: float) -> void:
@@ -140,6 +143,10 @@ func _on_music(v: float) -> void:
 
 func _on_sfx(v: float) -> void:
 	AudioSettings.set_sfx_volume(v)
+	_refresh_audio()
+
+func _on_ambient(v: float) -> void:
+	AudioSettings.set_ambient_volume(v)
 	_refresh_audio()
 
 ## Uma linha: rótulo + slider + porcentagem. O slider guarda o Label do valor em `_pct` (meta),
@@ -179,7 +186,7 @@ func _add_slider_row(label: String, value: float, cb: Callable) -> HSlider:
 	return slider
 
 func _refresh_audio() -> void:
-	for s in [_music, _sfx]:
+	for s in [_music, _sfx, _ambient]:
 		if s == null:
 			continue
 		var pct: Label = s.get_meta("pct")

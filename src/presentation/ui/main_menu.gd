@@ -37,7 +37,8 @@ func _on_button_pressed(cb: Callable) -> void:
 	cb.call()
 
 func _on_play() -> void:
-	Music.stop(3.0)                           # a vila é silenciosa: fade gradual de 3s ao entrar
+	Music.stop(3.0)                           # some a trilha do menu; a vila entra com a ambiência
+	                                          # própria (floor_scene._start_ambience) por cima
 	get_tree().change_scene_to_file("res://src/presentation/scenes/floor_scene.tscn")
 
 func _open_panel(tab: int) -> void:

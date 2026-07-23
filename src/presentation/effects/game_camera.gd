@@ -11,6 +11,7 @@ const LOOK_AHEAD := 72.0                    # avanço da câmera à frente do pl
 const LOOK_AHEAD_LERP := 2.4               # suavidade com que o avanço cresce/inverte de lado
 const LOOK_MIN_SPEED := 8.0                # velocidade mínima p/ empurrar (evita jitter parado)
 const SCREEN_H := 360.0                    # altura do viewport base 640×360
+const SCREEN_W := 640.0                    # largura do viewport base 640×360
 
 var _trauma := 0.0
 var follow_target: Node2D                  # segue este nó no eixo X (o PlayerView)
@@ -40,6 +41,16 @@ func setup_climb(length: float, top_limit: float) -> void:
 	limit_top = int(top_limit)
 	limit_bottom = int(SCREEN_H)
 	_follow_y = true
+
+## TRAVA a câmera numa ARENA de UMA tela: os limites viram exatamente [left, left+640], então a
+## vista fica presa nessa janela (não revela o corredor atrás nem a porta além dela) — é como a
+## sala de boss de uma tela funciona. Destravar = chamar setup_corridor de novo.
+func lock_arena(left_x: float) -> void:
+	limit_left = int(left_x)
+	limit_right = int(left_x + SCREEN_W)
+	limit_top = 0
+	limit_bottom = int(SCREEN_H)
+	_follow_y = false
 
 func _process(delta: float) -> void:
 	# Follow horizontal suave, empurrado à frente do player na direção do movimento.

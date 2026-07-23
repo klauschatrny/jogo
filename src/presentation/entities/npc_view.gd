@@ -20,6 +20,10 @@ var variante := "cavaleiro"
 var prompt_texto := ""
 var _player: Node2D
 var _prompt: Label
+var _indicador: Label            # "?" dourado flutuante: aceso quando há algo novo para interagir
+var _dica_t := 0.0
+
+const DICA_Y := -86.0            # altura-base do "?" (acima da cabeça e do prompt); flutua em torno dela
 
 func setup(x: float, chao_y: float, player: Node2D, nome: String, tipo := "cavaleiro") -> void:
 	position = Vector2(x, chao_y)
@@ -155,7 +159,26 @@ func _build() -> void:
 	_prompt.visible = false
 	add_child(_prompt)
 
-func _process(_delta: float) -> void:
+	# "?" dourado flutuante acima da cabeça (quest marker). Ligado por quem escuta (set_indicador);
+	# o contorno escuro o destaca sobre qualquer fundo. A fonte é TTF nítida — 24 sai crisp.
+	_indicador = Label.new()
+	_indicador.text = "?"
+	_indicador.add_theme_font_size_override("font_size", 24)
+	_indicador.add_theme_color_override("font_color", Color(1.0, 0.82, 0.28))   # dourado
+	_indicador.add_theme_constant_override("outline_size", 5)
+	_indicador.add_theme_color_override("font_outline_color", Color(0.14, 0.08, 0.0))
+	_indicador.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_indicador.size = Vector2(30.0, 28.0)
+	_indicador.position = Vector2(-15.0, DICA_Y)
+	_indicador.visible = false
+	add_child(_indicador)
+
+func _process(delta: float) -> void:
+	# "?" flutuando de leve (bob por seno) enquanto aceso — chama atenção sem timer nem RNG.
+	if _indicador != null and _indicador.visible:
+		_dica_t += delta
+		_indicador.position.y = DICA_Y + sin(_dica_t * 3.2) * 3.0
+
 	if _prompt == null:
 		return
 	_prompt.visible = in_reach(_player)
@@ -163,6 +186,11 @@ func _process(_delta: float) -> void:
 		_prompt.text = "%s  %s" % [KeyBinds.key_name("interact"), prompt_texto]
 	else:
 		_prompt.text = "%s  falar com %s" % [KeyBinds.key_name("interact"), npc_nome]
+
+## Liga/desliga o "?" dourado. Quem escuta decide (ex.: há falas base do cavaleiro por ler).
+func set_indicador(on: bool) -> void:
+	if _indicador != null:
+		_indicador.visible = on
 
 func in_reach(player: Node2D) -> bool:
 	return is_instance_valid(player) and absf(player.global_position.x - global_position.x) <= REACH

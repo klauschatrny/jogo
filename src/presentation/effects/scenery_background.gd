@@ -39,6 +39,48 @@ func apply(specs: Array, fallback: Dictionary, dim := 0.0) -> void:
 
 	_add_procedural(fallback, dim)   # sem arte (ou PNGs ausentes): placeholder
 
+## Fundo do INTERIOR da torre: gradiente escuro + duas camadas de COLUNAS em parallax (grossas na
+## horizontal, contínuas do topo da tela até a linha do chão). `dim` acompanha o escurecimento da sala.
+func apply_columns(top: Color, bottom: Color, col: Color, dim := 0.0) -> void:
+	for c in get_children():
+		c.queue_free()
+	_layers.clear()
+	_add_sky(top.darkened(dim), bottom.darkened(dim))
+	_add_columns(0.25, col.darkened(0.35 + dim), 4, 46.0, 78.0)   # fileira ao fundo: mais escura e lenta
+	_add_columns(0.5, col.darkened(0.05 + dim), 5, 56.0, 96.0)    # fileira da frente: mais clara e rápida
+
+## Uma fileira de colunas (parallax): retângulos altos do topo (y=0) até a linha do chão (HORIZON),
+## em duas cópias lado a lado para o deslocamento horizontal ser contínuo.
+func _add_columns(scale: float, color: Color, count: int, wmin: float, wmax: float) -> void:
+	var node := Node2D.new()
+	add_child(node)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(scale * 100000) + count      # determinístico por camada
+	for copy in 2:
+		var base_x := PROC_PATTERN * copy
+		for i in count:
+			var w := rng.randf_range(wmin, wmax)
+			var x := base_x + (PROC_PATTERN / count) * i + rng.randf_range(-22.0, 22.0)
+			var col_rect := ColorRect.new()
+			col_rect.color = color
+			col_rect.size = Vector2(w, HORIZON)          # do topo da tela até o chão
+			col_rect.position = Vector2(x, 0.0)
+			node.add_child(col_rect)
+			# Base e capitel (levemente mais claros): dão leitura de COLUNA, não de simples pilar.
+			var cap := ColorRect.new()
+			cap.color = color.lightened(0.12)
+			cap.size = Vector2(w + 8.0, 8.0)
+			cap.position = Vector2(x - 4.0, HORIZON - 8.0)
+			node.add_child(cap)
+	_layers.append({
+		"node": node,
+		"scale": scale,
+		"drift": 0.0,
+		"pattern": PROC_PATTERN,
+		"offset": 0.0,
+		"camera_x": 0.0,
+	})
+
 ## Chamado todo frame com a posição X da câmera: desloca as camadas (parallax).
 func update_scroll(camera_x: float) -> void:
 	for l in _layers:
