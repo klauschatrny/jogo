@@ -128,13 +128,17 @@ const SPAWN_EXCLUSION := 180.0  # zona inicial (à esquerda) sem inimigos ao com
 const L1_NECRO_ONLY := false    # TESTE: andar 1 só com o necromante (sem horda/heavies)
 const BOSS_ROOM_W := 640.0     # arena de boss do GRAFO (parkado): uma tela fechada (base 640×360)
 # Andar de boss da TORRE (roguelite): corredor LONGO, silencioso, com a ARENA (uma tela) NO FIM.
-# O player entra à esquerda e caminha até a arena; ao cruzar BOSS_REVEAL_X o boss é revelado, a
-# câmera TRAVA na janela [BOSS_ARENA_LEFT, +640] e paredes o confinam. A porta de avanço fica ALÉM
-# da arena (não aparece na luta). REVEAL_X = centro da arena, para travar a câmera SEM salto.
-const BOSS_TOWER_W := 1680.0
-const BOSS_ARENA_LEFT := 900.0
-const BOSS_ARENA_W := 640.0
-const BOSS_REVEAL_X := 1220.0   # = BOSS_ARENA_LEFT + BOSS_ARENA_W/2
+# O player entra à esquerda e caminha até revelar o boss; ali ele PARA e LUTA (não recua mais). O
+# boss cai BOSS_FIGHT_GAP à direita dele, e a câmera — que vinha centrada no player — dá um MOVEOVER
+# à direita até BOSS_ARENA_CENTER (o ponto médio player↔boss) e TRAVA ali, enquadrando os dois já na
+# posição exata em que a luta começa (sem salto/reposição depois da cutscene). Paredes confinam a
+# janela [CENTER±320]; a porta de avanço fica ALÉM dela (não aparece na luta).
+const BOSS_TOWER_W := 1760.0
+const BOSS_ARENA_W := 640.0        # a arena de luta tem exatamente UMA tela de largura
+const BOSS_REVEAL_X := 1220.0      # o player revela o boss AQUI e luta daqui (não recua mais)
+const BOSS_FIGHT_GAP := 200.0      # o boss cai/luta este tanto à DIREITA do player
+const BOSS_ARENA_CENTER := BOSS_REVEAL_X + BOSS_FIGHT_GAP * 0.5   # centro travado da câmera na luta
+const BOSS_REVEAL_PAN := 0.6       # duração do "moveover" da câmera à direita ao revelar o boss
 const DOOR_REACH := 30.0       # distância para "entrar" na porta / abrir o baú (base 640×360)
 const FADE_TIME := 0.35
 const DEATH_FADE_OUT := 0.45   # a tela apaga assim que ele cai (o letreiro entra junto)
@@ -2390,10 +2394,11 @@ func _start_boss_tower(hazards: Array) -> void:
 	Music.stop()                     # SILÊNCIO até revelar o boss (a ambience da torre entra depois)
 	_phase = "boss_approach"
 
-## Cruzou BOSS_REVEAL_X: trava a câmera na arena, confina o player e revela o boss (cutscene na 1ª
-## vez, já de pé na retentativa). O REVEAL_X é o CENTRO da arena, então a trava não dá salto.
+## Cruzou BOSS_REVEAL_X: a câmera dá um MOVEOVER à direita (do player até BOSS_ARENA_CENTER) e TRAVA
+## ali, confina o player com paredes e revela o boss (cutscene na 1ª vez, já de pé na retentativa).
+## O pan não é aguardado (roda em paralelo à queda do boss) e termina bem antes de a luta começar.
 func _reveal_boss() -> void:
-	_camera.lock_arena(BOSS_ARENA_LEFT)
+	_camera.pan_and_lock(BOSS_ARENA_CENTER, BOSS_REVEAL_PAN)
 	_add_arena_walls()
 	if _run.boss_seen(_current_boss_id):
 		_begin_boss_retry()
@@ -2405,7 +2410,7 @@ func _reveal_boss() -> void:
 ## nem alcançarem a porta antes da hora. Removidas ao vencer (ver _remove_arena_walls).
 func _add_arena_walls() -> void:
 	_remove_arena_walls()
-	for wx in [BOSS_ARENA_LEFT, BOSS_ARENA_LEFT + BOSS_ARENA_W]:
+	for wx in [BOSS_ARENA_CENTER - BOSS_ARENA_W * 0.5, BOSS_ARENA_CENTER + BOSS_ARENA_W * 0.5]:
 		var wall := StaticBody2D.new()
 		wall.collision_layer = 4     # mesma camada do chão/paredes: barra player e boss
 		wall.collision_mask = 0
@@ -3552,12 +3557,13 @@ func _boss_spawn_pos() -> Vector2:
 	# Torre: o boss fica na ARENA travada (à direita dela, mas dentro da janela da câmera). Grafo:
 	# o velho "perto da parede direita" da tela única.
 	if _roguelite:
-		return Vector2(BOSS_ARENA_LEFT + 480.0, GROUND_Y - 60.0)
+		return Vector2(BOSS_REVEAL_X + BOSS_FIGHT_GAP, GROUND_Y - 60.0)
 	return Vector2(_arena_width - 120.0, GROUND_Y - 60.0)
 
-## Onde o player fica ao começar a luta do boss: na arena (torre) ou no começo da tela (grafo).
+## Onde o player fica ao começar a luta do boss: onde REVELOU o boss (torre — não recua, casando com
+## a cutscene) ou no começo da tela (grafo).
 func _boss_fight_player_x() -> float:
-	return (BOSS_ARENA_LEFT + 120.0) if _roguelite else PLAYER_START_X
+	return BOSS_REVEAL_X if _roguelite else PLAYER_START_X
 
 ## Barra de boss (rodapé): visível só na fase do boss, com o HP atual. Some ao sair da luta.
 func _update_boss_bar() -> void:
@@ -3672,6 +3678,8 @@ func _debug_next_room() -> void:
 				_player_view.frozen = false
 		if _phase == "tutorial":
 			_begin_dungeon()
+		elif _phase == "estrada":
+			_begin_camp()
 		elif _phase == "downtown":
 			_begin_tower()
 		else:

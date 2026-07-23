@@ -52,6 +52,26 @@ func lock_arena(left_x: float) -> void:
 	limit_bottom = int(SCREEN_H)
 	_follow_y = false
 
+## Igual ao lock_arena, mas com um MOVEOVER suave: a câmera larga o player e DESLIZA até center_x
+## (tipicamente à direita, para enquadrar o boss que cai) ao longo de `duration`, e só ENTÃO fixa os
+## limites da arena (janela de uma tela centrada em center_x). Fixar os limites antes do tween daria
+## um salto — o clamp puxaria a câmera de imediato; por isso os limites entram no fim. Assíncrona:
+## quem chama não precisa aguardar (o pan corre em paralelo à cutscene). Enquanto desliza, follow_target
+## fica solto para o _process não brigar com o tween; volta a seguir ao travar (os limites o prendem).
+func pan_and_lock(center_x: float, duration: float) -> void:
+	var seguido := follow_target
+	follow_target = null
+	_follow_y = false
+	var tw := create_tween()
+	tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(self, "global_position:x", center_x, duration)
+	await tw.finished
+	limit_left = int(center_x - SCREEN_W * 0.5)
+	limit_right = int(center_x + SCREEN_W * 0.5)
+	limit_top = 0
+	limit_bottom = int(SCREEN_H)
+	follow_target = seguido
+
 func _process(delta: float) -> void:
 	# Follow horizontal suave, empurrado à frente do player na direção do movimento.
 	# O look-ahead corrige o "atraso" da suavização, mantendo à vista o que vem pela frente.
