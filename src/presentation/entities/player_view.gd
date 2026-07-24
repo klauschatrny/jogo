@@ -17,6 +17,7 @@ const JUMP_VELOCITY := -460.0      # fallback: sobrescrito por _jump_velocity, a
 const DODGE_SPEED := 400.0        # 400 × DODGE_TIME (0.20s) = 80px = 5 larguras do modelo (box_w 16)
 const DODGE_TIME := 0.20          # dash + i-frames: invencibilidade de 200 ms a partir do frame 0
 const DODGE_COOLDOWN := 0.4       # tempo mínimo entre uma esquiva e a próxima
+const HURT_IFRAME := 0.3          # invencibilidade CURTA logo após tomar um hit (evita ser trucidado em cadeia)
 const POGO_BOUNCE := -380.0      # impulso pra cima ao acertar um golpe pra baixo no ar
 const COMBO_GRACE := 0.28        # folga sobre o cooldown do golpe para encadear o combo
 const COMBO_MAX := 3             # combo de 3 golpes (0, 1, 2=finisher)
@@ -41,6 +42,7 @@ var _pending_step := 0              # passo do combo do golpe pendente (define f
 var _attack_move_lock := 0.0        # trava a locomoção (fica parado) enquanto a anim de ataque não termina
 var _dodge_time := 0.0              # >0 enquanto esquiva (concede i-frames)
 var _dodge_cd := 0.0
+var _hurt_iframe := 0.0            # >0 = invencível logo após um hit (i-frames de HURT_IFRAME)
 var _dodge_buffered := false       # intenção de esquiva apertada durante o cooldown (1 comando só)
 var _dodge_dir := Vector2.RIGHT    # direção do dash (input atual, ou facing)
 var _combo := 0                    # passo atual do combo (0..COMBO_MAX-1)
@@ -153,6 +155,7 @@ func _physics_process(delta: float) -> void:
 
 	_attack_cd = maxf(0.0, _attack_cd - delta)
 	_dodge_cd = maxf(0.0, _dodge_cd - delta)
+	_hurt_iframe = maxf(0.0, _hurt_iframe - delta)
 	_anim_lock = maxf(0.0, _anim_lock - delta)
 	_attack_move_lock = maxf(0.0, _attack_move_lock - delta)
 	_combo_timer = maxf(0.0, _combo_timer - delta)
@@ -283,6 +286,7 @@ func _start_drink() -> void:
 	var amount := data.drink_flask()
 	if amount <= 0:
 		return
+	Sfx.play("flask_heal")          # som do gole junto com o INÍCIO da animação (sincronia)
 	_drink_heal = amount
 	_drink_time = _drink_dur
 	_hit_pending = false            # cancela qualquer golpe pendente
@@ -498,34 +502,43 @@ func _current_attack_dir() -> Vector2:
 		return Vector2.DOWN
 	return _facing
 
-## Chamado pelo EnemyView quando o inimigo acerta o jogador.
-func apply_enemy_hit(attacker_stats: StatBlock) -> void:
-	if god_mode or _dodge_time > 0.0:   # i-frames durante a esquiva
+## Chamado pelo EnemyView quando o inimigo acerta o jogador. `is_magic` = golpe MÁGICO (só o
+## Necromante): mitigado pela magic_resist em vez da armadura física.
+func apply_enemy_hit(attacker_stats: StatBlock, is_magic := false) -> void:
+	if god_mode or _dodge_time > 0.0 or _hurt_iframe > 0.0:   # i-frames: esquiva OU logo após um hit
 		return
 	_interrupt_drink()                  # um golpe no meio do gole cancela a cura
-	var dmg := CombatResolver.enemy_hit(attacker_stats, data)
+	var dmg := CombatResolver.enemy_hit(attacker_stats, data, is_magic)
 	data.take_damage(int(round(dmg)))
-	if _sprite != null:
-		Juice.flash_modulate(_sprite)
-	else:
-		Juice.flash(_body, BASE_COLOR)
+	_hurt_iframe = HURT_IFRAME           # invencibilidade curta pós-hit
+	_hurt_flash()
 	_shake(0.15)
 
-## Dano FIXO (ignora defesa) — usado por habilidades (ex.: AoE do Necromante). Respeita a
-## esquiva (i-frames) e o god mode, igual ao golpe comum.
+## Dano FIXO — usado por habilidades (ex.: AoE do Necromante, rocha/onda do Ogro). Respeita a
+## esquiva (i-frames) e o god mode, igual ao golpe comum. Físico fixo IGNORA armadura de propósito
+## (é o punish garantido); `is_magic` (a AoE do Necromante) passa pela magic_resist.
 ## Retorna true se o dano conectou; false se foi ignorado (esquiva/god) — deixa quem chama
 ## (ex.: a rocha do ogro) saber se deve sumir ou passar reto pelo player.
-func apply_flat_damage(amount: int) -> bool:
-	if god_mode or _dodge_time > 0.0:
+func apply_flat_damage(amount: int, is_magic := false) -> bool:
+	if god_mode or _dodge_time > 0.0 or _hurt_iframe > 0.0:
 		return false
 	_interrupt_drink()                  # dano fixo (ex.: rocha do ogro) também corta o gole
-	data.take_damage(amount)
-	if _sprite != null:
-		Juice.flash_modulate(_sprite)
-	else:
-		Juice.flash(_body, BASE_COLOR)
+	var final := CombatResolver.mitigate_magic_flat(amount, data.stats) if is_magic else amount
+	data.take_damage(final)
+	_hurt_iframe = HURT_IFRAME           # invencibilidade curta pós-hit
+	_hurt_flash()
 	_shake(0.25)
 	return true
+
+## Feedback de dano: pisca o MODELO de branco (arte via shader que lava a silhueta; placeholder via
+## flash de cor) e solta um grunhido de DOR (shuffle bag — não repete até todos tocarem). O flash de
+## tela VERMELHO é do floor_scene (escuta EventBus.player_damaged).
+func _hurt_flash() -> void:
+	if _sprite != null:
+		Juice.flash_white(_sprite, 0.85, 0.12)
+	else:
+		Juice.flash(_body, BASE_COLOR, 0.12)
+	Sfx.play_random("player_pain")
 
 ## Morte INSTANTÂNEA — cair num poço. Ao contrário de todo o resto do dano, ignora os i-frames da
 ## esquiva: rolar não salva ninguém de um buraco (você já está lá dentro; a esquiva não é um pulo).

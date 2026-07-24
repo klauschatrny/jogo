@@ -1,0 +1,14 @@
+{
+  "id": "aug_flask_charge",
+  "name": "Frasco Reforçado",
+  "tier": "RELIC",
+  "category": "UTILITY",
+  "description": "+1 carga do frasco de cura.",
+  "weight": 24,
+  "stackable": true,
+  "max_stacks": 3,
+  "icon": "flask",
+  "effects": [
+    { "stat": "flask_charges", "operation": "ADD", "value": 1 }
+  ]
+}

@@ -4,7 +4,7 @@
   "archetype": "MELEE",
   "rank": "NORMAL",
   "aggro_range": 200,
-  "base_stats": { "max_hp": 30, "attack": 7, "defense": 1, "move_speed": 60 },
+  "base_stats": { "max_hp": 30, "attack": 12.5, "defense": 1, "move_speed": 60 },
   "attack_range": 40,
   "windup": 0.2,
   "attack_cooldown": 1.0,

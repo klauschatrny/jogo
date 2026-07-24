@@ -193,7 +193,7 @@ func _resolve_aoe() -> void:
 		var nx := rel.x / AOE_HALF_W
 		var ny := rel.y / AOE_HALF_H
 		if nx * nx + ny * ny <= 1.0 and target.has_method("apply_flat_damage"):
-			target.apply_flat_damage(AOE_DAMAGE)
+			target.apply_flat_damage(AOE_DAMAGE, true)   # dano MÁGICO (mitigado pela magic_resist)
 	Juice.burst(get_parent(), global_position, Palette.BOSS, 14, 130.0)
 
 ## Área roxa brilhante no chão (elipse) durante o windup, pulsando.

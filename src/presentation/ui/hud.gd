@@ -74,9 +74,10 @@ func _ready() -> void:
 	_stam_bar.size = Vector2(BAR_W0, STAM_H)
 	add_child(_stam_bar)
 
-	# Almas: a moeda de meta-progressão. Precisa estar SEMPRE visível — é o que o mercado do
-	# Downtown gasta, e ver a pilha crescer é metade da motivação de cada andar.
-	_build_souls()
+	# Almas REMOVIDAS do jogo: a progressão agora vem das cartas de augment ganhas ao vencer bosses,
+	# não de uma moeda. O display de almas fica desligado (o _build_souls/_refresh seguem no arquivo,
+	# dormentes — _souls null, o _refresh já é null-safe).
+	# _build_souls()
 
 	# Frasco de cura: a única cura sob demanda. Precisa estar à vista para virar decisão ("bebo a
 	# última carga agora?"). Ícone visual (estilo Estus) com o número da carga atual embaixo.

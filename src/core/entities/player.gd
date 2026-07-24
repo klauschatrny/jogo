@@ -61,9 +61,21 @@ static func create_new(player_name: String, chosen_weapon: Weapon) -> Player:
 
 # --- Frasco de cura (o Estus) ---
 
-## Cargas por descanso: a base (balance.json) + os cacos comprados no Mercador.
+## Soma os efeitos ADD de um stat que o StatResolver NÃO conhece (não vive no StatBlock): fôlego
+## (max_stamina), cargas de frasco (flask_charges) e potência da cura (flask_heal_pct). Esses augments
+## são interpretados AQUI — ver flask_capacity / _resize_stamina / flask_heal_amount.
+func augment_bonus(stat: String) -> float:
+	var total := 0.0
+	for aug in augments:
+		for e in aug.effects:
+			if e.stat == stat and e.operation == "ADD":
+				total += e.value
+	return total
+
+## Cargas por descanso: a base (balance.json) + os cacos comprados no Mercador + augments de +frasco.
 func flask_capacity() -> int:
-	return int(BalanceConfig.get_value("flask", "CHARGES", 3)) + flask_bonus
+	return int(BalanceConfig.get_value("flask", "CHARGES", 3)) + flask_bonus \
+		+ int(round(augment_bonus("flask_charges")))
 
 ## Quantos cacos ainda se pode comprar (FLASK_MAX_BONUS no balance.json limita).
 func can_buy_flask_shard() -> bool:
@@ -85,9 +97,11 @@ func buy_flask_shard() -> bool:
 	flask_charges = mini(flask_charges + 1, flask_max)
 	return true
 
-## Quanto UM gole cura: uma fração da vida MÁXIMA, então subir Vigor também engorda a cura.
+## Quanto UM gole cura: uma fração da vida MÁXIMA (então subir Vigor engorda a cura), mais o que os
+## augments de "cura por frasco" (flask_heal_pct) somam à fração.
 func flask_heal_amount() -> int:
-	return int(round(stats.max_hp * float(BalanceConfig.get_value("flask", "HEAL_FRACTION", 0.4))))
+	var frac := float(BalanceConfig.get_value("flask", "HEAL_FRACTION", 0.4)) + augment_bonus("flask_heal_pct")
+	return int(round(stats.max_hp * frac))
 
 ## Enche o frasco (fogueira / renascer).
 func refill_flask() -> void:
@@ -162,6 +176,7 @@ func base_block() -> StatBlock:
 	b.attack_speed = 1.0
 	b.move_speed = 110.0
 	b.damage_reduction = 0.0
+	b.magic_resist = 0.0
 	b.lifesteal = 0.0
 	b.luck = 0
 	b.damage_mult = 1.0
@@ -185,7 +200,8 @@ func _resize_stamina() -> void:
 	if stamina == null:
 		return
 	var novo_max := float(BalanceConfig.stamina.get("MAX", 100.0)) \
-		+ Attributes.bonus(attributes, "stamina_max")
+		+ Attributes.bonus(attributes, "stamina_max") \
+		+ augment_bonus("max_stamina")
 	var ganho := novo_max - stamina.maximum
 	stamina.maximum = novo_max
 	stamina.current = clampf(stamina.current + maxf(ganho, 0.0), 0.0, novo_max)
@@ -195,6 +211,14 @@ func add_augment(aug: Augment) -> void:
 	if aug.category == "WEAPON" and weapon != null:   # §3.7: augment de arma sobe o nível
 		weapon.upgrade()
 	recalculate_stats()
+	# Frasco: um augment de +carga aumenta a capacidade na hora e a carga nova entra CHEIA (como um
+	# caco comprado). Só faz sentido se o jogador já tem o frasco.
+	if has_flask:
+		var novo_cap := flask_capacity()
+		if novo_cap > flask_max:
+			flask_charges += novo_cap - flask_max
+		flask_max = novo_cap
+		flask_charges = mini(flask_charges, flask_max)
 	EventBus.augment_chosen.emit(aug)
 
 ## Aplica dano já final (mitigação feita no CombatResolver). Retorna o dano efetivo.

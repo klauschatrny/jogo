@@ -1,0 +1,14 @@
+{
+  "id": "aug_flask_potency",
+  "name": "Elixir Concentrado",
+  "tier": "RELIC",
+  "category": "UTILITY",
+  "description": "+10% de cura por gole do frasco.",
+  "weight": 24,
+  "stackable": true,
+  "max_stacks": 3,
+  "icon": "flask_cross",
+  "effects": [
+    { "stat": "flask_heal_pct", "operation": "ADD", "value": 0.10 }
+  ]
+}

@@ -32,11 +32,20 @@ static func damage_reduction_from_defense(defense: float) -> float:
 	var k := float(BalanceConfig.defense_curve.get("DEFENSE_K", 100.0))
 	return defense / (defense + k)
 
-## Redução total de um alvo: damage_reduction explícita + a derivada da defesa flat,
+## Redução total de dano FÍSICO de um alvo: damage_reduction explícita + a derivada da defesa flat,
 ## limitada a 95% para nunca zerar o dano.
 static func total_reduction(target: StatBlock) -> float:
 	var dr := target.damage_reduction + damage_reduction_from_defense(float(target.defense))
 	return clampf(dr, 0.0, 0.95)
+
+## Redução de dano MÁGICO de um alvo: só a magic_resist (a defesa flat é armadura FÍSICA, não conta),
+## limitada a 95%. É o que o augment "Manto Mágico" sobe.
+static func total_magic_reduction(target: StatBlock) -> float:
+	return clampf(target.magic_resist, 0.0, 0.95)
+
+## Redução do tipo certo conforme `is_magic`: mágica (magic_resist) ou física (defesa + redução).
+static func reduction_for(target: StatBlock, is_magic: bool) -> float:
+	return total_magic_reduction(target) if is_magic else total_reduction(target)
 
 # ---------------------------------------------------------------------------
 # Conveniência de alto nível — operam sobre as entidades do Core.
@@ -50,9 +59,15 @@ static func player_hit(player: Player, target: StatBlock) -> float:
 	var pct := player.stats.damage_mult - 1.0
 	return hit_damage(atk, wdmg, pct, total_reduction(target))
 
-## Dano de um golpe de um inimigo (StatBlock atacante) contra o jogador.
-static func enemy_hit(attacker: StatBlock, player: Player) -> float:
-	return hit_damage(float(attacker.attack), 0.0, 0.0, total_reduction(player.stats))
+## Dano de um golpe de um inimigo (StatBlock atacante) contra o jogador. `is_magic` escolhe a
+## mitigação: mágica (magic_resist) para o Necromante, física (defesa/redução) para o resto.
+static func enemy_hit(attacker: StatBlock, player: Player, is_magic := false) -> float:
+	return hit_damage(float(attacker.attack), 0.0, 0.0, reduction_for(player.stats, is_magic))
+
+## Aplica a mitigação mágica a um dano FIXO (ex.: a AoE do Necromante), arredondando. Dano físico
+## fixo não passa por aqui — ele ignora armadura de propósito (ver apply_flat_damage).
+static func mitigate_magic_flat(amount: int, target: StatBlock) -> int:
+	return int(round(float(amount) * (1.0 - total_magic_reduction(target))))
 
 ## Cura por roubo de vida (§1.3): fração do dano causado convertida em HP, arredondada.
 static func lifesteal_heal(lifesteal: float, damage_dealt: int) -> int:

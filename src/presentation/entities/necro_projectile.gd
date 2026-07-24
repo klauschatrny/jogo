@@ -61,7 +61,7 @@ func _physics_process(delta: float) -> void:
 	# Ao acertar (ou sobrepor), o projétil SOME. Se o player sair do caminho, ele segue voando.
 	if is_instance_valid(_target) and _overlaps_player():
 		if _target.has_method("apply_enemy_hit"):
-			_target.apply_enemy_hit(_stats)
+			_target.apply_enemy_hit(_stats, true)   # dano MÁGICO (mitigado pela magic_resist)
 		queue_free()
 
 func _overlaps_player() -> bool:

@@ -133,6 +133,32 @@ static func afterimage(parent: Node, pos: Vector2, size: Vector2, color: Color, 
 	tw.tween_property(g, "modulate:a", 0.0, dur)
 	tw.tween_callback(g.queue_free)
 
+## Motes de CURA: partículas que SOBEM e se apagam (energia vital voltando), em vez do estouro
+## radial do `burst`. Distingue a cura do cavaleiro (verde) do gole do frasco (laranja radial).
+## Auto-libera quando o one_shot termina.
+static func heal_motes(parent: Node, pos: Vector2, color: Color, amount := 20) -> void:
+	if parent == null:
+		return
+	var p := CPUParticles2D.new()
+	p.emitting = false
+	p.one_shot = true
+	p.explosiveness = 0.6
+	p.amount = amount
+	p.lifetime = 0.75
+	p.direction = Vector2.UP
+	p.spread = 38.0
+	p.initial_velocity_min = 45.0
+	p.initial_velocity_max = 90.0
+	p.gravity = Vector2(0.0, -55.0)     # sobem: recuperação, não impacto
+	p.scale_amount_min = 1.5
+	p.scale_amount_max = 3.0
+	p.color = color
+	p.z_index = 50
+	p.finished.connect(p.queue_free)
+	parent.add_child(p)
+	p.global_position = pos
+	p.emitting = true
+
 ## Explosão curta de partículas no ponto do impacto/morte. Auto-libera após a vida útil.
 static func burst(parent: Node, pos: Vector2, color: Color, amount := 8, speed := 90.0) -> void:
 	if parent == null:

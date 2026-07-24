@@ -54,6 +54,31 @@ func test_enemy_hit_usa_reducao_do_player() -> void:
 	var inimigo := StatBlock.from_dict({"attack": 8})
 	assert_almost(CombatResolver.enemy_hit(inimigo, p), 8.0)
 
+# --- Dano MÁGICO vs FÍSICO (Necromante x resto) ---
+
+func test_magic_reduction_ignora_defesa_flat() -> void:
+	# A defesa é armadura FÍSICA: enorme, mas não conta para a magia. Só a magic_resist.
+	var s := StatBlock.from_dict({"magic_resist": 0.3, "defense": 1000000})
+	assert_almost(CombatResolver.total_magic_reduction(s), 0.3)
+
+func test_enemy_hit_magico_usa_magic_resist() -> void:
+	var p := Player.create_new("X", Weapon.from_dict({"base_damage": 15}))
+	p.stats.magic_resist = 0.5
+	var inimigo := StatBlock.from_dict({"attack": 20})
+	assert_almost(CombatResolver.enemy_hit(inimigo, p, true), 10.0, 0.01, "magia reduz por magic_resist")
+	assert_almost(CombatResolver.enemy_hit(inimigo, p, false), 20.0, 0.01, "físico não é tocado pela magic_resist")
+
+func test_armadura_fisica_nao_reduz_magia() -> void:
+	var p := Player.create_new("X", Weapon.from_dict({"base_damage": 15}))
+	p.stats.damage_reduction = 0.5
+	var inimigo := StatBlock.from_dict({"attack": 20})
+	assert_almost(CombatResolver.enemy_hit(inimigo, p, true), 20.0, 0.01, "magia ignora armadura física")
+	assert_almost(CombatResolver.enemy_hit(inimigo, p, false), 10.0, 0.01, "físico é reduzido")
+
+func test_mitigate_magic_flat_arredonda() -> void:
+	var s := StatBlock.from_dict({"magic_resist": 0.25})
+	assert_eq(CombatResolver.mitigate_magic_flat(40, s), 30)   # 40 * (1 - 0.25)
+
 # --- Roubo de vida (lifesteal) ---
 
 func test_lifesteal_cura_fracao_do_dano() -> void:

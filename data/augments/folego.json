@@ -1,0 +1,14 @@
+{
+  "id": "aug_folego",
+  "name": "Fôlego",
+  "tier": "FRAGMENT",
+  "category": "UTILITY",
+  "description": "+20 de stamina máxima.",
+  "weight": 90,
+  "stackable": true,
+  "max_stacks": 5,
+  "icon": "bolt",
+  "effects": [
+    { "stat": "max_stamina", "operation": "ADD", "value": 20 }
+  ]
+}

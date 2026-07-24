@@ -183,6 +183,31 @@
       ],
       "volume_db": -5.0
     },
+    "player_pain": {
+      "_comment": "Grunhidos de DOR do player ao tomar hit (player_view._hurt_flash). Tocados por Sfx.play_random — sorteio SEM reposicao: uma variacao so repete depois que todas as 5 tocaram (igual aos grunts do cavaleiro).",
+      "streams": [
+        "res://assets/audio/sfx/player_pain_grunt1.mp3",
+        "res://assets/audio/sfx/player_pain_grunt2.mp3",
+        "res://assets/audio/sfx/player_pain_grunt3.mp3",
+        "res://assets/audio/sfx/player_pain_grunt4.mp3",
+        "res://assets/audio/sfx/player_pain_grunt5.mp3"
+      ],
+      "volume_db": -12.0
+    },
+    "cavaleiro_healing": {
+      "_comment": "Cura do Sir Big T. ao player ferido (floor_scene._heal_from_knight). Toca junto do efeito verde de recuperacao, quando a fala de cura e dispensada.",
+      "streams": [
+        "res://assets/audio/sfx/cavaleiro_healing.mp3"
+      ],
+      "volume_db": -10.0
+    },
+    "flask_heal": {
+      "_comment": "Cura do Frasco (Estus) do player: toca no INICIO do gole, junto com a animacao de beber (player_view._start_drink), para o som acompanhar o gesto. A cura em si so cai no fim.",
+      "streams": [
+        "res://assets/audio/sfx/healing_poting_sfx.mp3"
+      ],
+      "volume_db": -8.0
+    },
     "ambience_wind": {
       "_comment": "Vento nas árvores: cama de ambiência em LOOP das áreas abertas, ligada junto com a música de ambiência (Sfx.ambient). Corte em fade curto ao entrar na arena/menu.",
       "streams": [

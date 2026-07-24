@@ -1,0 +1,14 @@
+{
+  "id": "aug_magic_cloak",
+  "name": "Manto Mágico",
+  "tier": "RELIC",
+  "category": "DEFENSE",
+  "description": "+12% de redução de dano mágico.",
+  "weight": 30,
+  "stackable": true,
+  "max_stacks": 5,
+  "icon": "cloak",
+  "effects": [
+    { "stat": "magic_resist", "operation": "ADD", "value": 0.12 }
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "_comment": "A run como SEQUENCIA de nos tipados (ver src/core/run/). 'pattern' fixa a ordem dos tipos; o CONTEUDO de cada no (qual boss/escadaria) e sorteado sem reposicao pela seed. TEMPORARIO (2026-07): a torre tem UM andar so, o Ogro. Vence-lo termina a run (volta ao Downtown) — NAO da para progredir alem dele ate os proximos bosses terem stats/arte. Os outros 7 bosses (com JSON pronto em data/bosses/) e o padrao completo de 10 andares (BOSS/REWARD/CLIMB x10) estao guardados em '_bosses_futuros'/'_pattern_completo' abaixo — e so mover de volta para 'bosses'/'pattern'. So o Ogro tem arte/comportamento proprios (OgreView); os demais caem num BossView generico.",
-  "pattern": ["BOSS"],
+  "pattern": ["BOSS", "REWARD"],
   "reward_cards": 3,
   "bosses": ["bss_ogre"],
   "climbs": ["escadaria_a", "escadaria_b"],

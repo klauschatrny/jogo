@@ -12,6 +12,7 @@ var category: String = "OFFENSE"    # OFFENSE | DEFENSE | UTILITY | WEAPON
 var weight: int = 100
 var stackable: bool = false
 var max_stacks: int = 1
+var icon: String = ""               # chave do ícone ilustrativo (desenhado pelo CardSelect)
 var effects: Array = []             # Array[AugmentEffect]
 
 static func from_dict(d: Dictionary) -> Augment:
@@ -24,6 +25,7 @@ static func from_dict(d: Dictionary) -> Augment:
 	a.weight = int(d.get("weight", 100))
 	a.stackable = bool(d.get("stackable", false))
 	a.max_stacks = int(d.get("max_stacks", 1))
+	a.icon = String(d.get("icon", ""))
 	var effs: Array = d.get("effects", [])
 	for ed in effs:
 		a.effects.append(AugmentEffect.from_dict(ed))

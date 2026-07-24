@@ -202,8 +202,9 @@ func _begin_charge() -> void:
 	_charge_speed = CHARGE_SPEED_MULT * _player_move_speed()
 	_charge_step_t = 0.0     # a 1ª passada sai já no primeiro frame da corrida
 
-## Corre cegamente na direção travada; causa dano (50) UMA vez quando a hitbox toca a do player,
-## mas SEM parar por isso — segue atravessando. Só encerra ao bater na parede ou no tempo máximo.
+## Corre cegamente na direção travada; o dano da investida é SÓ por COLISÃO — atropela o player (a
+## hitbox dele toca a do ogro) UMA vez, sem golpe/slash: é um ATROPELAMENTO, não um ataque. Segue
+## atravessando; só encerra ao bater na parede ou no tempo máximo.
 func _tick_charge(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y += GRAVITY * delta
@@ -212,12 +213,13 @@ func _tick_charge(delta: float) -> void:
 	_update_sprite(_charge_dir, true)
 	_charge_time += delta
 	_tick_charge_steps(delta)
+	# Dano do atropelo UMA VEZ por investida: só trava (_charge_hit) quando o golpe REALMENTE conecta.
+	# Se o player estava invencível (esquiva/i-frames), a investida ainda pode acertá-lo mais adiante —
+	# mas, uma vez que o dano cai, não cai de novo nesta mesma investida.
 	if not _charge_hit and _overlaps_player():
-		_charge_hit = true
-		if target.has_method("apply_flat_damage"):
-			target.apply_flat_damage(CHARGE_DAMAGE)
-		_spawn_attack_fx(_charge_dir)
-		Juice.hit_stop(get_tree(), 0.05)
+		if target.has_method("apply_flat_damage") and target.apply_flat_damage(CHARGE_DAMAGE):
+			_charge_hit = true
+			Juice.hit_stop(get_tree(), 0.05)
 	# A investida acaba de dois jeitos: se espatifando na PAREDE (tem som e tremor) ou esgotando o
 	# tempo no vazio (não bateu em nada — nada de som de impacto).
 	if is_on_wall():

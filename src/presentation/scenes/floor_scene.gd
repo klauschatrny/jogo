@@ -40,6 +40,7 @@ var _guard: Array = []               # a GUARDA do refúgio: esqueletos do run-b
 var _ladders: Array = []             # escadas do nível (o PlayerView as consulta para escalar)
 var _npc: NpcView                    # o Sir Big T., ao lado da fogueira de renascer do Downtown
 var _knight_seq := false             # a sequência de falas base está ativa (avança a cada INTERAGIR)?
+var _knight_on_heal_line := false    # a fala de cura (interposta entre a 1ª e a 2ª base) está na tela?
 var _knight_card: CanvasLayer        # o card central "Frasco adquirido"
 var _knight_card_open := false       # o card está aberto (pausa a sequência até confirmar)
 var _bloodstain: BloodstainView      # a marca de sangue na cena, quando presente (passiva, recolhe ao tocar)
@@ -89,6 +90,8 @@ var _corridor_length := 1920.0  # base 640×360 (3 telas de largura)
 var _arena_width := 1920.0      # largura do ambiente atual (corredor ou sala do boss)
 var _env: Node2D               # container do cenário atual (reconstruído por andar/sala)
 var _fade: ColorRect           # overlay de fade das transições
+var _hurt_screen: ColorRect    # flash VERMELHO de tela ao tomar dano (ver _on_player_damaged)
+var _hurt_screen_tween: Tween
 var _door: Node2D              # porta ativa (nula quando não há)
 var _door_x := 0.0
 # As DUAS portas da arena do chefe: atrás (voltar ao nível anterior) e adiante (o próximo nível).
@@ -98,6 +101,7 @@ var _boss_fogs: Array = []           # FogGateViews sobre as portas (só durante
 var _boss_door_left_x := 0.0
 var _boss_door_right_x := 0.0
 var _boss_arena_walls: Array = []    # paredes que confinam o player na arena durante a luta (torre)
+var _treasure_chest: TreasureChestView   # baú da recompensa no trono ao fim da sala (nasce ao vencer)
 var _exit_door_x := 0.0              # saída LIVRE no fim do nível (a névoa já se dissipou com o chefe)
 var _exit_door_y := 0.0              # y da saída quando ela NÃO está no chão (a escadaria; pode ser NEGATIVO)
 var _exit_door_vertical := false     # a saída exige altura? (só a escadaria liga; um valor-sentinela
@@ -296,6 +300,7 @@ func _ready() -> void:
 	_hud.set_run(_run)                                   # liga o contador de mortes (playtest)
 
 	EventBus.player_died.connect(_on_player_died)
+	EventBus.player_damaged.connect(_on_player_damaged)
 
 	if _roguelite:
 		# A run é montada por RunGenerator a partir do run.json e da seed da run (determinística).
@@ -326,7 +331,7 @@ func _ready() -> void:
 ## `hazards` (a lista do nível) é lida AQUI porque os poços de espinho são TERRENO: o chão sai
 ## em lajes, com um vão em cada poço e uma laje mais funda fechando o fundo dele. Quem desenha
 ## o interior e cobra o dano é o HazardView (_spawn_hazards), depois.
-func _build_environment(width: float, is_boss_room: bool, hazards := [], tower_interior := false) -> void:
+func _build_environment(width: float, is_boss_room: bool, hazards := [], tower_interior := false, scatter := true, scatter_ruins := true) -> void:
 	if is_instance_valid(_env):
 		# ARRANCA da árvore agora, não só agenda. queue_free() só apaga no FIM do frame, e até lá o
 		# cenário velho continua rodando _process — inclusive os poços, cuja lista de sobreposição
@@ -348,6 +353,7 @@ func _build_environment(width: float, is_boss_room: bool, hazards := [], tower_i
 	_climb_sealed = false
 	_npc = null               # view era filha do _env (demolida); só solta a referência
 	_knight_seq = false       # a sequência de falas não sobrevive à remontagem do nível
+	_knight_on_heal_line = false
 	if is_instance_valid(_knight_card):
 		_knight_card.queue_free()
 	_knight_card = null
@@ -361,6 +367,7 @@ func _build_environment(width: float, is_boss_room: bool, hazards := [], tower_i
 	_shortcut_unlocks = false
 	_shortcut_to = {}
 	_bloodstain = null        # refeita por _spawn_bloodstain_if_here (filha do _env, já liberada)
+	_treasure_chest = null    # baú do trono: era filho do _env (demolido); nasce ao vencer o boss
 	_env = Node2D.new()
 	add_child(_env)
 
@@ -451,7 +458,10 @@ func _build_environment(width: float, is_boss_room: bool, hazards := [], tower_i
 			edge.z_index = -5
 			_env.add_child(edge)
 
-	_decorate_scenery(width, dim, tower_interior)   # enfeites de fundo (cosmético; temáticos na torre)
+	# Enfeites de fundo (cosmético; temáticos na torre). A vila os DISPENSA (scatter=false): ela tem a
+	# própria decoração, curada e viva — o scatter genérico (árvores mortas/ruínas) destoaria de um povoado.
+	if scatter:
+		_decorate_scenery(width, dim, tower_interior, scatter_ruins)
 	_camera.setup_corridor(width)
 
 ## Uma laje de chão de `a` a `b`, com o TOPO em `top` (o corpo desce 200px a partir dali).
@@ -500,6 +510,17 @@ func _add_fade_overlay() -> void:
 	_fade.set_anchors_preset(Control.PRESET_FULL_RECT)   # cobre o viewport (qualquer resolução)
 	_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	fl.add_child(_fade)
+
+	# Flash VERMELHO de dano: uma camada logo ABAIXO do fade (não é engolida pelo preto da morte).
+	# Fica transparente até um hit; _on_player_damaged o acende e apaga num tween curto.
+	var hl := CanvasLayer.new()
+	hl.layer = 90
+	add_child(hl)
+	_hurt_screen = ColorRect.new()
+	_hurt_screen.color = Color(0.75, 0.05, 0.06, 0.0)
+	_hurt_screen.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_hurt_screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hl.add_child(_hurt_screen)
 
 ## Porta no chão (parte do _env atual, some quando o cenário é reconstruído). Devolve o nó —
 ## quem chama decide o que ela é (a da vila vira `_door`; as da arena do chefe são livres).
@@ -610,6 +631,14 @@ func _spawn_hazards(list: Array) -> void:
 		hz.position = Vector2(float(item.get("x", 0.0)), GROUND_Y)
 		_env.add_child(hz)
 		hz.setup(def, float(item.get("width", 0.0)))
+
+## Descansar na fogueira do ACAMPAMENTO (roguelite): vida/stamina cheias, FRASCOS reabastecidos e o
+## ponto de retorno (respawn) fixado nela. `rest_at` faz tudo isso. NÃO abre menu algum — o antigo
+## painel de atributos saiu (era do fluxo do grafo/mercado). Só um estouro de brasa + um aviso curto.
+func _on_hub_fire_rested(bf: BonfireView) -> void:
+	_run.rest_at(_run.current_level, bf.pos_x)
+	Juice.burst(_env, bf.global_position + Vector2(0.0, -10.0), Color(1.0, 0.7, 0.25), 16, 95.0)
+	_show_tip("Você descansa: frascos reabastecidos, ponto de retorno aqui.")
 
 ## Descansou: vida e stamina cheias, esta fogueira vira o ponto de retorno da morte — e abre o
 ## painel de atributos, que é onde os pontos ganhos subindo de nível viram poder de verdade.
@@ -731,6 +760,9 @@ const KNIGHT_LOOP := [
 	"A luz há de prevalecer...",
 ]
 const KNIGHT_GIFT := 7            # depois desta fala (o "presente") entra o card do Frasco
+## Fala CONDICIONAL: só aparece se o player chega FERIDO ao cavaleiro, interposta entre a 1ª e a 2ª
+## fala base. Dizê-la restaura toda a vida (ver _knight_avancar / _heal_from_knight).
+const KNIGHT_HEAL_LINE := "Vejo que a estrada já lhe cobrou seu preço, deixe-me tratar dessas feridas."
 
 ## Falar com o Sir Big T. As falas BASE avançam UMA A CADA INTERAGIR (o indicador "[E] Avançar"
 ## anuncia); não correm mais sozinhas pelo tempo. Esgotadas, cada INTERAGIR mostra uma fala de loop.
@@ -761,6 +793,13 @@ func _refresh_knight_indicator() -> void:
 ## INTERAGIR durante a sequência: avança para a próxima fala. Na virada da fala do presente entra o
 ## CARD do Frasco (entrega + confirmação); a sequência só continua depois.
 func _knight_avancar() -> void:
+	# A fala de cura estava na tela: DISPENSÁ-LA (INTERAGIR) é o que APLICA a cura — só então o efeito
+	# verde entra e a sequência segue para a 2ª fala. (Deixá-la sumir sozinha também cura — ver _process.)
+	if _knight_on_heal_line:
+		_knight_on_heal_line = false
+		_heal_from_knight()
+		_avancar_fala_base()
+		return
 	# Acabou de exibir a fala do presente e o Frasco ainda não foi dado: o card entra AGORA e
 	# pausa a sequência. A confirmação (INTERAGIR) a retoma — ver _fechar_card_frasco.
 	if _run.knight_line == KNIGHT_GIFT and not _run.player.has_flask:
@@ -769,11 +808,38 @@ func _knight_avancar() -> void:
 		Juice.burst(_env, _npc.global_position + Vector2(0, -30), Color(1.0, 0.72, 0.28), 18, 120.0)
 		_abrir_card_frasco()
 		return
+	# Depois da 1ª fala base, se o player chegou FERIDO, o cavaleiro OFERECE a cura (só exibe a fala; a
+	# cura em si cai quando a fala é DISPENSADA — por E ou pelo tempo). A transição 0→1 só ocorre uma
+	# vez, então é natural que a oferta apareça no máximo uma vez por run.
+	if _run.knight_line == 0 and _player_wounded():
+		_knight_on_heal_line = true
+		_knight_say(KNIGHT_HEAL_LINE)
+		return
+	_avancar_fala_base()
+
+## Avança para a próxima fala base (ou encerra a sequência se esgotou). Fatorado porque a fala de
+## cura interposta também precisa deste passo depois de exibida.
+func _avancar_fala_base() -> void:
 	_run.knight_line += 1
 	if _run.knight_line >= KNIGHT_LINES.size():
 		_knight_seq = false             # fim das falas base; a última linger na tela e some sozinha
 		return
 	_knight_say(KNIGHT_LINES[_run.knight_line])
+
+## O player está ferido (abaixo da vida máxima)?
+func _player_wounded() -> bool:
+	var st := _run.player.stats
+	return st.current_hp < st.max_hp
+
+## Cura do cavaleiro: restaura TODA a vida e solta um efeito VERDE de recuperação (motes que sobem),
+## distinto de propósito do laranja radial do frasco. Só cosmético + o heal ao máximo.
+func _heal_from_knight() -> void:
+	_run.player.heal(_run.player.stats.max_hp)
+	Sfx.play("cavaleiro_healing")
+	if is_instance_valid(_player_view):
+		var pos := _player_view.global_position + Vector2(0.0, -_player_view.box_h * 0.25)
+		Juice.heal_motes(_env, pos, Color(0.42, 0.95, 0.48), 24)
+		Juice.burst(_env, pos, Color(0.60, 1.0, 0.60), 12, 80.0)   # um pop verde inicial
 
 ## O CARD central do Frasco: um painel no meio da tela que o jogador CONFIRMA (INTERAGIR) para
 ## fechar. Enquanto aberto, a sequência de falas fica pausada (o _process não a avança).
@@ -941,7 +1007,7 @@ func _start_tutorial() -> void:
 	_start_ambience(AMBIENCE_INTRO_FADE)   # entrada do jogo (após o Play): vento entra em fade lento
 
 	_clear_entities()          # morrer na vila a remonta: o boneco de treino não pode duplicar
-	_build_environment(TUTORIAL_LENGTH, false, _TUTORIAL_HAZARDS)
+	_build_environment(TUTORIAL_LENGTH, false, _TUTORIAL_HAZARDS, false, false)   # scatter=false: vila tem deco própria
 	_decorate_village()
 	# O player vai para o lugar dele ANTES de os poços existirem: uma armadilha criada em cima do
 	# corpo nasce "vendo" o player dentro dela, e o mataria de novo assim que ele renascesse.
@@ -1111,26 +1177,450 @@ func _update_tutorial_tips() -> void:
 			_show_tip(String(tips[i][1]), true)
 
 ## Casinhas simples ao fundo, só pra dar cara de vila (placeholder, sem arte).
+## A Vila de Zaktur — o povoado de partida, agora VIVO e povoado. Casas de enxaimel detalhadas (base de
+## pedra, viga aparente com escoras, porta, janelas ILUMINADAS ao anoitecer, telhado com beiral e uma
+## chaminé fumegando) e, ao redor, os sinais de gente: poço, barraca de feira, barris e caixotes,
+## lampiões acesos, arbustos, varais de bandeirolas, fardos de feno e um mural de avisos na entrada.
+## Tudo placeholder (ColorRect/Polygon2D/Line2D), sem colisão, DETERMINÍSTICO (RNG semeado — a vila fica
+## idêntica a cada visita). As CASAS vão ao fundo (z -6); os enfeites de rua à frente (DECO_Z). A vila
+## dispensa o scatter genérico (ver _build_environment): esta composição é curada, não aleatória.
 func _decorate_village() -> void:
-	for hx in [140.0, 700.0, 1120.0, 1500.0]:
-		var house := Node2D.new()
-		house.position = Vector2(hx, GROUND_Y)
-		house.z_index = -6                       # atrás do chão/entidades, à frente do fundo de bioma
-		var wall := ColorRect.new()
-		wall.color = Color(0.28, 0.26, 0.34)
-		wall.size = Vector2(70, 60)
-		wall.position = Vector2(-35, -60)
-		house.add_child(wall)
-		var roof := Polygon2D.new()
-		roof.color = Color(0.20, 0.16, 0.24)
-		roof.polygon = PackedVector2Array([Vector2(-42, -60), Vector2(42, -60), Vector2(0, -92)])
-		house.add_child(roof)
-		var win := ColorRect.new()
-		win.color = Color(0.85, 0.72, 0.35)
-		win.size = Vector2(14, 14)
-		win.position = Vector2(-7, -44)
-		house.add_child(win)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 424242            # semente fixa: a vila é sempre a mesma
+
+	for casa: Array in [[150.0, 0], [385.0, 2], [740.0, 1], [1160.0, 0], [1480.0, 2], [1730.0, 1]]:
+		var house := _deco_house(rng, int(casa[1]))
+		house.position = Vector2(float(casa[0]), GROUND_Y)
+		house.z_index = -6       # atrás do chão/entidades, à frente do fundo de bioma
 		_env.add_child(house)
+
+	# Enfeites de rua, espalhados À MÃO para uma vila com vida — evitando a faixa do boneco de treino
+	# (~980) e da porta ao fim (~1880). [posições em x]
+	_place_deco(_deco_notice_board(rng), 60.0, 0.0)
+	_place_deco(_deco_banner(rng), 205.0, 0.0)
+	_place_deco(_deco_lamp_post(rng), 300.0, 0.0)
+	_place_deco(_deco_barrels(rng), 245.0, 0.0)
+	_place_deco(_deco_well(rng), 545.0, 0.0)
+	_place_deco(_deco_market_stall(rng), 840.0, 0.0)
+	_place_deco(_deco_crate_stack(rng), 1075.0, 0.0)
+	_place_deco(_deco_lamp_post(rng), 1235.0, 0.0)
+	_place_deco(_deco_barrels(rng), 1355.0, 0.0)
+	_place_deco(_deco_banner(rng), 1445.0, 0.0)
+	_place_deco(_deco_hay(rng), 1600.0, 0.0)
+	for bx: float in [180.0, 470.0, 660.0, 1130.0, 1310.0, 1660.0]:
+		_place_deco(_deco_bush(rng), bx, 0.0)
+	for rx: float in [350.0, 700.0, 1520.0]:            # umas pedras p/ textura de solo
+		_place_deco(_deco_rock(rng), rx, 0.0)
+	for fx: float in [110.0, 1690.0]:                    # cercas nas bordas (quintais)
+		_place_deco(_deco_fence(rng), fx, 0.0)
+
+## Casa de enxaimel: base de pedra, parede rebocada com moldura de vigas + escoras diagonais, porta,
+## uma ou duas janelas ILUMINADAS (quente, com halo — é fim de tarde), telhado com beiral saliente e
+## uma chaminé fumegando. `variant` escolhe a paleta (parede/telhado/viga).
+func _deco_house(rng: RandomNumberGenerator, variant: int) -> Node2D:
+	var n := Node2D.new()
+	var paletas: Array = [
+		[Color(0.31, 0.28, 0.34), Color(0.22, 0.15, 0.17), Color(0.16, 0.12, 0.11)],
+		[Color(0.35, 0.31, 0.26), Color(0.19, 0.17, 0.23), Color(0.15, 0.12, 0.10)],
+		[Color(0.27, 0.29, 0.33), Color(0.25, 0.16, 0.15), Color(0.13, 0.13, 0.15)],
+	]
+	var p: Array = paletas[variant % paletas.size()]
+	var wall_col: Color = p[0]
+	var roof_col: Color = p[1]
+	var beam_col: Color = p[2]
+	var w := rng.randf_range(68.0, 96.0)
+	var h := rng.randf_range(56.0, 78.0)
+
+	var base := ColorRect.new()                       # embasamento de pedra
+	base.color = beam_col.lightened(0.06)
+	base.size = Vector2(w + 4.0, 8.0)
+	base.position = Vector2(-w * 0.5 - 2.0, -8.0)
+	n.add_child(base)
+
+	var wall := ColorRect.new()
+	wall.color = wall_col
+	wall.size = Vector2(w, h)
+	wall.position = Vector2(-w * 0.5, -h)
+	n.add_child(wall)
+
+	var molduras: Array[Rect2] = [                    # moldura de vigas: contorno + cinta média
+		Rect2(-w * 0.5, -h, w, 3.0),
+		Rect2(-w * 0.5, -h, 3.0, h),
+		Rect2(w * 0.5 - 3.0, -h, 3.0, h),
+		Rect2(-w * 0.5, -h * 0.5, w, 3.0),
+	]
+	for r: Rect2 in molduras:
+		var beam := ColorRect.new()
+		beam.color = beam_col
+		beam.position = r.position
+		beam.size = r.size
+		n.add_child(beam)
+	for dir: float in [-1.0, 1.0]:                    # escoras diagonais (o "V" do enxaimel)
+		var brace := Line2D.new()
+		brace.default_color = beam_col
+		brace.width = 3.0
+		brace.points = PackedVector2Array([
+			Vector2(dir * w * 0.5, -3.0), Vector2(dir * w * 0.12, -h * 0.5 + 2.0)])
+		n.add_child(brace)
+
+	var dw := 15.0                                     # porta
+	var dx := rng.randf_range(-w * 0.22, w * 0.22)
+	var door := ColorRect.new()
+	door.color = beam_col.darkened(0.15)
+	door.size = Vector2(dw, 27.0)
+	door.position = Vector2(dx - dw * 0.5, -27.0)
+	n.add_child(door)
+	var knob := ColorRect.new()
+	knob.color = Color(0.75, 0.62, 0.30)
+	knob.size = Vector2(2.0, 2.0)
+	knob.position = Vector2(dx + dw * 0.3, -14.0)
+	n.add_child(knob)
+
+	var jn := rng.randi_range(1, 2)                    # 1-2 janelas acesas, do lado oposto à porta
+	for i: int in jn:
+		var jx := -dx * 0.6 + (float(i) - float(jn - 1) * 0.5) * 26.0
+		_house_window(n, jx, -h * 0.66, beam_col)
+
+	var over := 11.0                                   # telhado com beiral saliente
+	var peak := rng.randf_range(28.0, 40.0)
+	var roof := Polygon2D.new()
+	roof.color = roof_col
+	roof.polygon = PackedVector2Array([
+		Vector2(-w * 0.5 - over, -h), Vector2(w * 0.5 + over, -h), Vector2(0.0, -h - peak)])
+	n.add_child(roof)
+	var eave := ColorRect.new()
+	eave.color = roof_col.darkened(0.25)
+	eave.size = Vector2(w + over * 2.0, 3.0)
+	eave.position = Vector2(-w * 0.5 - over, -h)
+	n.add_child(eave)
+
+	var chx := w * 0.26 * (1.0 if rng.randf() < 0.5 else -1.0)   # chaminé + fumaça
+	var chim := ColorRect.new()
+	chim.color = beam_col.lightened(0.04)
+	chim.size = Vector2(8.0, 16.0)
+	chim.position = Vector2(chx - 4.0, -h - peak * 0.55 - 12.0)
+	n.add_child(chim)
+	for i: int in rng.randi_range(3, 4):
+		var puff := ColorRect.new()
+		puff.color = Color(0.72, 0.72, 0.78, 0.15 - float(i) * 0.025)
+		var ps := 6.0 + float(i) * 2.2
+		puff.size = Vector2(ps, ps)
+		puff.position = Vector2(chx - ps * 0.5 + rng.randf_range(-3.0, 3.0),
+			-h - peak * 0.55 - 16.0 - float(i) * 9.0)
+		n.add_child(puff)
+	return n
+
+## Janela iluminada: halo quente + moldura + vidro aceso com a cruz das bandeiras (muntins).
+func _house_window(parent: Node2D, cx: float, cy: float, beam_col: Color) -> void:
+	var glow := ColorRect.new()
+	glow.color = Color(1.0, 0.78, 0.35, 0.16)
+	glow.size = Vector2(24.0, 24.0)
+	glow.position = Vector2(cx - 12.0, cy - 12.0)
+	parent.add_child(glow)
+	var frame := ColorRect.new()
+	frame.color = beam_col
+	frame.size = Vector2(16.0, 16.0)
+	frame.position = Vector2(cx - 8.0, cy - 8.0)
+	parent.add_child(frame)
+	var lit := ColorRect.new()
+	lit.color = Color(0.96, 0.79, 0.40)
+	lit.size = Vector2(12.0, 12.0)
+	lit.position = Vector2(cx - 6.0, cy - 6.0)
+	parent.add_child(lit)
+	for bar: Rect2 in [Rect2(cx - 0.75, cy - 6.0, 1.5, 12.0), Rect2(cx - 6.0, cy - 0.75, 12.0, 1.5)]:
+		var muntin := ColorRect.new()
+		muntin.color = beam_col
+		muntin.position = bar.position
+		muntin.size = bar.size
+		parent.add_child(muntin)
+
+## Poço de pedra: mureta com a boca escura, dois montantes, um telhadinho, corda e balde.
+func _deco_well(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var pedra := Color(0.33, 0.32, 0.36)
+	var mw := rng.randf_range(32.0, 38.0)
+	var mure := ColorRect.new()
+	mure.color = pedra
+	mure.size = Vector2(mw, 16.0)
+	mure.position = Vector2(-mw * 0.5, -16.0)
+	n.add_child(mure)
+	var boca := ColorRect.new()
+	boca.color = Color(0.05, 0.05, 0.08)
+	boca.size = Vector2(mw - 8.0, 5.0)
+	boca.position = Vector2(-mw * 0.5 + 4.0, -16.0)
+	n.add_child(boca)
+	for lx: float in [-9.0, 0.0, 9.0]:
+		var junta := ColorRect.new()
+		junta.color = pedra.darkened(0.25)
+		junta.size = Vector2(1.0, 11.0)
+		junta.position = Vector2(lx, -11.0)
+		n.add_child(junta)
+	for mx: float in [-14.0, 12.0]:
+		var post := ColorRect.new()
+		post.color = Color(0.30, 0.22, 0.14)
+		post.size = Vector2(3.0, 30.0)
+		post.position = Vector2(mx, -46.0)
+		n.add_child(post)
+	var roof := Polygon2D.new()
+	roof.color = Color(0.24, 0.17, 0.12)
+	roof.polygon = PackedVector2Array([
+		Vector2(-20.0, -46.0), Vector2(20.0, -46.0), Vector2(0.0, -46.0 - rng.randf_range(10.0, 14.0))])
+	n.add_child(roof)
+	var corda := Line2D.new()
+	corda.default_color = Color(0.5, 0.45, 0.35)
+	corda.width = 1.0
+	corda.points = PackedVector2Array([Vector2(0.0, -44.0), Vector2(0.0, -26.0)])
+	n.add_child(corda)
+	var balde := ColorRect.new()
+	balde.color = Color(0.28, 0.20, 0.13)
+	balde.size = Vector2(8.0, 7.0)
+	balde.position = Vector2(-4.0, -26.0)
+	n.add_child(balde)
+	return n
+
+## Barraca de feira: dois montantes, um toldo listrado com babado e uma banca com mercadorias.
+func _deco_market_stall(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var madeira := Color(0.34, 0.24, 0.15)
+	for mx: float in [-28.0, 25.0]:
+		var post := ColorRect.new()
+		post.color = madeira
+		post.size = Vector2(3.0, 40.0)
+		post.position = Vector2(mx, -40.0)
+		n.add_child(post)
+	var faixa_a := Color(0.62, 0.24, 0.22)
+	var faixa_b := Color(0.80, 0.74, 0.58)
+	var x0 := -32.0
+	var idx := 0
+	while x0 < 32.0:
+		var cor: Color = faixa_a if idx % 2 == 0 else faixa_b
+		var stripe := ColorRect.new()
+		stripe.color = cor
+		stripe.size = Vector2(8.0, 9.0)
+		stripe.position = Vector2(x0, -49.0)
+		n.add_child(stripe)
+		var scallop := Polygon2D.new()
+		scallop.color = cor
+		scallop.polygon = PackedVector2Array([
+			Vector2(x0, -40.0), Vector2(x0 + 8.0, -40.0), Vector2(x0 + 4.0, -35.0)])
+		n.add_child(scallop)
+		x0 += 8.0
+		idx += 1
+	var banca := ColorRect.new()
+	banca.color = madeira.lightened(0.08)
+	banca.size = Vector2(52.0, 5.0)
+	banca.position = Vector2(-26.0, -20.0)
+	n.add_child(banca)
+	for lx: float in [-22.0, 18.0]:
+		var leg := ColorRect.new()
+		leg.color = madeira
+		leg.size = Vector2(3.0, 15.0)
+		leg.position = Vector2(lx, -15.0)
+		n.add_child(leg)
+	var wares: Array = [Color(0.75, 0.28, 0.24), Color(0.85, 0.62, 0.20),
+		Color(0.40, 0.55, 0.28), Color(0.68, 0.52, 0.32)]
+	for k: int in wares.size():
+		var g := ColorRect.new()
+		g.color = wares[k]
+		var gs := rng.randf_range(4.0, 6.0)
+		g.size = Vector2(gs, gs)
+		g.position = Vector2(-22.0 + float(k) * 11.0 + rng.randf_range(-1.0, 1.0), -20.0 - gs)
+		n.add_child(g)
+	return n
+
+## Um ou dois barris (aduelas + arcos) e, às vezes, um caixote ao lado.
+func _deco_barrels(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var qt := rng.randi_range(1, 2)
+	for i: int in qt:
+		_one_barrel(n, rng, float(i) * 17.0)
+	if rng.randf() < 0.5:
+		_one_crate(n, float(qt) * 17.0 + 2.0, 14.0)
+	return n
+
+func _one_barrel(parent: Node2D, rng: RandomNumberGenerator, cx: float) -> void:
+	var madeira := Color(0.42, 0.29, 0.17)
+	var h := rng.randf_range(18.0, 22.0)
+	var corpo := ColorRect.new()
+	corpo.color = madeira
+	corpo.size = Vector2(14.0, h)
+	corpo.position = Vector2(cx - 7.0, -h)
+	parent.add_child(corpo)
+	for hy: float in [-h + 3.0, -h * 0.5, -3.0]:
+		var arco := ColorRect.new()
+		arco.color = Color(0.24, 0.20, 0.16)
+		arco.size = Vector2(14.0, 2.0)
+		arco.position = Vector2(cx - 7.0, hy)
+		parent.add_child(arco)
+	var topo := ColorRect.new()
+	topo.color = madeira.lightened(0.10)
+	topo.size = Vector2(12.0, 3.0)
+	topo.position = Vector2(cx - 6.0, -h - 1.0)
+	parent.add_child(topo)
+
+## Pilha de caixotes de madeira (tampa e escora diagonal na frente).
+func _deco_crate_stack(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	_one_crate(n, -6.0, 16.0)
+	_one_crate(n, 12.0, 14.0)
+	if rng.randf() < 0.6:
+		_one_crate(n, 2.0, 13.0, 16.0)      # um empilhado por cima
+	return n
+
+func _one_crate(parent: Node2D, cx: float, s: float, lift := 0.0) -> void:
+	var madeira := Color(0.38, 0.27, 0.16)
+	var top := -s - lift
+	var caixa := ColorRect.new()
+	caixa.color = madeira
+	caixa.size = Vector2(s, s)
+	caixa.position = Vector2(cx - s * 0.5, top)
+	parent.add_child(caixa)
+	var lid := ColorRect.new()
+	lid.color = madeira.darkened(0.18)
+	lid.size = Vector2(s, 2.0)
+	lid.position = Vector2(cx - s * 0.5, top)
+	parent.add_child(lid)
+	var diag := Line2D.new()
+	diag.default_color = madeira.darkened(0.22)
+	diag.width = 1.5
+	diag.points = PackedVector2Array([Vector2(cx - s * 0.5, -lift), Vector2(cx + s * 0.5, top)])
+	parent.add_child(diag)
+
+## Lampião de rua: poste de ferro, braço curvo e uma lanterna acesa (quente) num halo suave.
+func _deco_lamp_post(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var ferro := Color(0.14, 0.14, 0.17)
+	var h := rng.randf_range(58.0, 68.0)
+	var poste := ColorRect.new()
+	poste.color = ferro
+	poste.size = Vector2(4.0, h)
+	poste.position = Vector2(-2.0, -h)
+	n.add_child(poste)
+	var braco := Line2D.new()
+	braco.default_color = ferro
+	braco.width = 3.0
+	braco.points = PackedVector2Array([Vector2(0.0, -h + 4.0), Vector2(10.0, -h - 2.0)])
+	n.add_child(braco)
+	var glow := ColorRect.new()
+	glow.color = Color(1.0, 0.72, 0.30, 0.12)
+	glow.size = Vector2(26.0, 26.0)
+	glow.position = Vector2(-3.0, -h - 14.0)
+	n.add_child(glow)
+	var caixa := ColorRect.new()
+	caixa.color = ferro.lightened(0.05)
+	caixa.size = Vector2(9.0, 11.0)
+	caixa.position = Vector2(5.5, -h - 10.0)
+	n.add_child(caixa)
+	var luz := ColorRect.new()
+	luz.color = Color(1.0, 0.82, 0.42)
+	luz.size = Vector2(5.0, 7.0)
+	luz.position = Vector2(7.5, -h - 8.0)
+	n.add_child(luz)
+	return n
+
+## Arbusto: tufos de folhagem sobrepostos (polígonos), tons de verde variados.
+func _deco_bush(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var verde := Color(0.20, 0.32, 0.18)
+	var tufos := rng.randi_range(2, 3)
+	for i: int in tufos:
+		var t := Polygon2D.new()
+		t.color = verde.lightened(rng.randf_range(0.0, 0.18))
+		var r := rng.randf_range(9.0, 15.0)
+		var cx := (float(i) - float(tufos - 1) * 0.5) * 10.0
+		t.polygon = PackedVector2Array([
+			Vector2(cx - r, 0.0), Vector2(cx - r * 0.6, -r), Vector2(cx, -r * 1.2),
+			Vector2(cx + r * 0.6, -r), Vector2(cx + r, 0.0)])
+		n.add_child(t)
+	return n
+
+## Mastro com uma bandeirola de pano (cor desbotada + um losango de emblema).
+func _deco_banner(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var h := rng.randf_range(70.0, 88.0)
+	var mastro := ColorRect.new()
+	mastro.color = Color(0.20, 0.16, 0.12)
+	mastro.size = Vector2(3.0, h)
+	mastro.position = Vector2(-1.5, -h)
+	n.add_child(mastro)
+	var cores: Array = [Color(0.55, 0.20, 0.22), Color(0.24, 0.34, 0.48),
+		Color(0.45, 0.38, 0.16), Color(0.32, 0.40, 0.30)]
+	var pano: Color = cores[rng.randi() % cores.size()]
+	var top := -h + 4.0
+	var flamula := Polygon2D.new()
+	flamula.color = pano
+	flamula.polygon = PackedVector2Array([
+		Vector2(1.5, top), Vector2(1.5, top + 26.0), Vector2(28.0, top + 20.0), Vector2(28.0, top + 6.0)])
+	n.add_child(flamula)
+	var emblema := ColorRect.new()
+	emblema.color = pano.lightened(0.30)
+	emblema.size = Vector2(6.0, 6.0)
+	emblema.pivot_offset = Vector2(3.0, 3.0)
+	emblema.rotation = PI * 0.25
+	emblema.position = Vector2(12.0, top + 13.0)
+	n.add_child(emblema)
+	return n
+
+## Fardo de feno: um bloco amarelado com cordas e alguns fiapos soltos no topo.
+func _deco_hay(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var feno := Color(0.66, 0.55, 0.24)
+	var w := rng.randf_range(26.0, 34.0)
+	var h := rng.randf_range(16.0, 20.0)
+	var bloco := ColorRect.new()
+	bloco.color = feno
+	bloco.size = Vector2(w, h)
+	bloco.position = Vector2(-w * 0.5, -h)
+	n.add_child(bloco)
+	for cx: float in [-w * 0.22, w * 0.22]:
+		var cordao := ColorRect.new()
+		cordao.color = feno.darkened(0.30)
+		cordao.size = Vector2(2.0, h)
+		cordao.position = Vector2(cx, -h)
+		n.add_child(cordao)
+	for i: int in rng.randi_range(4, 6):
+		var fiapo := ColorRect.new()
+		fiapo.color = feno.lightened(0.12)
+		fiapo.size = Vector2(rng.randf_range(3.0, 7.0), 2.0)
+		fiapo.pivot_offset = Vector2(0.0, 1.0)
+		fiapo.rotation = rng.randf_range(-0.5, 0.5)
+		fiapo.position = Vector2(rng.randf_range(-w * 0.4, w * 0.4), -h - 1.0)
+		n.add_child(fiapo)
+	return n
+
+## Mural de avisos: dois montantes, uma tábua sob um telhadinho e uns papéis pregados (sem texto — só
+## o formato; nada de indicar caminho, o jogador explora sozinho).
+func _deco_notice_board(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var madeira := Color(0.32, 0.23, 0.14)
+	for mx: float in [-16.0, 13.0]:
+		var post := ColorRect.new()
+		post.color = madeira
+		post.size = Vector2(3.0, 40.0)
+		post.position = Vector2(mx, -40.0)
+		n.add_child(post)
+	var tabua := ColorRect.new()
+	tabua.color = madeira.lightened(0.06)
+	tabua.size = Vector2(38.0, 26.0)
+	tabua.position = Vector2(-19.0, -46.0)
+	n.add_child(tabua)
+	var telhado := ColorRect.new()
+	telhado.color = madeira.darkened(0.2)
+	telhado.size = Vector2(44.0, 4.0)
+	telhado.position = Vector2(-22.0, -50.0)
+	n.add_child(telhado)
+	var papeis: Array = [Color(0.82, 0.78, 0.66), Color(0.74, 0.70, 0.58), Color(0.86, 0.80, 0.62)]
+	for k: int in rng.randi_range(2, 3):
+		var pap := ColorRect.new()
+		pap.color = papeis[k % papeis.size()]
+		var pw := rng.randf_range(8.0, 12.0)
+		var ph := rng.randf_range(9.0, 13.0)
+		pap.pivot_offset = Vector2(pw * 0.5, ph * 0.5)
+		pap.rotation = rng.randf_range(-0.12, 0.12)
+		pap.size = Vector2(pw, ph)
+		pap.position = Vector2(-16.0 + float(k) * 12.0, -44.0)
+		n.add_child(pap)
+	return n
 
 # ---------------------------------------------------------------------------
 # Enfeites de fundo do cenário (para não ficar cru): cercas, pedras, ruínas e árvores mortas.
@@ -1142,16 +1632,19 @@ func _decorate_village() -> void:
 
 const DECO_Z := -4              # atrás das entidades (0) e das placas (-3), à frente do chão (-5)
 
-func _decorate_scenery(width: float, dim: float, tower_interior := false) -> void:
+## `ruins` = incluir as ruínas no sorteio. A estrada e o acampamento pedem `false` (uma construção em
+## escombros destoa da trilha viva e do bivaque); sem elas o sorteio fica só árvore/pedra/cerca.
+func _decorate_scenery(width: float, dim: float, tower_interior := false, ruins := true) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(width) * 31 + int(dim * 1000.0)   # estável por nível; muda entre sala e arena do boss
 	if tower_interior:
 		_decorate_tower(width, dim, rng)
 		return
+	var tipos := 4 if ruins else 3   # sem ruínas: sorteia só entre 0/1/2 (árvore/pedra/cerca)
 	var x := 70.0
 	while x < width - 60.0:
 		var node: Node2D
-		match rng.randi() % 4:
+		match rng.randi() % tipos:
 			0: node = _deco_dead_tree(rng)
 			1: node = _deco_rock(rng)
 			2: node = _deco_fence(rng)
@@ -1366,16 +1859,25 @@ func _deco_bones(rng: RandomNumberGenerator) -> Node2D:
 				_bone_long(n, rng, rng.randf_range(-26.0, 16.0), osso)
 	return n
 
-# --- Enfeites da ESTRADA LESTE (marcos de caminho). O scatter geral (cercas/pedras/árvores) vem do
-# _decorate_scenery externo; aqui só os marcos únicos: placas de direção e uma carroça destruída. ---
+# --- Enfeites da ESTRADA LESTE: uma trilha PERIGOSA rumo à torre, semeada com os sinais de quem
+# tombou antes. O scatter geral (árvores/pedras/cercas/ruínas) já cobre a natureza ao redor; aqui vão
+# os marcos do caminho: placas, marcos de pedra, um santuário, sepulturas, uma fogueira apagada,
+# carroças destruídas e ossadas (de onde vêm os esqueletos que rondam a estrada). ---
 
-## Só os marcos da estrada — o resto do cenário (cercas etc.) já vem de _decorate_scenery.
+## Marcos do caminho da Estrada Leste (o scatter genérico complementa a vegetação).
 func _decorate_estrada(width: float) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(width) * 17 + 7
-	_place_deco(_deco_signpost(rng), 240.0, 0.0)
-	_place_deco(_deco_broken_wagon(rng), width * 0.42, 0.0)
-	_place_deco(_deco_signpost(rng), width - 300.0, 0.0)
+	_place_deco(_deco_signpost(rng), 200.0, 0.0)
+	_place_deco(_deco_milestone(rng), 470.0, 0.0)
+	_place_deco(_deco_cold_campfire(rng), 690.0, 0.0)
+	_place_deco(_deco_bones(rng), 985.0, 0.0)
+	_place_deco(_deco_grave(rng), 1080.0, 0.0)
+	_place_deco(_deco_shrine(rng), 1360.0, 0.0)
+	_place_deco(_deco_bones(rng), 1560.0, 0.0)
+	_place_deco(_deco_broken_wagon(rng), 1700.0, 0.0)
+	_place_deco(_deco_grave(rng), 1975.0, 0.0)
+	_place_deco(_deco_milestone(rng), 2080.0, 0.0)
 
 ## Placa de direções: um poste com uma ou duas tábuas em seta, para lados alternados.
 func _deco_signpost(rng: RandomNumberGenerator) -> Node2D:
@@ -1455,80 +1957,422 @@ func _wagon_wheel(parent: Node2D, center: Vector2, r: float, color: Color) -> vo
 	cubo.position = center - Vector2(r * 0.5, r * 0.5)
 	parent.add_child(cubo)
 
+## Marco de pedra da estrada: um pilar baixo de topo chanfrado, inscrição gasta e musgo na base.
+func _deco_milestone(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var pedra := Color(0.40, 0.40, 0.45)
+	var h := rng.randf_range(26.0, 34.0)
+	var w := 14.0
+	var corpo := ColorRect.new()
+	corpo.color = pedra
+	corpo.size = Vector2(w, h)
+	corpo.position = Vector2(-w * 0.5, -h)
+	n.add_child(corpo)
+	var topo := Polygon2D.new()
+	topo.color = pedra
+	topo.polygon = PackedVector2Array([
+		Vector2(-w * 0.5, -h), Vector2(w * 0.5, -h), Vector2(w * 0.5 - 3.0, -h - 4.0), Vector2(-w * 0.5 + 3.0, -h - 4.0)])
+	n.add_child(topo)
+	for my: float in [-h * 0.62, -h * 0.44]:
+		var marca := ColorRect.new()
+		marca.color = pedra.darkened(0.42)
+		marca.size = Vector2(8.0, 2.0)
+		marca.position = Vector2(-4.0, my)
+		n.add_child(marca)
+	var musgo := ColorRect.new()
+	musgo.color = Color(0.24, 0.34, 0.20)
+	musgo.size = Vector2(w, 3.0)
+	musgo.position = Vector2(-w * 0.5, -3.0)
+	n.add_child(musgo)
+	return n
+
+## Sepultura de beira de estrada: um montículo de terra e um marco — lápide de pedra arredondada OU
+## uma cruz de madeira torta. Os que não chegaram à torre.
+func _deco_grave(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var terra := Color(0.22, 0.17, 0.13)
+	var mw := rng.randf_range(30.0, 42.0)
+	var mound := Polygon2D.new()
+	mound.color = terra
+	mound.polygon = PackedVector2Array([
+		Vector2(-mw * 0.5, 0.0), Vector2(-mw * 0.32, -6.0), Vector2(0.0, -8.0),
+		Vector2(mw * 0.32, -6.0), Vector2(mw * 0.5, 0.0)])
+	n.add_child(mound)
+	if rng.randf() < 0.55:
+		var stone := Color(0.36, 0.36, 0.40)
+		var lap := ColorRect.new()
+		lap.color = stone
+		lap.size = Vector2(16.0, 20.0)
+		lap.position = Vector2(-8.0, -26.0)
+		n.add_child(lap)
+		var arco := Polygon2D.new()
+		arco.color = stone
+		arco.polygon = PackedVector2Array([
+			Vector2(-8.0, -26.0), Vector2(8.0, -26.0), Vector2(5.0, -31.0), Vector2(-5.0, -31.0)])
+		n.add_child(arco)
+		var rach := ColorRect.new()
+		rach.color = stone.darkened(0.35)
+		rach.size = Vector2(1.5, 10.0)
+		rach.pivot_offset = Vector2(0.75, 5.0)
+		rach.rotation = 0.2
+		rach.position = Vector2(2.0, -20.0)
+		n.add_child(rach)
+	else:
+		var cross := Node2D.new()
+		cross.rotation = rng.randf_range(-0.12, 0.12)
+		var mad := Color(0.30, 0.22, 0.14)
+		var vert := ColorRect.new()
+		vert.color = mad
+		vert.size = Vector2(4.0, 26.0)
+		vert.position = Vector2(-2.0, -26.0)
+		cross.add_child(vert)
+		var horiz := ColorRect.new()
+		horiz.color = mad
+		horiz.size = Vector2(16.0, 4.0)
+		horiz.position = Vector2(-8.0, -21.0)
+		cross.add_child(horiz)
+		n.add_child(cross)
+	return n
+
+## Santuário de beira de estrada: um cairn (pilha de pedras decrescente) com uma velinha acesa no topo
+## — oferenda dos viajantes por proteção na estrada.
+func _deco_shrine(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var pedra := Color(0.37, 0.36, 0.40)
+	var y := 0.0
+	var w := 24.0
+	for i: int in 4:
+		var s := ColorRect.new()
+		s.color = pedra.darkened(float(i) * 0.03)
+		s.size = Vector2(w, 5.0)
+		s.position = Vector2(-w * 0.5 + rng.randf_range(-1.5, 1.5), y - 5.0)
+		n.add_child(s)
+		y -= 6.0
+		w -= 4.5
+	var glow := ColorRect.new()
+	glow.color = Color(1.0, 0.72, 0.30, 0.12)
+	glow.size = Vector2(16.0, 16.0)
+	glow.position = Vector2(-8.0, y - 12.0)
+	n.add_child(glow)
+	var vela := ColorRect.new()
+	vela.color = Color(0.86, 0.82, 0.68)
+	vela.size = Vector2(3.0, 6.0)
+	vela.position = Vector2(-1.5, y - 6.0)
+	n.add_child(vela)
+	var chama := ColorRect.new()
+	chama.color = Color(1.0, 0.80, 0.40)
+	chama.size = Vector2(2.0, 4.0)
+	chama.position = Vector2(-1.0, y - 10.0)
+	n.add_child(chama)
+	return n
+
+## Fogueira APAGADA: anel de pedras, cinzas frias, lenha carbonizada e um tripé de cozinha vazio — um
+## acampamento que alguém deixou (ou não pôde levar). Sem chama: a estrada é fria.
+func _deco_cold_campfire(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	for dx: float in [-13.0, -4.0, 5.0, 13.0]:
+		var p := ColorRect.new()
+		p.color = Color(0.34, 0.33, 0.36)
+		p.size = Vector2(6.0, 4.0)
+		p.position = Vector2(dx - 3.0, -4.0)
+		n.add_child(p)
+	var cinza := ColorRect.new()
+	cinza.color = Color(0.20, 0.19, 0.19)
+	cinza.size = Vector2(16.0, 3.0)
+	cinza.position = Vector2(-8.0, -4.0)
+	n.add_child(cinza)
+	for i: int in 2:
+		var toco := ColorRect.new()
+		toco.color = Color(0.12, 0.10, 0.10)
+		toco.size = Vector2(14.0, 3.0)
+		toco.pivot_offset = Vector2(7.0, 1.5)
+		toco.position = Vector2(-7.0, -6.0)
+		toco.rotation = deg_to_rad(rng.randf_range(12.0, 20.0) * (1.0 if i == 0 else -1.0))
+		n.add_child(toco)
+	var apex := Vector2(0.0, -30.0)
+	for gx: float in [-12.0, 0.0, 12.0]:
+		var perna := Line2D.new()
+		perna.default_color = Color(0.26, 0.19, 0.12)
+		perna.width = 2.0
+		perna.points = PackedVector2Array([Vector2(gx, 0.0), apex])
+		n.add_child(perna)
+	var gancho := Line2D.new()
+	gancho.default_color = Color(0.18, 0.18, 0.20)
+	gancho.width = 1.0
+	gancho.points = PackedVector2Array([apex, apex + Vector2(0.0, 8.0)])
+	n.add_child(gancho)
+	return n
+
 # --- Enfeites do ACAMPAMENTO DOS AVENTUREIROS: tendas, fogueiras de acampamento e suprimentos —
 # cara de bivaque no sopé da torre, não de cidade. ---
 
+## O Acampamento dos Aventureiros — o bivaque ao pé da torre (o HUB entre runs), agora MOVIMENTADO:
+## barracas com flâmulas e cordas de fixação, uma fogueira de cozinha com tripé e caldeirão, toras de
+## sentar em volta, um suporte de armas, camas de dormir, lenha empilhada, escudos encostados, barris,
+## caixotes e suprimentos. Evita a faixa do cavaleiro + fogueira de renascer (~220-320) e do portão +
+## alavanca (~1070-1230): tudo entre elas ou na entrada.
 func _decorate_camp() -> void:
-	for tx in [180.0, 560.0, 900.0]:            # tendas ao fundo (z de fundo, como eram as casas)
-		var tent := _deco_tent()
-		tent.position = Vector2(tx, GROUND_Y)
-		tent.z_index = -6
-		_env.add_child(tent)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4242
-	_place_deco(_deco_camp_fire(), 460.0, 0.0)   # fogueiras de acampamento + suprimentos (z DECO)
-	_place_deco(_deco_supplies(rng), 720.0, 0.0)
-	_place_deco(_deco_supplies(rng), 1000.0, 0.0)
-	_place_deco(_deco_camp_fire(), 1080.0, 0.0)
+	for tenda: Array in [[150.0, 0], [470.0, 1], [780.0, 2], [1010.0, 0]]:   # barracas (fundo, z -6)
+		var tent := _deco_tent(rng, int(tenda[1]))
+		tent.position = Vector2(float(tenda[0]), GROUND_Y)
+		tent.z_index = -6
+		_env.add_child(tent)
+	# Equipamento de acampamento no chão (à frente), na faixa livre entre o cavaleiro e o portão.
+	_place_deco(_deco_banner(rng), 120.0, 0.0)
+	_place_deco(_deco_bush(rng), 355.0, 0.0)
+	_place_deco(_deco_bedroll(rng), 405.0, 0.0)
+	_place_deco(_deco_weapon_rack(rng), 500.0, 0.0)
+	_place_deco(_deco_log_seat(rng), 585.0, 0.0)
+	_place_deco(_deco_camp_fire(rng, true), 635.0, 0.0)    # fogueira de cozinha (tripé + caldeirão)
+	_place_deco(_deco_log_seat(rng), 688.0, 0.0)
+	_place_deco(_deco_supplies(rng), 745.0, 0.0)
+	_place_deco(_deco_firewood(rng), 815.0, 0.0)
+	_place_deco(_deco_crate_stack(rng), 885.0, 0.0)
+	_place_deco(_deco_shield_leaning(rng), 945.0, 0.0)
+	_place_deco(_deco_barrels(rng), 1000.0, 0.0)
+	_place_deco(_deco_bush(rng), 1045.0, 0.0)
 
-## Tenda: um triângulo de lona sobre um mastro, com a aba de entrada escura.
-func _deco_tent() -> Node2D:
+## Barraca de acampamento: lona triangular sobre um mastro com uma FLÂMULA no topo, costura central,
+## a aba de entrada escura e cordas de fixação até estacas no chão. `variant` = paleta da lona.
+func _deco_tent(rng: RandomNumberGenerator, variant: int) -> Node2D:
 	var n := Node2D.new()
-	var lona := Color(0.42, 0.36, 0.28)
-	var lona_dk := Color(0.30, 0.25, 0.19)
-	var w := 64.0
-	var h := 44.0
+	var lonas: Array = [Color(0.42, 0.36, 0.28), Color(0.40, 0.34, 0.30), Color(0.35, 0.38, 0.34)]
+	var lona: Color = lonas[variant % lonas.size()]
+	var lona_dk := lona.darkened(0.28)
+	var w := rng.randf_range(58.0, 74.0)
+	var h := rng.randf_range(40.0, 50.0)
 	var corpo := Polygon2D.new()
 	corpo.color = lona
-	corpo.polygon = PackedVector2Array([Vector2(-w * 0.5, 0), Vector2(w * 0.5, 0), Vector2(0, -h)])
+	corpo.polygon = PackedVector2Array([Vector2(-w * 0.5, 0.0), Vector2(w * 0.5, 0.0), Vector2(0.0, -h)])
 	n.add_child(corpo)
 	var sombra := Polygon2D.new()
 	sombra.color = lona_dk
-	sombra.polygon = PackedVector2Array([Vector2(0, -h), Vector2(w * 0.5, 0), Vector2(w * 0.18, 0)])
+	sombra.polygon = PackedVector2Array([Vector2(0.0, -h), Vector2(w * 0.5, 0.0), Vector2(w * 0.16, 0.0)])
 	n.add_child(sombra)
+	var costura := Line2D.new()
+	costura.default_color = lona_dk
+	costura.width = 1.5
+	costura.points = PackedVector2Array([Vector2(0.0, -h), Vector2(0.0, 0.0)])
+	n.add_child(costura)
 	var aba := Polygon2D.new()
 	aba.color = Color(0.10, 0.09, 0.11)
-	aba.polygon = PackedVector2Array([Vector2(-8, 0), Vector2(8, 0), Vector2(0, -h * 0.55)])
+	aba.polygon = PackedVector2Array([Vector2(-8.0, 0.0), Vector2(8.0, 0.0), Vector2(0.0, -h * 0.55)])
 	n.add_child(aba)
 	var mastro := ColorRect.new()
 	mastro.color = lona_dk
-	mastro.size = Vector2(3, h + 6)
-	mastro.position = Vector2(-1.5, -h - 6)
+	mastro.size = Vector2(3.0, h + 7.0)
+	mastro.position = Vector2(-1.5, -h - 7.0)
 	n.add_child(mastro)
+	var cores: Array = [Color(0.60, 0.24, 0.24), Color(0.26, 0.36, 0.50), Color(0.50, 0.42, 0.18)]
+	var flamula := Polygon2D.new()
+	flamula.color = cores[rng.randi() % cores.size()]
+	flamula.polygon = PackedVector2Array([
+		Vector2(0.0, -h - 7.0), Vector2(14.0, -h - 4.0), Vector2(0.0, -h - 1.0)])
+	n.add_child(flamula)
+	for side: float in [-1.0, 1.0]:                 # cordas de fixação + estacas
+		var corda := Line2D.new()
+		corda.default_color = lona_dk.lightened(0.1)
+		corda.width = 1.0
+		var stake := Vector2(side * (w * 0.5 + 12.0), -1.0)
+		corda.points = PackedVector2Array([Vector2(0.0, -h + 4.0), stake])
+		n.add_child(corda)
+		var estaca := ColorRect.new()
+		estaca.color = lona_dk
+		estaca.size = Vector2(2.0, 5.0)
+		estaca.position = Vector2(stake.x - 1.0, -5.0)
+		n.add_child(estaca)
 	return n
 
-## Fogueira de acampamento: anel de pedras, lenha cruzada e uma chama num halo fraco.
-func _deco_camp_fire() -> Node2D:
+## Fogueira de acampamento: anel de pedras, lenha cruzada, chama num halo. Com `cook`, ganha um tripé
+## de cozinha com um caldeirão pendurado sobre o fogo.
+func _deco_camp_fire(rng: RandomNumberGenerator, cook := false) -> Node2D:
 	var n := Node2D.new()
-	for dx in [-12.0, -4.0, 4.0, 12.0]:
+	for dx: float in [-12.0, -4.0, 4.0, 12.0]:
 		var pedra := ColorRect.new()
 		pedra.color = Color(0.34, 0.33, 0.36)
-		pedra.size = Vector2(6, 4)
-		pedra.position = Vector2(dx - 3, -4)
+		pedra.size = Vector2(6.0, 4.0)
+		pedra.position = Vector2(dx - 3.0, -4.0)
 		n.add_child(pedra)
-	for i in 2:
+	for i: int in 2:
 		var log_r := ColorRect.new()
 		log_r.color = Color(0.34, 0.24, 0.15)
-		log_r.size = Vector2(16, 3)
-		log_r.pivot_offset = Vector2(8, 1.5)
-		log_r.position = Vector2(-8, -6)
+		log_r.size = Vector2(16.0, 3.0)
+		log_r.pivot_offset = Vector2(8.0, 1.5)
+		log_r.position = Vector2(-8.0, -6.0)
 		log_r.rotation = deg_to_rad(18.0 if i == 0 else -18.0)
 		n.add_child(log_r)
+	if cook:
+		var apex := Vector2(0.0, -34.0)
+		for gx: float in [-13.0, 13.0]:
+			var perna := Line2D.new()
+			perna.default_color = Color(0.20, 0.15, 0.10)
+			perna.width = 2.0
+			perna.points = PackedVector2Array([Vector2(gx, 0.0), apex])
+			n.add_child(perna)
+		var pote := ColorRect.new()
+		pote.color = Color(0.16, 0.16, 0.18)
+		pote.size = Vector2(12.0, 9.0)
+		pote.position = Vector2(-6.0, -24.0)
+		n.add_child(pote)
 	var glow := ColorRect.new()
 	glow.color = Color(1.0, 0.55, 0.15, 0.10)
-	glow.size = Vector2(28, 28)
-	glow.position = Vector2(-14, -24)
+	glow.size = Vector2(28.0, 28.0)
+	glow.position = Vector2(-14.0, -24.0)
 	n.add_child(glow)
 	var flame := ColorRect.new()
 	flame.color = Color(0.95, 0.45, 0.12)
-	flame.size = Vector2(9, 13)
-	flame.position = Vector2(-4.5, -16)
+	flame.size = Vector2(9.0, rng.randf_range(11.0, 14.0))
+	flame.position = Vector2(-4.5, -16.0)
 	n.add_child(flame)
 	var core := ColorRect.new()
 	core.color = Color(1.0, 0.82, 0.42)
-	core.size = Vector2(3.5, 7)
-	core.position = Vector2(-1.75, -12)
+	core.size = Vector2(3.5, 7.0)
+	core.position = Vector2(-1.75, -12.0)
 	n.add_child(core)
+	return n
+
+## Suporte de armas: uma travessa sobre dois pés, com lanças e uma espada encostadas.
+func _deco_weapon_rack(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var mad := Color(0.34, 0.25, 0.16)
+	for mx: float in [-16.0, 16.0]:
+		var pe := ColorRect.new()
+		pe.color = mad
+		pe.size = Vector2(3.0, 24.0)
+		pe.position = Vector2(mx - 1.5, -24.0)
+		n.add_child(pe)
+	var trav := ColorRect.new()
+	trav.color = mad
+	trav.size = Vector2(38.0, 3.0)
+	trav.position = Vector2(-19.0, -24.0)
+	n.add_child(trav)
+	for i: int in rng.randi_range(2, 3):
+		var lx := -12.0 + float(i) * 9.0
+		var haste := ColorRect.new()
+		haste.color = Color(0.30, 0.22, 0.14)
+		haste.size = Vector2(2.0, 40.0)
+		haste.position = Vector2(lx, -40.0)
+		n.add_child(haste)
+		var ponta := Polygon2D.new()
+		ponta.color = Color(0.62, 0.64, 0.70)
+		ponta.polygon = PackedVector2Array([
+			Vector2(lx - 1.0, -40.0), Vector2(lx + 3.0, -40.0), Vector2(lx + 1.0, -46.0)])
+		n.add_child(ponta)
+	var blade := ColorRect.new()          # uma espada encostada na ponta direita
+	blade.color = Color(0.66, 0.68, 0.74)
+	blade.size = Vector2(2.5, 30.0)
+	blade.pivot_offset = Vector2(1.25, 30.0)
+	blade.rotation = 0.32
+	blade.position = Vector2(16.0, -30.0)
+	n.add_child(blade)
+	var guarda := ColorRect.new()
+	guarda.color = Color(0.30, 0.24, 0.14)
+	guarda.size = Vector2(8.0, 2.5)
+	guarda.pivot_offset = Vector2(4.0, 1.25)
+	guarda.rotation = 0.32
+	guarda.position = Vector2(20.0, -22.0)
+	n.add_child(guarda)
+	return n
+
+## Cama de dormir: um cobertor estendido no chão com um rolo/travesseiro numa ponta (cor variada).
+func _deco_bedroll(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var cores: Array = [Color(0.46, 0.30, 0.26), Color(0.30, 0.34, 0.42), Color(0.40, 0.38, 0.26)]
+	var cobertor: Color = cores[rng.randi() % cores.size()]
+	var manta := ColorRect.new()
+	manta.color = cobertor
+	manta.size = Vector2(30.0, 6.0)
+	manta.position = Vector2(-10.0, -6.0)
+	n.add_child(manta)
+	var rolo := ColorRect.new()
+	rolo.color = cobertor.lightened(0.12)
+	rolo.size = Vector2(10.0, 8.0)
+	rolo.position = Vector2(-18.0, -8.0)
+	n.add_child(rolo)
+	var faixa := ColorRect.new()
+	faixa.color = cobertor.darkened(0.2)
+	faixa.size = Vector2(30.0, 1.5)
+	faixa.position = Vector2(-10.0, -4.0)
+	n.add_child(faixa)
+	return n
+
+## Lenha empilhada em pirâmide: toras curtas com o veio claro nas pontas.
+func _deco_firewood(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var mad := Color(0.36, 0.26, 0.16)
+	var linhas := rng.randi_range(2, 3)
+	for row: int in linhas:
+		var qt := maxi(1, 3 - row)
+		for i: int in qt:
+			var bx := -13.0 + float(i) * 9.5 + float(row) * 4.75
+			var tora := ColorRect.new()
+			tora.color = mad.darkened(rng.randf_range(0.0, 0.12))
+			tora.size = Vector2(9.0, 7.0)
+			tora.position = Vector2(bx, -7.0 - float(row) * 7.0)
+			n.add_child(tora)
+			var veio := ColorRect.new()
+			veio.color = mad.lightened(0.15)
+			veio.size = Vector2(4.0, 3.0)
+			veio.position = Vector2(bx + 2.5, -5.5 - float(row) * 7.0)
+			n.add_child(veio)
+	return n
+
+## Escudo (heater, com umbo) encostado e uma espada fincada ao lado — o equipamento de um aventureiro.
+func _deco_shield_leaning(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var cores: Array = [Color(0.50, 0.20, 0.20), Color(0.22, 0.32, 0.46), Color(0.40, 0.34, 0.16)]
+	var cor: Color = cores[rng.randi() % cores.size()]
+	var sh := Node2D.new()
+	sh.rotation = 0.12
+	var escudo := Polygon2D.new()
+	escudo.color = cor
+	escudo.polygon = PackedVector2Array([
+		Vector2(-11.0, -30.0), Vector2(11.0, -30.0), Vector2(11.0, -14.0), Vector2(0.0, -2.0), Vector2(-11.0, -14.0)])
+	sh.add_child(escudo)
+	var boss := ColorRect.new()
+	boss.color = cor.lightened(0.25)
+	boss.size = Vector2(5.0, 5.0)
+	boss.position = Vector2(-2.5, -18.0)
+	sh.add_child(boss)
+	n.add_child(sh)
+	var blade := ColorRect.new()
+	blade.color = Color(0.66, 0.68, 0.74)
+	blade.size = Vector2(2.5, 28.0)
+	blade.pivot_offset = Vector2(1.25, 28.0)
+	blade.rotation = -0.18
+	blade.position = Vector2(15.0, -20.0)
+	n.add_child(blade)
+	var guarda := ColorRect.new()
+	guarda.color = Color(0.32, 0.25, 0.14)
+	guarda.size = Vector2(8.0, 2.5)
+	guarda.position = Vector2(11.0, -22.0)
+	n.add_child(guarda)
+	return n
+
+## Tora de sentar: um tronco deitado com o veio claro nas pontas.
+func _deco_log_seat(rng: RandomNumberGenerator) -> Node2D:
+	var n := Node2D.new()
+	var mad := Color(0.36, 0.27, 0.17)
+	var w := rng.randf_range(26.0, 34.0)
+	var tronco := ColorRect.new()
+	tronco.color = mad
+	tronco.size = Vector2(w, 9.0)
+	tronco.position = Vector2(-w * 0.5, -9.0)
+	n.add_child(tronco)
+	for ex: float in [-1.0, 1.0]:
+		var vx := -w * 0.5 if ex < 0.0 else w * 0.5 - 4.0
+		var veio := ColorRect.new()
+		veio.color = mad.lightened(0.14)
+		veio.size = Vector2(4.0, 5.0)
+		veio.position = Vector2(vx, -7.0)
+		n.add_child(veio)
+	var grao := ColorRect.new()
+	grao.color = mad.darkened(0.16)
+	grao.size = Vector2(w, 1.5)
+	grao.position = Vector2(-w * 0.5, -6.0)
+	n.add_child(grao)
 	return n
 
 ## Suprimentos: caixas empilhadas + um barril com aros de ferro.
@@ -1608,7 +2452,7 @@ func _start_estrada() -> void:
 	_boss_view = null
 	_start_ambience()          # área aberta (estrada ao ar livre): música + vento
 	_clear_entities()
-	_build_environment(ESTRADA_LENGTH, false, [])   # exterior (grama + parallax externo)
+	_build_environment(ESTRADA_LENGTH, false, [], false, true, false)   # exterior (grama), SEM ruínas no scatter
 	_decorate_estrada(ESTRADA_LENGTH)
 	_reset_player_to_start(PLAYER_START_X)
 
@@ -1654,23 +2498,26 @@ func _start_downtown(na_fogueira := false) -> void:
 	_current_boss_id = ""
 	_boss_view = null
 	_exit_door_x = 0.0
-	_bonfires.clear()            # nenhuma fogueira-checkpoint aqui: _try_rest não pode agir
+	_bonfires.clear()            # refeito abaixo: a fogueira do Acampamento volta a ser um ponto de descanso
 	_start_ambience()            # o Acampamento é área aberta: mesma ambiência (música + vento)
 	_clear_entities()
-	_build_environment(DOWNTOWN_LENGTH, false, [])
+	_build_environment(DOWNTOWN_LENGTH, false, [], false, true, false)   # SEM ruínas no scatter (bivaque)
 	_decorate_camp()             # tendas, fogueiras, suprimentos — bivaque no sopé da torre
 	_reset_player_to_start(DT_FIRE_X if na_fogueira else PLAYER_START_X)
 
-	# O Sir Big T. e a fogueira de renascer (cavaleiro à esquerda, fogo à direita — como sempre).
+	# O Sir Big T. e a fogueira de descanso (cavaleiro à esquerda, fogo à direita — como sempre).
 	_npc = NpcView.new()
 	_env.add_child(_npc)
 	_npc.setup(DT_KNIGHT_X, GROUND_Y, _player_view, "Sir Big T.")
 	_npc.falado.connect(_on_npc_falado)
+	# A fogueira volta a ser FUNCIONAL: sentar (E) reabastece os frascos, cura e fixa o ponto de
+	# retorno — mas SEM o antigo menu de atributos. Sempre acesa (é o marco de onde se desperta).
 	_hub_fire = BonfireView.new()
-	_hub_fire.decorativa = true
 	_hub_fire.position = Vector2(DT_FIRE_X, GROUND_Y)
 	_env.add_child(_hub_fire)
-	_hub_fire.setup(DT_FIRE_X, true, _player_view)   # sempre acesa: é um marco, não um serviço
+	_hub_fire.setup(DT_FIRE_X, true, _player_view)
+	_hub_fire.rested.connect(_on_hub_fire_rested)
+	_bonfires = [_hub_fire]       # habilita _try_rest nesta fogueira
 
 	# O mercado (Mestre/Ferreiro/Mercadora) foi RETIRADO do Centro — só o cavaleiro fica. A máquina
 	# do mercado (handlers, _spawn_market_npc, _refresh_market_prompts) segue no arquivo, dormante,
@@ -2296,6 +3143,12 @@ func _process(delta: float) -> void:
 	if _tip_time > 0.0:
 		_tip_time -= delta
 		if _tip_time <= 0.0:
+			# A fala de cura do cavaleiro sumindo SOZINHA também aplica a cura (mesmo efeito do avanço
+			# por E). O player continua ferido até aqui: curar torna o wounded-check falso, então o
+			# próximo INTERAGIR só segue para a 2ª fala.
+			if _knight_on_heal_line:
+				_knight_on_heal_line = false
+				_heal_from_knight()
 			_hide_tip()
 
 	# O "?" dourado sobre o Sir Big T.: aceso enquanto restarem falas base por ler (a sequência já
@@ -2385,11 +3238,17 @@ func _start_boss_tower(hazards: Array) -> void:
 	_build_environment(BOSS_TOWER_W, true, hazards, true)   # dentro da torre: chão de pedra + colunas
 	_reset_player_to_start(PLAYER_START_X)                   # entra à esquerda, longe do boss
 	_spawn_hazards(hazards)
-	# Porta de avanço no FIM do corredor (além da arena). Sem névoa: o confinamento vem das paredes
-	# da arena, postas só na revelação. A câmera travada não a mostra durante a luta.
+	# O TRONO ao fim da sala (fixo do lugar; o boss o guarda). Sem porta de avanço: quem resolve o
+	# andar agora é o BAÚ diante do trono, que nasce ao vencer (ver _on_floor_cleared / _spawn_treasure).
+	_deco_throne(_arena_width - 66.0)
 	_boss_door_left_x = 0.0
-	_boss_door_right_x = _arena_width - BOSS_DOOR_IN
-	_spawn_door(_boss_door_right_x, Palette.ACCENT.darkened(0.35))
+	_boss_door_right_x = 0.0
+	# RETENTATIVA (boss já visto): ele fica VISÍVEL e dormente na arena durante a aproximação, para não
+	# "aparecer do nada" quando a câmera trava. Na 1ª vez ele DESPENCA (cutscene) — sem pré-spawn aqui.
+	if _run.boss_seen(_current_boss_id):
+		_spawn_boss(_boss_spawn_pos())
+		if is_instance_valid(_boss_view):
+			_boss_view.dormant = true
 	_spawn_bloodstain_if_here()
 	Music.stop()                     # SILÊNCIO até revelar o boss (a ambience da torre entra depois)
 	_phase = "boss_approach"
@@ -2522,10 +3381,12 @@ func _boss_landing_fx() -> void:
 ## rever a queda inteira a cada morte envelhece rápido, e no soulslike você morre muito.
 func _begin_boss_retry() -> void:
 	_phase = "boss"
-	_boss_view = null
 	_boss_landing_sfx = ""
 	Music.play(BOSS_MUSIC)
-	_spawn_boss(_boss_spawn_pos())
+	# O boss já está NA ARENA, dormente (pré-spawnado em _start_boss_tower na retentativa): só ACORDA,
+	# sem re-spawnar. Fallback: se por algum motivo não existe, cria agora.
+	if not is_instance_valid(_boss_view):
+		_spawn_boss(_boss_spawn_pos())
 	if not is_instance_valid(_boss_view):
 		_abort_boss_intro()    # boss ausente no JSON: não trava a run
 		return
@@ -2588,11 +3449,9 @@ func _on_enemy_died(view: EnemyView, enemy: Enemy) -> void:
 	_guard.erase(view)   # se era da guarda, sai da lista (matou-se um esqueleto do run-back)
 	_marcar_se_esvaziou()
 
-	# Almas: TODO inimigo morto entrega as suas, direto para o bolso — inclusive os esqueletos que
-	# o Necromante reinvoca sem parar. Antes esses não davam XP, para não virar farm infinito de
-	# poder; agora o farm se paga sozinho, porque alma no bolso é RISCO: ela só vira poder depois
-	# de gasta na fogueira, e morrer com o bolso cheio entrega tudo ao Eco.
-	_run.player.gain_souls(int(enemy.loot.get("souls", 0)))
+	# Almas REMOVIDAS: matar não dá mais moeda nenhuma. A progressão da run vem das CARTAS de augment
+	# ganhas ao vencer um boss (ver _open_reward), não de acumular almas. O loot.souls do JSON segue
+	# ignorado aqui (dormente).
 
 	match _phase:
 		# "estrada": sem aviso direcional ao limpar — o jogador explora e descobre a passagem
@@ -2631,8 +3490,9 @@ func _on_floor_cleared() -> void:
 			Music.stop()
 			_dismiss_boss_fogs()
 			_remove_arena_walls()                  # derruba as paredes da arena
-			_camera.setup_corridor(_arena_width)   # DESTRAVA a câmera: a porta ao fim fica alcançável
+			_camera.setup_corridor(_arena_width)   # DESTRAVA a câmera: o trono ao fim fica alcançável
 			_show_tip("Guardião Derrotado")        # confirma a vitória; sem direção (o jogador explora)
+			_spawn_treasure()                      # o baú do tesouro surge diante do trono
 		else:
 			_rl_spawn_advance_door()
 		return
@@ -2654,6 +3514,76 @@ func _on_floor_cleared() -> void:
 		_lever.arm()
 	_spawn_guard()   # o mundo reocupa o caminho ao chefe: a guarda toma o refúgio
 	_msg.text = "Sala limpa. Puxe a alavanca (E) para abrir o portão →"
+
+## Baú do tesouro diante do trono, ao vencer o boss: guarda a recompensa da sala (os augments). Nasce
+## no lugar da antiga porta de avanço — abri-lo é o que RESOLVE o andar (avança o plano ao nó REWARD).
+func _spawn_treasure() -> void:
+	var cx := _arena_width - 116.0
+	_treasure_chest = TreasureChestView.new()
+	_treasure_chest.position = Vector2(cx, GROUND_Y)
+	_env.add_child(_treasure_chest)
+	_treasure_chest.setup(cx, _player_view)
+	_treasure_chest.opened.connect(_on_chest_opened)
+
+## Abriu o baú: a tampa levanta e, um instante depois, as cartas do tesouro entram (o nó REWARD do
+## plano — o boss era o nó atual, então avançar leva à recompensa).
+func _on_chest_opened() -> void:
+	await get_tree().create_timer(0.5).timeout
+	if _phase == "cleared":
+		_advance_plan()
+
+## INTERAGIR perto do baú do trono: abre-o (uma vez só). Some da cadeia quando não há baú ou já abriu.
+func _try_open_chest() -> bool:
+	if not is_instance_valid(_treasure_chest) or _treasure_chest.is_open():
+		return false
+	if not _treasure_chest.in_reach(_player_view):
+		return false
+	_treasure_chest.open()
+	return true
+
+## Trono de pedra ao fim da sala de boss (o chefe o guardava): assento largo, encosto alto com topo em
+## pontas, braços e degraus, uma gema no espaldar. Puro cenário, atrás das entidades e do baú.
+func _deco_throne(cx: float) -> void:
+	var t := Node2D.new()
+	t.position = Vector2(cx, GROUND_Y)
+	t.z_index = -4
+	_env.add_child(t)
+	var pedra := Color(0.24, 0.23, 0.28)
+	var pedra_dk := Color(0.17, 0.16, 0.20)
+	var ouro := Color(0.62, 0.52, 0.22)
+	for degrau: Array in [[84.0, 8.0, -8.0], [64.0, 6.0, -14.0]]:   # plataforma / degraus
+		var d := ColorRect.new()
+		d.color = pedra_dk
+		d.size = Vector2(float(degrau[0]), float(degrau[1]))
+		d.position = Vector2(-float(degrau[0]) * 0.5, float(degrau[2]))
+		t.add_child(d)
+	var encosto := ColorRect.new()             # espaldar alto (desenhado ANTES do assento: atrás dele)
+	encosto.color = pedra
+	encosto.size = Vector2(38, 74)
+	encosto.position = Vector2(-19, -102)
+	t.add_child(encosto)
+	var topo := Polygon2D.new()                # coroa em pontas
+	topo.color = pedra
+	topo.polygon = PackedVector2Array([
+		Vector2(-19, -102), Vector2(-12, -114), Vector2(-6, -104), Vector2(0, -118),
+		Vector2(6, -104), Vector2(12, -114), Vector2(19, -102)])
+	t.add_child(topo)
+	var gema := ColorRect.new()
+	gema.color = ouro
+	gema.size = Vector2(8, 8)
+	gema.position = Vector2(-4, -84)
+	t.add_child(gema)
+	var assento := ColorRect.new()
+	assento.color = pedra.lightened(0.05)
+	assento.size = Vector2(46, 16)
+	assento.position = Vector2(-23, -34)
+	t.add_child(assento)
+	for sx: float in [-1.0, 1.0]:              # braços
+		var braco := ColorRect.new()
+		braco.color = pedra_dk
+		braco.size = Vector2(8, 20)
+		braco.position = Vector2(sx * 23.0 - 4.0, -44)
+		t.add_child(braco)
 
 ## As duas portas da arena do chefe: atrás (à esquerda, volta ao nível anterior) e adiante (à
 ## direita, o próximo nível — a área nova, com a outra fogueira). Enquanto o chefe vive, cada uma
@@ -3324,6 +4254,17 @@ func _win_run() -> void:
 ## e o jogador levanta na última fogueira em que descansou, com vida e stamina cheias. Ele mantém
 ## o que conquistou (nível, augments, arma); perde o caminho andado. Sem nenhuma fogueira acesa,
 ## renasce no começo do nível em que caiu. Só a VITÓRIA ainda tem tela de fim.
+## Tomou dano: um flash VERMELHO curto na tela inteira (feedback de impacto). O modelo pisca branco
+## em paralelo (player_view._hurt_flash). Não acende com a tela já preta (morte/transição).
+func _on_player_damaged(_p: Player, _amount: int) -> void:
+	if _hurt_screen == null or _phase == "dead":
+		return
+	if _hurt_screen_tween != null and _hurt_screen_tween.is_valid():
+		_hurt_screen_tween.kill()
+	_hurt_screen.color.a = 0.34
+	_hurt_screen_tween = create_tween()
+	_hurt_screen_tween.tween_property(_hurt_screen, "color:a", 0.0, 0.28)
+
 func _on_player_died(_p: Player) -> void:
 	if _phase == "dead":
 		return                          # o dano pode chegar duas vezes no mesmo frame
@@ -3598,7 +4539,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if _phase in ["transition", "dead", "boss_intro"]:
 			return
-		if _try_npc() or _try_pull_lever() or _try_rest() or _try_shortcut() or _try_cross_fog():
+		if _try_npc() or _try_pull_lever() or _try_rest() or _try_open_chest() or _try_shortcut() or _try_cross_fog():
 			return
 		return
 	# F9 alterna o overlay CRT (disponível sempre, não só em debug).

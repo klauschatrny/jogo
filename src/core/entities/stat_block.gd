@@ -10,7 +10,8 @@ var crit_chance: float = 0.0
 var crit_damage: float = 1.5
 var attack_speed: float = 1.0
 var move_speed: float = 100.0
-var damage_reduction: float = 0.0
+var damage_reduction: float = 0.0  # redução de dano FÍSICO (0..1); a defesa flat soma via curva
+var magic_resist: float = 0.0      # redução de dano MÁGICO (0..1); só o Necromante causa dano mágico
 var lifesteal: float = 0.0
 var luck: int = 0
 var damage_mult: float = 1.0       # multiplicador de dano global: (1 + Σ%dano) e ×MULT de artefatos (§1.2.3)
@@ -28,6 +29,7 @@ static func from_dict(d: Dictionary) -> StatBlock:
 	s.attack_speed = float(d.get("attack_speed", 1.0))
 	s.move_speed = float(d.get("move_speed", 100.0))
 	s.damage_reduction = float(d.get("damage_reduction", 0.0))
+	s.magic_resist = float(d.get("magic_resist", 0.0))
 	s.lifesteal = float(d.get("lifesteal", 0.0))
 	s.luck = int(d.get("luck", 0))
 	s.damage_mult = float(d.get("damage_mult", 1.0))
@@ -39,7 +41,7 @@ func to_dict() -> Dictionary:
 		"attack": attack, "defense": defense,
 		"crit_chance": crit_chance, "crit_damage": crit_damage,
 		"attack_speed": attack_speed, "move_speed": move_speed,
-		"damage_reduction": damage_reduction, "lifesteal": lifesteal,
+		"damage_reduction": damage_reduction, "magic_resist": magic_resist, "lifesteal": lifesteal,
 		"luck": luck, "damage_mult": damage_mult,
 	}
 

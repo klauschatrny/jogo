@@ -1,0 +1,14 @@
+{
+  "id": "aug_armor",
+  "name": "Armadura",
+  "tier": "RELIC",
+  "category": "DEFENSE",
+  "description": "+6% de redução de dano físico.",
+  "weight": 30,
+  "stackable": true,
+  "max_stacks": 5,
+  "icon": "armor",
+  "effects": [
+    { "stat": "damage_reduction", "operation": "ADD", "value": 0.06 }
+  ]
+}
